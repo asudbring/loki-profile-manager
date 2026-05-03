@@ -86,25 +86,27 @@ func UpsertMachine(storeRoot string, record Record) error {
 	if record.MachineID == "" {
 		return fmt.Errorf("upsert machine: machine_id is required")
 	}
-	registry, err := ReadRegistry(storeRoot)
-	if err != nil {
-		return err
-	}
-	updated := false
-	for i := range registry.Machines {
-		if registry.Machines[i].MachineID == record.MachineID {
-			registry.Machines[i] = record
-			updated = true
-			break
+	return withRegistryLock(storeRoot, func() error {
+		registry, err := ReadRegistry(storeRoot)
+		if err != nil {
+			return err
 		}
-	}
-	if !updated {
-		registry.Machines = append(registry.Machines, record)
-	}
-	if err := WriteRegistry(storeRoot, registry); err != nil {
-		return err
-	}
-	return WriteHeartbeat(storeRoot, record)
+		updated := false
+		for i := range registry.Machines {
+			if registry.Machines[i].MachineID == record.MachineID {
+				registry.Machines[i] = record
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			registry.Machines = append(registry.Machines, record)
+		}
+		if err := WriteRegistry(storeRoot, registry); err != nil {
+			return err
+		}
+		return WriteHeartbeat(storeRoot, record)
+	})
 }
 
 func GetMachine(storeRoot, machineID string) (Record, bool, error) {
@@ -121,34 +123,84 @@ func GetMachine(storeRoot, machineID string) (Record, bool, error) {
 }
 
 func DeleteMachine(storeRoot, machineID string) error {
-	registry, err := ReadRegistry(storeRoot)
-	if err != nil {
-		return err
-	}
-	machines := make([]Record, 0, len(registry.Machines))
-	found := false
-	for _, record := range registry.Machines {
-		if record.MachineID == machineID {
-			found = true
-			continue
+	return withRegistryLock(storeRoot, func() error {
+		registry, err := ReadRegistry(storeRoot)
+		if err != nil {
+			return err
 		}
-		machines = append(machines, record)
-	}
-	if !found {
-		return fmt.Errorf("delete machine %s: machine not found in registry", machineID)
-	}
-	registry.Machines = machines
-	if err := WriteRegistry(storeRoot, registry); err != nil {
-		return err
-	}
-	if err := os.Remove(heartbeatPath(storeRoot, machineID)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("delete machine heartbeat: %w", err)
-	}
-	return nil
+		machines := make([]Record, 0, len(registry.Machines))
+		found := false
+		for _, record := range registry.Machines {
+			if record.MachineID == machineID {
+				found = true
+				continue
+			}
+			machines = append(machines, record)
+		}
+		if !found {
+			return fmt.Errorf("delete machine %s: machine not found in registry", machineID)
+		}
+		registry.Machines = machines
+		if err := WriteRegistry(storeRoot, registry); err != nil {
+			return err
+		}
+		if err := os.Remove(heartbeatPath(storeRoot, machineID)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("delete machine heartbeat: %w", err)
+		}
+		return nil
+	})
 }
 
 func registryPath(storeRoot string) string {
 	return filepath.Join(storeRoot, "registry", "machines.json")
+}
+
+func registryLockPath(storeRoot string) string {
+	return filepath.Join(storeRoot, "registry", "machines.json.lock")
+}
+
+func withRegistryLock(storeRoot string, fn func() error) error {
+	unlock, err := acquireRegistryLock(registryLockPath(storeRoot))
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	return fn()
+}
+
+func acquireRegistryLock(path string) (func(), error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return nil, fmt.Errorf("create registry lock directory: %w", err)
+	}
+	token := fmt.Sprintf("%d-%d\n", os.Getpid(), time.Now().UnixNano())
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			if _, writeErr := file.WriteString(token); writeErr != nil {
+				_ = file.Close()
+				_ = os.Remove(path)
+				return nil, fmt.Errorf("write registry lock %s: %w", path, writeErr)
+			}
+			if closeErr := file.Close(); closeErr != nil {
+				_ = os.Remove(path)
+				return nil, fmt.Errorf("close registry lock %s: %w", path, closeErr)
+			}
+			return func() {
+				content, err := os.ReadFile(path)
+				if err == nil && string(content) == token {
+					_ = os.Remove(path)
+				}
+			}, nil
+		}
+		if !os.IsExist(err) {
+			return nil, fmt.Errorf("create registry lock %s: %w", path, err)
+		}
+		if time.Now().After(deadline) {
+			return nil, fmt.Errorf("acquire registry lock %s: timed out; remove stale lock manually if no Loki process is active", path)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 func cloneStrings(values []string) []string {

@@ -43,6 +43,34 @@ func (e Expander) ExpandTarget(value string) (string, error) {
 	return config.CleanForOS(resolver.GOOS, expanded), nil
 }
 
+func (e Expander) ValidateTargetPath(target string) error {
+	resolver := e.Resolver.WithDefaults()
+	target = config.CleanForOS(resolver.GOOS, strings.TrimSpace(target))
+	if target == "" {
+		return fmt.Errorf("target path is required")
+	}
+	if !isAbsForOS(resolver.GOOS, target) {
+		return fmt.Errorf("target path %q must be absolute or use ~/${HOME}", target)
+	}
+	if isRootForOS(resolver.GOOS, target) {
+		return fmt.Errorf("target path %q must not be a filesystem root", target)
+	}
+	home := config.CleanForOS(resolver.GOOS, resolver.HomeDir)
+	if home == "" {
+		return fmt.Errorf("target path %q cannot be validated without a home directory", target)
+	}
+	if isRootForOS(resolver.GOOS, home) {
+		return fmt.Errorf("target policy home root %q is not allowed", home)
+	}
+	if samePathForOS(resolver.GOOS, target, home) {
+		return fmt.Errorf("target path %q must not be the home directory itself", target)
+	}
+	if !pathWithinRootForOS(resolver.GOOS, target, home) {
+		return fmt.Errorf("target path %q is outside allowed home root %q", target, home)
+	}
+	return nil
+}
+
 func (e Expander) expand(value string, seen map[string]bool, depth int) (string, error) {
 	if depth > 20 {
 		return "", fmt.Errorf("expand target %q: variable expansion depth exceeded", value)
@@ -130,9 +158,82 @@ func ResolveSource(layerRoot, source string) (string, error) {
 	return full, nil
 }
 
+func ValidateSourceWithinRoot(layerRoot, sourcePath string) error {
+	root, err := filepath.Abs(layerRoot)
+	if err != nil {
+		return fmt.Errorf("resolve layer root %s: %w", layerRoot, err)
+	}
+	full, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return fmt.Errorf("resolve source %s: %w", sourcePath, err)
+	}
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return fmt.Errorf("resolve real layer root %s: %w", layerRoot, err)
+	}
+	realSource, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return fmt.Errorf("resolve real source %s: %w", sourcePath, err)
+	}
+	rel, err := filepath.Rel(realRoot, realSource)
+	if err != nil {
+		return fmt.Errorf("compare source %s to layer root %s: %w", sourcePath, layerRoot, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("source path %q resolves outside layer root", sourcePath)
+	}
+	return nil
+}
+
 func isAbsAnyOS(path string) bool {
 	if filepath.IsAbs(path) || strings.HasPrefix(path, "/") || strings.HasPrefix(path, `\`) {
 		return true
 	}
 	return len(path) >= 2 && path[1] == ':'
+}
+
+func isAbsForOS(goos, value string) bool {
+	if goos == "windows" {
+		value = strings.ReplaceAll(value, "/", `\`)
+		if strings.HasPrefix(value, `\`) {
+			return true
+		}
+		return len(value) >= 3 && value[1] == ':' && (value[2] == '\\' || value[2] == '/')
+	}
+	return strings.HasPrefix(value, "/")
+}
+
+func isRootForOS(goos, value string) bool {
+	value = config.CleanForOS(goos, value)
+	if goos == "windows" {
+		value = strings.ReplaceAll(value, "/", `\`)
+		return value == `\` || len(value) == 2 && value[1] == ':'
+	}
+	return value == "/"
+}
+
+func samePathForOS(goos, left, right string) bool {
+	left = normalizeForCompare(goos, left)
+	right = normalizeForCompare(goos, right)
+	return left == right
+}
+
+func pathWithinRootForOS(goos, child, root string) bool {
+	child = normalizeForCompare(goos, child)
+	root = normalizeForCompare(goos, root)
+	sep := "/"
+	if goos == "windows" {
+		sep = `\`
+	}
+	root = strings.TrimRight(root, sep)
+	child = strings.TrimRight(child, sep)
+	return strings.HasPrefix(child, root+sep)
+}
+
+func normalizeForCompare(goos, value string) string {
+	value = config.CleanForOS(goos, value)
+	if goos == "windows" {
+		value = strings.ToLower(strings.ReplaceAll(value, "/", `\`))
+	}
+	return value
 }

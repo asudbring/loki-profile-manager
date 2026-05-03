@@ -24,6 +24,7 @@ func Open(ctx context.Context, dbPath string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite: %w", err)
 	}
+	database.SetMaxOpenConns(1)
 	if err := database.PingContext(ctx); err != nil {
 		database.Close()
 		return nil, fmt.Errorf("ping sqlite: %w", err)

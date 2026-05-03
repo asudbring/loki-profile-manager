@@ -103,6 +103,29 @@ func (c Client) GetSecrets(ctx context.Context, names []string) (map[string]stri
 
 var secretNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
+func ValidateSecretName(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("invalid Infisical secret name %q", name)
+	}
+	if !secretNameRE.MatchString(name) {
+		return fmt.Errorf("invalid Infisical secret name %q", name)
+	}
+	return nil
+}
+
+func ValidateSecretNames(names []string) error {
+	for _, name := range names {
+		if strings.TrimSpace(name) == "" {
+			continue
+		}
+		if err := ValidateSecretName(name); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func normalizeNames(names []string) ([]string, error) {
 	seen := map[string]bool{}
 	var out []string
@@ -111,8 +134,8 @@ func normalizeNames(names []string) ([]string, error) {
 		if name == "" || seen[name] {
 			continue
 		}
-		if !secretNameRE.MatchString(name) {
-			return nil, fmt.Errorf("invalid Infisical secret name %q", name)
+		if err := ValidateSecretName(name); err != nil {
+			return nil, err
 		}
 		seen[name] = true
 		out = append(out, name)

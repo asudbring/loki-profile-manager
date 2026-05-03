@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -39,8 +40,39 @@ func EnsureID(machineIDPath string) (string, error) {
 	if err := os.MkdirAll(filepath.Dir(machineIDPath), 0o700); err != nil {
 		return "", fmt.Errorf("create machine id directory: %w", err)
 	}
-	if err := os.WriteFile(machineIDPath, []byte(id+"\n"), 0o600); err != nil {
+	file, err := os.OpenFile(machineIDPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if os.IsExist(err) {
+		return readIDWithRetry(machineIDPath)
+	}
+	if err != nil {
+		return "", fmt.Errorf("create machine id %s: %w", machineIDPath, err)
+	}
+	if _, err := file.WriteString(id + "\n"); err != nil {
+		_ = file.Close()
 		return "", fmt.Errorf("write machine id %s: %w", machineIDPath, err)
 	}
+	if err := file.Close(); err != nil {
+		return "", fmt.Errorf("close machine id %s: %w", machineIDPath, err)
+	}
 	return id, nil
+}
+
+func readIDWithRetry(machineIDPath string) (string, error) {
+	deadline := time.Now().Add(time.Second)
+	var lastErr error
+	for {
+		id, ok, err := ReadID(machineIDPath)
+		if err == nil && ok {
+			return id, nil
+		}
+		if err != nil {
+			lastErr = err
+		} else {
+			lastErr = fmt.Errorf("machine id file %s disappeared during concurrent creation", machineIDPath)
+		}
+		if time.Now().After(deadline) {
+			return "", lastErr
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

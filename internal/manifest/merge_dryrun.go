@@ -25,10 +25,7 @@ func MergeDryRun(operations []FileOperation) []Problem {
 			problems = append(problems, validateStructuredMerge(target, group)...)
 			continue
 		}
-		if identicalSources(group) {
-			continue
-		}
-		problems = append(problems, Problem{Severity: SeverityBlocking, Code: "merge.duplicate_target", Message: "duplicate target is not a compatible structured merge and source contents differ", Target: target})
+		problems = append(problems, Problem{Severity: SeverityBlocking, Code: "merge.duplicate_target", Message: "duplicate target is not a compatible structured merge", Target: target})
 	}
 	return problems
 }

@@ -41,6 +41,23 @@ func TestValidateLayerBadModeFormatIgnore(t *testing.T) {
 	}
 }
 
+func TestValidateLayerTargetAndSecretPolicy(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "files"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "files", "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := Manifest{Name: "test", Files: []FileEntry{{ID: "a", Source: "files/a.txt", Target: "/etc/hosts", Mode: ModeRender, Secrets: []string{"BAD-NAME"}}}}
+	result := ValidateLayer(ValidationInput{LayerName: "test", LayerRoot: root, Manifest: m, Expander: testExpander()})
+	for _, code := range []string{"manifest.target_invalid", "manifest.secret_invalid"} {
+		if !hasProblem(result.Problems, code) {
+			t.Fatalf("problem %s not found: %+v", code, result.Problems)
+		}
+	}
+}
+
 func testExpander() Expander {
 	return Expander{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: "/Users/alice"}}
 }

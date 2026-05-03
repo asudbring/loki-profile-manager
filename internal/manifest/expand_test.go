@@ -1,6 +1,8 @@
 package manifest
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/allensu/loki-profile-manager/internal/config"
@@ -56,5 +58,39 @@ func TestExpandUnknownVariableFails(t *testing.T) {
 func TestResolveSourceRejectsEscape(t *testing.T) {
 	if _, err := ResolveSource(t.TempDir(), "../outside"); err == nil {
 		t.Fatal("ResolveSource() error = nil, want escape error")
+	}
+}
+
+func TestValidateTargetPathRequiresHomeRoot(t *testing.T) {
+	expander := Expander{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: "/Users/alice"}}
+	if err := expander.ValidateTargetPath("/Users/alice/.config/app/config.json"); err != nil {
+		t.Fatalf("ValidateTargetPath(home) error = %v", err)
+	}
+	for _, target := range []string{"relative/file", "/etc/hosts", "/Users/alice", "/Users/alice/../bob/file"} {
+		if err := expander.ValidateTargetPath(target); err == nil {
+			t.Fatalf("ValidateTargetPath(%q) error = nil", target)
+		}
+	}
+}
+
+func TestValidateSourceWithinRootRejectsSymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "files", "link.txt")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	resolved, err := ResolveSource(root, "files/link.txt")
+	if err != nil {
+		t.Fatalf("ResolveSource() error = %v", err)
+	}
+	if err := ValidateSourceWithinRoot(root, resolved); err == nil {
+		t.Fatal("ValidateSourceWithinRoot() error = nil, want symlink escape")
 	}
 }

@@ -27,11 +27,8 @@ func writeFileAtomic(target string, content []byte, mode os.FileMode) error {
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("close temp file for %s: %w", target, err)
 	}
-	if err := removeExisting(target); err != nil {
+	if err := replacePath(tmpPath, target); err != nil {
 		return err
-	}
-	if err := os.Rename(tmpPath, target); err != nil {
-		return fmt.Errorf("replace %s: %w", target, err)
 	}
 	return nil
 }

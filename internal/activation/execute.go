@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/allensu/loki-profile-manager/internal/config"
@@ -66,19 +67,20 @@ func Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 		if err := executeOperation(ctx, op, req.SecretProvider); err != nil {
 			return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
 		}
+		if err := markSnapshotTargetAfterOperation(&snapshot, op); err != nil {
+			result.Snapshot = snapshot
+			return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
+		}
+		result.Snapshot = snapshot
 		result.Changed++
 		if req.FailAfter > 0 && i+1 >= req.FailAfter {
 			return result, rollbackAfterFailure(ctx, req.Database, snapshot, fmt.Errorf("simulated activation failure after %d operation(s)", req.FailAfter))
 		}
 	}
 	for _, op := range plan.Operations {
-		hash := op.ExpectedHash
-		if op.Type != OperationSymlink {
-			computed, err := HashPath(op.TargetPath)
-			if err != nil {
-				return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
-			}
-			hash = computed
+		hash, err := HashPath(op.TargetPath)
+		if err != nil {
+			return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
 		}
 		if err := UpsertManagedTarget(ctx, req.Database, op, hash, now()); err != nil {
 			return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
@@ -110,6 +112,29 @@ func executeOperation(ctx context.Context, op Operation, provider SecretProvider
 	default:
 		return fmt.Errorf("unsupported activation operation %q for %s", op.Type, op.TargetPath)
 	}
+}
+
+func markSnapshotTargetAfterOperation(snapshot *Snapshot, op Operation) error {
+	if snapshot == nil {
+		return nil
+	}
+	for i := range snapshot.Targets {
+		if snapshot.Targets[i].TargetPath != op.TargetPath || snapshot.Targets[i].Kind != "missing" {
+			continue
+		}
+		info, err := os.Lstat(op.TargetPath)
+		if err != nil {
+			return err
+		}
+		hash, err := HashPath(op.TargetPath)
+		if err != nil {
+			return err
+		}
+		snapshot.Targets[i].ExpectedHash = hash
+		snapshot.Targets[i].ExpectedMode = info.Mode().String()
+		return nil
+	}
+	return nil
 }
 
 func rollbackAfterFailure(ctx context.Context, database *sql.DB, snapshot Snapshot, cause error) error {

@@ -17,21 +17,30 @@ import (
 const SnapshotMetadataFile = "metadata.json"
 
 type Snapshot struct {
-	SnapshotID            string          `json:"snapshot_id"`
-	MachineID             string          `json:"machine_id,omitempty"`
-	Path                  string          `json:"path"`
-	CreatedAt             string          `json:"created_at"`
-	PreviousActiveProfile string          `json:"previous_active_profile,omitempty"`
-	PreviousActiveBuckets []string        `json:"previous_active_buckets"`
-	Targets               []SnapshotEntry `json:"targets"`
+	SnapshotID            string                  `json:"snapshot_id"`
+	MachineID             string                  `json:"machine_id,omitempty"`
+	Path                  string                  `json:"path"`
+	CreatedAt             string                  `json:"created_at"`
+	PreviousActiveProfile string                  `json:"previous_active_profile,omitempty"`
+	PreviousActiveBuckets []string                `json:"previous_active_buckets"`
+	Targets               []SnapshotEntry         `json:"targets"`
+	ManagedTargets        []ManagedTargetSnapshot `json:"managed_targets,omitempty"`
 }
 
 type SnapshotEntry struct {
 	TargetPath   string `json:"path"`
 	Kind         string `json:"kind"`
 	Hash         string `json:"hash,omitempty"`
+	ExpectedHash string `json:"expected_hash,omitempty"`
+	ExpectedMode string `json:"expected_mode,omitempty"`
 	SnapshotPath string `json:"snapshot_path,omitempty"`
 	LinkTarget   string `json:"link_target,omitempty"`
+}
+
+type ManagedTargetSnapshot struct {
+	TargetPath string        `json:"target_path"`
+	Found      bool          `json:"found"`
+	Record     ManagedTarget `json:"record,omitempty"`
 }
 
 type CreateSnapshotRequest struct {
@@ -75,11 +84,18 @@ func CreateSnapshot(ctx context.Context, req CreateSnapshotRequest) (Snapshot, e
 			continue
 		}
 		seen[op.TargetPath] = true
-		entry, err := snapshotTarget(op.TargetPath, entriesDir, len(snapshot.Targets))
+		entry, err := snapshotTarget(op, entriesDir, len(snapshot.Targets))
 		if err != nil {
 			return Snapshot{}, err
 		}
 		snapshot.Targets = append(snapshot.Targets, entry)
+		if req.Database != nil {
+			record, found, err := GetManagedTarget(ctx, req.Database, op.TargetPath)
+			if err != nil {
+				return Snapshot{}, err
+			}
+			snapshot.ManagedTargets = append(snapshot.ManagedTargets, ManagedTargetSnapshot{TargetPath: op.TargetPath, Found: found, Record: record})
+		}
 	}
 	if err := writeSnapshotMetadata(snapshot); err != nil {
 		return Snapshot{}, err
@@ -99,10 +115,11 @@ func CreateSnapshot(ctx context.Context, req CreateSnapshotRequest) (Snapshot, e
 	return snapshot, nil
 }
 
-func snapshotTarget(target, entriesDir string, index int) (SnapshotEntry, error) {
+func snapshotTarget(op Operation, entriesDir string, index int) (SnapshotEntry, error) {
+	target := op.TargetPath
 	info, err := os.Lstat(target)
 	if errors.Is(err, os.ErrNotExist) {
-		return SnapshotEntry{TargetPath: target, Kind: "missing"}, nil
+		return SnapshotEntry{TargetPath: target, Kind: "missing", ExpectedHash: op.ExpectedHash}, nil
 	}
 	if err != nil {
 		return SnapshotEntry{}, fmt.Errorf("snapshot target %s: %w", target, err)

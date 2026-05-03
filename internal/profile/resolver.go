@@ -29,8 +29,9 @@ type Layer struct {
 }
 
 func Resolve(storeRoot, parent string, buckets []string) ([]Layer, error) {
-	if strings.TrimSpace(parent) == "" {
-		return nil, fmt.Errorf("resolve profile: parent profile is required")
+	parent = strings.TrimSpace(parent)
+	if err := validateName("parent profile", parent); err != nil {
+		return nil, fmt.Errorf("resolve profile: %w", err)
 	}
 	var layers []Layer
 	commonRoot := filepath.Join(storeRoot, "profiles", "common")
@@ -55,6 +56,9 @@ func Resolve(storeRoot, parent string, buckets []string) ([]Layer, error) {
 		bucket = strings.TrimSpace(bucket)
 		if bucket == "" || seen[bucket] {
 			continue
+		}
+		if err := validateName("bucket", bucket); err != nil {
+			return nil, fmt.Errorf("resolve profile: %w", err)
 		}
 		seen[bucket] = true
 		bucketRoot := filepath.Join(storeRoot, "profiles", parent, "buckets", bucket)
@@ -81,6 +85,9 @@ func DiscoverParents(storeRoot string) ([]string, error) {
 		if !entry.IsDir() || entry.Name() == "common" {
 			continue
 		}
+		if err := validateName("parent profile", entry.Name()); err != nil {
+			continue
+		}
 		if _, err := os.Stat(filepath.Join(profilesDir, entry.Name(), "core", "manifest.yaml")); err == nil {
 			parents = append(parents, entry.Name())
 		}
@@ -89,6 +96,10 @@ func DiscoverParents(storeRoot string) ([]string, error) {
 }
 
 func DiscoverBuckets(storeRoot, parent string) ([]string, error) {
+	parent = strings.TrimSpace(parent)
+	if err := validateName("parent profile", parent); err != nil {
+		return nil, fmt.Errorf("discover buckets: %w", err)
+	}
 	bucketsDir := filepath.Join(storeRoot, "profiles", parent, "buckets")
 	entries, err := os.ReadDir(bucketsDir)
 	if err != nil {
@@ -97,6 +108,9 @@ func DiscoverBuckets(storeRoot, parent string) ([]string, error) {
 	var buckets []string
 	for _, entry := range entries {
 		if !entry.IsDir() {
+			continue
+		}
+		if err := validateName("bucket", entry.Name()); err != nil {
 			continue
 		}
 		if _, err := os.Stat(filepath.Join(bucketsDir, entry.Name(), "manifest.yaml")); err == nil {
@@ -148,4 +162,24 @@ func loadLayer(name string, kind LayerKind, parent, bucket, root string, order i
 		return Layer{}, err
 	}
 	return Layer{Name: name, Kind: kind, Parent: parent, Bucket: bucket, RootDir: root, ManifestPath: manifestPath, Manifest: parsed, Order: order}, nil
+}
+
+func validateName(kind, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return fmt.Errorf("%s is required", kind)
+	}
+	if name == "." || name == ".." {
+		return fmt.Errorf("%s %q is not allowed", kind, name)
+	}
+	if filepath.IsAbs(name) || strings.HasPrefix(name, "/") || strings.HasPrefix(name, `\`) || len(name) >= 2 && name[1] == ':' {
+		return fmt.Errorf("%s %q must be a simple name, not a path", kind, name)
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return fmt.Errorf("%s %q must not contain path separators", kind, name)
+	}
+	if filepath.Clean(name) != name {
+		return fmt.Errorf("%s %q must be a clean path component", kind, name)
+	}
+	return nil
 }

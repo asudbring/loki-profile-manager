@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/allensu/loki-profile-manager/internal/infisical"
 	"github.com/bmatcuk/doublestar/v4"
 )
 
@@ -75,6 +76,11 @@ func validateFile(input ValidationInput, entry FileEntry) ([]Problem, FileOperat
 	if entry.Capture && entry.Mode != ModeCopy && entry.Mode != ModeMerge {
 		problems = append(problems, warning("manifest.capture_ignored", "capture is only supported for copy or merge modes", input.LayerRoot))
 	}
+	for _, secret := range entry.Secrets {
+		if err := infisical.ValidateSecretName(secret); err != nil {
+			problems = append(problems, blocking("manifest.secret_invalid", err.Error(), input.LayerRoot))
+		}
+	}
 
 	sourcePath := ""
 	if entry.Source != "" {
@@ -83,8 +89,10 @@ func validateFile(input ValidationInput, entry FileEntry) ([]Problem, FileOperat
 			problems = append(problems, blocking("manifest.source_invalid", err.Error(), input.LayerRoot))
 		} else {
 			sourcePath = resolved
-			if _, err := os.Stat(sourcePath); err != nil {
+			if _, err := os.Lstat(sourcePath); err != nil {
 				problems = append(problems, blocking("manifest.source_missing", fmt.Sprintf("source %s does not exist", sourcePath), sourcePath))
+			} else if err := ValidateSourceWithinRoot(input.LayerRoot, sourcePath); err != nil {
+				problems = append(problems, blocking("manifest.source_invalid", err.Error(), sourcePath))
 			}
 		}
 	}
@@ -92,6 +100,8 @@ func validateFile(input ValidationInput, entry FileEntry) ([]Problem, FileOperat
 	if entry.Target != "" {
 		expanded, err := input.Expander.ExpandTarget(entry.Target)
 		if err != nil {
+			problems = append(problems, blocking("manifest.target_invalid", err.Error(), input.LayerRoot))
+		} else if err := input.Expander.ValidateTargetPath(expanded); err != nil {
 			problems = append(problems, blocking("manifest.target_invalid", err.Error(), input.LayerRoot))
 		} else {
 			targetPath = expanded
@@ -116,12 +126,18 @@ func validateSkillSource(input ValidationInput, entry SkillEntry) []Problem {
 	if err != nil {
 		return append(problems, blocking("manifest.skill_source_invalid", err.Error(), input.LayerRoot))
 	}
-	info, err := os.Stat(resolved)
+	info, err := os.Lstat(resolved)
 	if err != nil {
 		return append(problems, blocking("manifest.skill_source_missing", fmt.Sprintf("skill source %s does not exist", resolved), resolved))
 	}
+	if err := ValidateSourceWithinRoot(input.LayerRoot, resolved); err != nil {
+		return append(problems, blocking("manifest.skill_source_invalid", err.Error(), resolved))
+	}
 	if !info.IsDir() {
-		return append(problems, blocking("manifest.skill_source_invalid", fmt.Sprintf("skill source %s is not a directory", resolved), resolved))
+		resolvedInfo, err := os.Stat(resolved)
+		if err != nil || !resolvedInfo.IsDir() {
+			return append(problems, blocking("manifest.skill_source_invalid", fmt.Sprintf("skill source %s is not a directory", resolved), resolved))
+		}
 	}
 	return problems
 }
@@ -129,6 +145,9 @@ func validateSkillSource(input ValidationInput, entry SkillEntry) []Problem {
 func SkillSourceDirs(layerRoot string, entry SkillEntry) ([]string, error) {
 	resolved, err := ResolveSource(layerRoot, entry.Source)
 	if err != nil {
+		return nil, err
+	}
+	if err := ValidateSourceWithinRoot(layerRoot, resolved); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat(filepath.Join(resolved, "SKILL.md")); err == nil {

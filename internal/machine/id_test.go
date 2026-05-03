@@ -3,6 +3,7 @@ package machine
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/google/uuid"
@@ -33,5 +34,29 @@ func TestEnsureIDInvalidExistingFileFails(t *testing.T) {
 	}
 	if _, err := EnsureID(path); err == nil {
 		t.Fatal("EnsureID() error = nil, want error")
+	}
+}
+
+func TestEnsureIDConcurrentReturnsSameUUID(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "machine_id")
+	const workers = 16
+	ids := make([]string, workers)
+	errs := make([]error, workers)
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			ids[i], errs[i] = EnsureID(path)
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("EnsureID(%d) error = %v", i, err)
+		}
+		if ids[i] != ids[0] {
+			t.Fatalf("ids[%d] = %q, want %q", i, ids[i], ids[0])
+		}
 	}
 }

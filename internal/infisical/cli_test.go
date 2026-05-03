@@ -77,4 +77,7 @@ func TestRequiredSecretsAndRenderTemplate(t *testing.T) {
 	if err == nil || strings.Contains(err.Error(), "super-private") || !strings.Contains(err.Error(), "PROJECT") {
 		t.Fatalf("missing error = %v", err)
 	}
+	if _, err := RenderTemplate(template, map[string]string{}, []string{"BAD-NAME"}); err == nil {
+		t.Fatal("RenderTemplate() invalid secret error = nil")
+	}
 }

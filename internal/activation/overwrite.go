@@ -65,10 +65,10 @@ func ClassifyTarget(ctx context.Context, database *sql.DB, op Operation) (Safety
 		if _, err := os.Stat(op.TargetPath); errors.Is(err, os.ErrNotExist) {
 			return SafetyStatus{Class: SafetyBrokenSymlink, Safe: false, Message: fmt.Sprintf("broken symlink points to %s; repair or remove it before switching", linkTarget), Managed: found}, nil
 		}
-		if found && (samePath(linkTarget, op.SourcePath) || samePath(linkTarget, record.SourcePath)) {
+		if found && record.Mode == string(OperationSymlink) && samePath(linkTarget, record.SourcePath) {
 			return SafetyStatus{Class: SafetyManagedSymlink, Safe: true, Message: "existing symlink is managed by Loki", Managed: true}, nil
 		}
-		return SafetyStatus{Class: SafetyUnmanagedFile, Safe: false, Message: "existing symlink is not recorded as a Loki-managed target", Managed: found}, nil
+		return SafetyStatus{Class: SafetyUnmanagedFile, Safe: false, Message: "existing symlink is not recorded as a Loki-managed symlink", Managed: found}, nil
 	}
 
 	if info.IsDir() {
@@ -127,7 +127,27 @@ func UpsertManagedTarget(ctx context.Context, database *sql.DB, op Operation, co
 	if err != nil {
 		return fmt.Errorf("marshal managed target metadata: %w", err)
 	}
-	_, err = database.ExecContext(ctx, `
+	record := ManagedTarget{
+		TargetPath:    op.TargetPath,
+		SourcePath:    op.SourcePath,
+		Mode:          string(op.Type),
+		ContentHash:   contentHash,
+		LayerKind:     op.LayerKind,
+		LayerName:     op.LayerName,
+		LastAppliedAt: now.UTC().Format(time.RFC3339),
+		MetadataJSON:  string(metadataJSON),
+	}
+	if err := PutManagedTarget(ctx, database, record); err != nil {
+		return fmt.Errorf("upsert managed target %s: %w", op.TargetPath, err)
+	}
+	return nil
+}
+
+func PutManagedTarget(ctx context.Context, database *sql.DB, record ManagedTarget) error {
+	if database == nil {
+		return fmt.Errorf("put managed target: database is nil")
+	}
+	_, err := database.ExecContext(ctx, `
 INSERT INTO managed_targets (target_path, source_path, mode, content_hash, layer_kind, layer_name, last_applied_at, metadata_json)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(target_path) DO UPDATE SET
@@ -138,17 +158,27 @@ ON CONFLICT(target_path) DO UPDATE SET
     layer_name = excluded.layer_name,
     last_applied_at = excluded.last_applied_at,
     metadata_json = excluded.metadata_json`,
-		op.TargetPath,
-		op.SourcePath,
-		string(op.Type),
-		contentHash,
-		op.LayerKind,
-		op.LayerName,
-		now.UTC().Format(time.RFC3339),
-		string(metadataJSON),
+		record.TargetPath,
+		record.SourcePath,
+		record.Mode,
+		record.ContentHash,
+		record.LayerKind,
+		record.LayerName,
+		record.LastAppliedAt,
+		record.MetadataJSON,
 	)
 	if err != nil {
-		return fmt.Errorf("upsert managed target %s: %w", op.TargetPath, err)
+		return fmt.Errorf("put managed target %s: %w", record.TargetPath, err)
+	}
+	return nil
+}
+
+func DeleteManagedTarget(ctx context.Context, database *sql.DB, targetPath string) error {
+	if database == nil {
+		return fmt.Errorf("delete managed target: database is nil")
+	}
+	if _, err := database.ExecContext(ctx, `DELETE FROM managed_targets WHERE target_path = ?`, targetPath); err != nil {
+		return fmt.Errorf("delete managed target %s: %w", targetPath, err)
 	}
 	return nil
 }
