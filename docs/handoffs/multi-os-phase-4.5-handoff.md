@@ -2,7 +2,7 @@
 
 Created: 2026-05-03
 Last updated: 2026-05-03
-Latest pushed commit at update time: `789d23e`
+Documentation baseline commit before this handoff refresh: `789d23e`
 Repo cwd when written: `C:\Users\allensu\github\loki-profile-manager`
 
 ## Purpose
@@ -271,7 +271,7 @@ docs/handoffs/multi-os-phase-4.5-handoff.md
 ## Start-here checklist on new machine
 
 1. Clone private repo: `https://github.com/asudbring/loki-profile-manager`.
-2. Confirm latest commit is at least `789d23e`.
+2. Confirm clone includes this handoff refresh and is at least documentation baseline `789d23e`.
 3. Open this file plus `README.md`, `docs/DEVELOPMENT.md`, and `docs/ai-ops/install.ai.md`.
 4. Run native tests.
 5. Implement Phase 4.5 migration/adoption.
