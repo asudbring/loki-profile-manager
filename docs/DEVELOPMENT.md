@@ -28,7 +28,17 @@ Native Go:
 ```bash
 go test ./...
 go vet ./...
+go mod verify
+go build ./cmd/loki
 ```
+
+Race tests where supported:
+
+```bash
+go test -race ./...
+```
+
+`go test -race` is not supported by Go on every target. In particular, Windows ARM64 currently must use normal `go test ./...`; prove Windows ARM64 with native tests plus the cross-compile matrix below.
 
 Docker:
 
@@ -48,6 +58,45 @@ MSYS_NO_PATHCONV=1 docker run --rm \
   -v "C:/Users/allensu/github/loki-profile-manager:/work" \
   -w /work golang:1.23 go vet ./...
 ```
+
+## Cross-platform matrix
+
+Supported targets:
+
+| OS | Architectures | Validation |
+|---|---|---|
+| Windows | amd64, arm64 | Native `go test`; cross-compile both; skip `-race` on arm64. |
+| macOS | amd64, arm64 | Native `go test`; cross-compile both. |
+| Linux | amd64, arm64 | Native `go test`; cross-compile both. |
+
+Cross-compile all release targets from any host with Go installed:
+
+```bash
+for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+  GOOS=${target%/*}
+  GOARCH=${target#*/}
+  ext=""
+  if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+  CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -o "dist/loki-$GOOS-$GOARCH$ext" ./cmd/loki
+done
+```
+
+Compile package tests for all targets:
+
+```bash
+for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 linux/arm64; do
+  GOOS=${target%/*}
+  GOARCH=${target#*/}
+  ext=""
+  if [ "$GOOS" = "windows" ]; then ext=".exe"; fi
+  for pkg in $(go list ./...); do
+    name=$(printf '%s' "$pkg" | tr '/.' '__')
+    CGO_ENABLED=0 GOOS=$GOOS GOARCH=$GOARCH go test -c -o ".testbin/$GOOS-$GOARCH-$name$ext" "$pkg"
+  done
+done
+```
+
+GitHub Actions runs native tests and cross-compilation in `.github/workflows/ci.yml`.
 
 ## Build commands
 

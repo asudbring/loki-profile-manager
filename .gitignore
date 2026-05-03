@@ -3,6 +3,8 @@
 /loki.exe
 /dist/
 /bin/
+/.testbin/
+/_tmp_ensure_store/
 
 # Local runtime state
 *.sqlite

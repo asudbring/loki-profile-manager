@@ -51,6 +51,7 @@ type TargetValue struct {
 	Default string `yaml:"default" json:"default"`
 	Windows string `yaml:"windows" json:"windows"`
 	Darwin  string `yaml:"darwin" json:"darwin"`
+	Linux   string `yaml:"linux" json:"linux"`
 }
 
 func (v *TargetValue) UnmarshalYAML(value *yaml.Node) error {
@@ -80,6 +81,10 @@ func (v TargetValue) ForOS(goos string) (string, bool) {
 	case "darwin":
 		if v.Darwin != "" {
 			return v.Darwin, true
+		}
+	case "linux":
+		if v.Linux != "" {
+			return v.Linux, true
 		}
 	}
 	if v.Default != "" {

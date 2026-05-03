@@ -5,17 +5,16 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: private.
-- Current implementation: Phases 1-4 complete.
-- Current commands: `status`, `verify`, `switch`.
-- Next blocking phase: Phase 4.5 migration and adoption bootstrap.
-- Not implemented yet: `migrate`, `adopt`, `sync`, `import-skill`, `doctor`, and `tui`.
+- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented.
+- Current commands: `status`, `verify`, `switch`, `migrate repo`, `migrate local`, and `adopt`.
+- Not implemented yet: `sync`, `import-skill`, `doctor`, and `tui`.
 - License: not selected yet.
 
 ## What it does today
 
 Loki creates and validates a local store layout, tracks machine identity and machine policy, parses YAML profile manifests, verifies skill folders and mergeability, and activates a selected profile with symlink, copy, structured merge, and template-render operations.
 
-Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories. A target must be missing, already managed by Loki, or adopted by future migration/adoption commands before activation can overwrite it.
+Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories. A target must be missing, already managed by Loki, or adopted by migration/adoption commands before activation can overwrite it.
 
 ## Install from source
 

@@ -55,6 +55,21 @@ func TestResolveLocalPathsMacOSMissingHome(t *testing.T) {
 	}
 }
 
+func TestResolveLocalPathsLinux(t *testing.T) {
+	resolver := PathResolver{GOOS: "linux", HomeDir: "/home/alice"}
+	paths, err := resolver.ResolveLocalPaths()
+	if err != nil {
+		t.Fatalf("ResolveLocalPaths() error = %v", err)
+	}
+	want := "/home/alice/.local/state/loki-profile-manager"
+	if paths.StateDir != want {
+		t.Fatalf("StateDir = %q, want %q", paths.StateDir, want)
+	}
+	if paths.DBPath != want+"/state.sqlite" {
+		t.Fatalf("DBPath = %q", paths.DBPath)
+	}
+}
+
 func TestCleanStoreOverride(t *testing.T) {
 	resolver := PathResolver{GOOS: "darwin", HomeDir: "/Users/alice"}
 	got := resolver.CleanStoreOverride("/Users/alice/OneDrive//loki/")

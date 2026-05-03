@@ -79,6 +79,22 @@ func TestBuildLocalPlanKnownPathsAndSkills(t *testing.T) {
 	}
 }
 
+func TestBuildLocalPlanLinuxVSCodePath(t *testing.T) {
+	home := t.TempDir()
+	storePath := migrationStore(t)
+	writeMigrationFile(t, filepath.Join(home, ".config", "Code", "User", "settings.json"), `{"linux": true}`)
+	plan, err := BuildLocalPlan(LocalRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "linux", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("BuildLocalPlan() error = %v", err)
+	}
+	if len(plan.Items) != 1 {
+		t.Fatalf("items = %+v", plan.Items)
+	}
+	if plan.Items[0].Target != "~/.config/Code/User/settings.json" {
+		t.Fatalf("target = %q", plan.Items[0].Target)
+	}
+}
+
 func TestBuildRepoPlanPreservesRelativeStructure(t *testing.T) {
 	home := t.TempDir()
 	storePath := migrationStore(t)

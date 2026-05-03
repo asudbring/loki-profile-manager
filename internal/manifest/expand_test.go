@@ -48,6 +48,21 @@ func TestExpandTargetMac(t *testing.T) {
 	}
 }
 
+func TestExpandTargetLinux(t *testing.T) {
+	expander := Expander{
+		Resolver: config.PathResolver{GOOS: "linux", HomeDir: "/home/alice", Env: func(key string) string { return "" }},
+		Targets:  map[string]TargetValue{"vscode_user_dir": {Linux: "${HOME}/.config/Code/User", Default: "${HOME}/fallback"}},
+	}
+	got, err := expander.ExpandTarget("${vscode_user_dir}/settings.json")
+	if err != nil {
+		t.Fatalf("ExpandTarget() error = %v", err)
+	}
+	want := "/home/alice/.config/Code/User/settings.json"
+	if got != want {
+		t.Fatalf("ExpandTarget() = %q, want %q", got, want)
+	}
+}
+
 func TestExpandUnknownVariableFails(t *testing.T) {
 	expander := Expander{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: "/Users/alice"}}
 	if _, err := expander.ExpandTarget("${MISSING}/file"); err == nil {
