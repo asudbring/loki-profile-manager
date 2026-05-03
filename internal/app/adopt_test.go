@@ -50,8 +50,9 @@ func TestAdoptWritesManagedTargetAndSwitchSafety(t *testing.T) {
 	if got := readAppFile(t, storeCopy); !strings.Contains(got, "Local") {
 		t.Fatalf("store copy = %q", got)
 	}
-	if _, found, err := activation.GetManagedTarget(ctx, svc.database, target); err != nil || !found {
-		t.Fatalf("managed target found=%v err=%v", found, err)
+	managedTargetPath := result.Plan.Items[0].TargetPath
+	if _, found, err := activation.GetManagedTarget(ctx, svc.database, managedTargetPath); err != nil || !found {
+		t.Fatalf("managed target path=%q found=%v err=%v", managedTargetPath, found, err)
 	}
 	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", DryRun: true}); err != nil {
 		t.Fatalf("Switch(dry-run after adopt) error = %v", err)
