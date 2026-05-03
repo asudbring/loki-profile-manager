@@ -75,6 +75,7 @@ go run ./cmd/loki --store /path/to/loki switch work --yes
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current components, data ownership, and switch flow.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — package map and development workflow.
 - [`docs/ai-ops/install.ai.md`](docs/ai-ops/install.ai.md) — AI-operator install/test procedure.
+- [`docs/ai-ops/windows-arm64-vm-test.ai.md`](docs/ai-ops/windows-arm64-vm-test.ai.md) — AI-operator Windows ARM64 VM + OneDrive validation procedure.
 - [`docs/handoffs/multi-os-phase-4.5-handoff.md`](docs/handoffs/multi-os-phase-4.5-handoff.md) — continuation handoff for macOS and Windows VM work.
 - [`spec-loki-profile-manager.md`](spec-loki-profile-manager.md), [`plan-loki-profile-manager.md`](plan-loki-profile-manager.md), and [`tasks-loki-profile-manager.md`](tasks-loki-profile-manager.md) — planning documents, not a guarantee of implemented behavior.
 
