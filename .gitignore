@@ -1,0 +1,17 @@
+# Binaries
+/loki
+/loki.exe
+/dist/
+/bin/
+
+# Local runtime state
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+/logs/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
