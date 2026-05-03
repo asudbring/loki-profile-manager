@@ -311,7 +311,7 @@ Bucket order should be the order supplied by user/recorded active state. Later b
 - YAML: parse mappings; recursively merge mappings; sequences replace by later layer unless future schema declares append/union.
 - TOML: parse tables; recursively merge tables; arrays replace by later layer unless future schema declares append/union.
 - Type conflict: fail activation before writing.
-- Unsupported duplicate target: fail unless exact content hash identical.
+- Unsupported duplicate target: fail unless all operations form a compatible structured merge group.
 
 ## 6. Machine registry
 

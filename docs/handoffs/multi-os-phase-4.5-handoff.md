@@ -2,7 +2,7 @@
 
 Created: 2026-05-03
 Last updated: 2026-05-03
-Documentation baseline commit before this handoff refresh: `789d23e`
+Last validated against main commit: `f91ed34` (`fix: harden profile activation safety`)
 Repo cwd when written: `C:\Users\allensu\github\loki-profile-manager`
 
 ## Purpose
@@ -11,7 +11,7 @@ Use this repo-local handoff after cloning the repository on the dev machine with
 
 ## Current status
 
-Phase 4 activation engine is implemented and passes Docker validation on the current Windows host.
+Phase 4 activation engine is implemented and passes Docker validation on the current Windows host. A post-review hardening pass is merged in `f91ed34`.
 
 Implemented areas:
 
@@ -23,12 +23,12 @@ Implemented areas:
 - Infisical CLI wrapper with injectable runner.
 - Template renderer for `{{ SECRET_NAME }}` and `${SECRET_NAME}` placeholders.
 - Snapshots and retention of last two snapshots.
-- Rollback on activation failure.
+- Rollback on activation failure, including managed-target DB state restoration when filesystem rollback succeeds.
 - App service `Switch(ctx, SwitchRequest)`.
 - CLI command `loki switch <profile> [buckets...] [--dry-run] [--yes]`.
 - Unit/integration tests for activation, Infisical wrapper, app switch, and CLI switch.
 
-Validation already run with Docker:
+Validation already run with Docker on `f91ed34`:
 
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm \
@@ -38,9 +38,21 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 MSYS_NO_PATHCONV=1 docker run --rm \
   -v "C:/Users/allensu/github/loki-profile-manager:/work" \
   -w /work golang:1.23 go vet ./...
+
+MSYS_NO_PATHCONV=1 docker run --rm \
+  -v "C:/Users/allensu/github/loki-profile-manager:/work" \
+  -w /work golang:1.23 go test -race ./...
+
+MSYS_NO_PATHCONV=1 docker run --rm \
+  -v "C:/Users/allensu/github/loki-profile-manager:/work" \
+  -w /work golang:1.23 go mod verify
+
+MSYS_NO_PATHCONV=1 docker run --rm \
+  -v "C:/Users/allensu/github/loki-profile-manager:/work" \
+  -w /work golang:1.23 go build ./cmd/loki
 ```
 
-Docker smoke passed with an empty valid store:
+Docker smoke passed with an empty valid store. Create the valid layout first using the manual smoke-store recipe in `docs/INSTALL.md`, then run:
 
 ```bash
 go run ./cmd/loki --store /tmp/loki-smoke switch work --dry-run
@@ -73,6 +85,24 @@ Small code/doc status updates:
 
 - `internal/cli/root.go` no longer says Phase 1 only.
 - `tasks-loki-profile-manager.md` status says Phase 4 complete and Phase 4.5 next.
+
+## Post-review hardening merged in `f91ed34`
+
+The code review branch `fix/review-hardening` was merged to `main` as `f91ed34`. Keep these behavior changes in mind during new-machine testing:
+
+- Profile and bucket names must be simple path components, not paths.
+- Manifest source paths are checked for symlink escapes outside the layer root.
+- Manifest target paths must resolve under the configured home directory; broad absolute system paths are blocked.
+- Duplicate non-merge targets are blocking even when source bytes match.
+- Managed symlink safety requires a managed symlink record.
+- Rollback snapshots include prior `managed_targets` rows.
+- Created-target rollback removes only targets matching the Loki-created hash and mode.
+- If filesystem rollback fails, DB active state is not restored and the snapshot is preserved for manual recovery.
+- Replacement writes use backup-and-restore; unrecoverable double failures report the preserved backup path.
+- Machine ID creation handles concurrent readers with retry.
+- Registry writes use a tokenized lock file; locks time out but are not force-deleted as stale.
+- SQLite is limited to one open connection so connection-local pragmas stay consistent.
+- Secret names, log redaction keys, and skill markdown references are stricter.
 
 ## Important realization
 
@@ -151,10 +181,11 @@ Phase 4 overwrite protection is mandatory:
 
 - Missing target: safe.
 - Managed hash match: safe.
-- Loki-managed symlink: safe.
+- Loki-managed symlink: safe only when a symlink-mode managed record matches the link target.
 - Unmanaged file/dir: blocked.
 - Broken symlink: blocked.
 - Managed hash mismatch: blocked.
+- Target outside the configured home root: blocked during manifest validation.
 
 Most real machines already have `settings.json`, `.gitconfig`, skill folders, etc. Adoption is the safe bridge from existing local state into Loki ownership.
 
@@ -230,9 +261,9 @@ Checks:
 ## Known implementation caveats from Phase 4
 
 - `verify` does not yet reuse activation safety classifier because current verify path has no SQLite database dependency.
-- Rollback restores files and active KV state, but does not restore prior `managed_targets` rows if DB state update fails after file writes. Current executor upserts DB after file operations; future improvement.
 - `--yes` currently reserves CLI contract. No prompts exist yet and it does not bypass unsafe overwrite protection.
 - Infisical command is currently `infisical run -- printenv NAME` via injectable runner. Verify real CLI behavior on dev machine before relying on live secrets.
+- Target policy currently requires manifest targets to resolve under the configured home directory. If Phase 4.5 needs safe adoption of targets outside home, add an explicit policy/allowlist rather than weakening validation.
 
 ## Files changed for Phase 4
 
@@ -271,7 +302,7 @@ docs/handoffs/multi-os-phase-4.5-handoff.md
 ## Start-here checklist on new machine
 
 1. Clone private repo: `https://github.com/asudbring/loki-profile-manager`.
-2. Confirm clone includes this handoff refresh and is at least documentation baseline `789d23e`.
+2. Confirm clone includes this handoff refresh and is at least main commit `f91ed34`.
 3. Open this file plus `README.md`, `docs/DEVELOPMENT.md`, and `docs/ai-ops/install.ai.md`.
 4. Run native tests.
 5. Implement Phase 4.5 migration/adoption.

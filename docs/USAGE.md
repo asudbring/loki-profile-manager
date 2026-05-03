@@ -123,10 +123,10 @@ Behavior:
 - Allows the switch with a warning if the machine is not registered. This keeps fixture and bootstrap stores usable before setup exists.
 - Builds an activation plan from the selected profile layers.
 - Classifies target safety before writing.
-- Blocks unmanaged files, unmanaged directories, broken symlinks, and managed hash mismatches.
+- Blocks unmanaged files, unmanaged directories, broken symlinks, managed hash mismatches, and targets outside the configured home root.
 - Creates a local snapshot before real activation writes.
 - Executes symlink, copy, structured merge, and render operations.
-- Rolls back target files and active local state if activation fails after snapshot creation.
+- Rolls back target files, managed-target DB rows, and active local state if activation fails after snapshot creation and filesystem rollback succeeds.
 - Updates local managed target hashes and machine heartbeat after successful activation.
 
 Examples:
@@ -170,12 +170,13 @@ Supported structured formats:
 | Existing target | Result |
 |---|---|
 | Missing | Safe. |
-| Loki-managed symlink | Safe when it points to the expected or previous Loki source. |
+| Loki-managed symlink | Safe only when a symlink-mode `managed_targets` record matches the link target. |
 | Loki-managed file or directory with matching hash | Safe. |
 | Unmanaged file | Blocked. |
 | Unmanaged directory | Blocked. |
 | Broken symlink | Blocked. |
 | Loki-managed file or directory with changed hash | Blocked. |
+| Target outside configured home root | Blocked during manifest validation. |
 
 The Phase 4.5 `adopt` command is planned to make existing local targets manageable without data loss. Until then, real machines with existing dotfiles or settings will often block activation correctly.
 

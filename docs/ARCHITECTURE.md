@@ -240,20 +240,19 @@ The overwrite detector uses `os.Lstat`, symlink inspection, target hashes, and `
 | Target state | Result |
 |---|---|
 | Missing | Safe. |
-| Loki-managed symlink | Safe when link target matches the expected or previous Loki source. |
+| Loki-managed symlink | Safe only when a symlink-mode `managed_targets` record matches the link target. |
 | Loki-managed file/directory hash match | Safe. |
 | Unmanaged file | Blocked. |
 | Unmanaged directory | Blocked. |
 | Broken symlink | Blocked. |
 | Managed hash mismatch | Blocked. |
+| Target outside configured home root | Blocked during manifest validation. |
 
 This is why migration/adoption is required before using Loki on a machine with existing config files.
 
 ## Rollback
 
-Activation rollback restores target files from the local snapshot. Targets that did not exist before activation are removed. The active profile/bucket key-value state is restored from snapshot metadata.
-
-Known caveat: rollback does not fully restore prior `managed_targets` rows if a database update fails after target writes. Current execution writes target files first and upserts managed target rows afterward, reducing but not eliminating that edge case.
+Activation rollback restores target files from the local snapshot. Targets that did not exist before activation are removed only if they still match the Loki-created hash and mode. Prior `managed_targets` rows and active profile/bucket key-value state are restored from snapshot metadata after filesystem rollback succeeds. If filesystem rollback fails, DB state is left unchanged and the snapshot path is reported for manual recovery.
 
 ## Infisical integration
 

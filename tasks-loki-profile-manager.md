@@ -212,7 +212,7 @@
 **Acceptance:**
 - JSON/YAML/TOML compatible fixtures pass.
 - Type conflict fixtures fail.
-- Unsupported duplicate text target fails unless identical.
+- Unsupported duplicate text target fails, even when source bytes match, unless it is a structured merge group.
 
 ### 3.7 Implement `loki verify`
 
