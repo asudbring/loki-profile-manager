@@ -229,6 +229,24 @@ func (s *Service) EnsureMachineID(ctx context.Context) (string, error) {
 	return machine.EnsureID(s.paths.MachineIDPath)
 }
 
+func (s *Service) withStoreOperationLock(ctx context.Context, storePath, operation string, createMachineID bool, fn func(machineID string) error) error {
+	var machineID string
+	if createMachineID {
+		id, err := s.EnsureMachineID(ctx)
+		if err != nil {
+			return err
+		}
+		machineID = id
+	} else if id, ok, err := machine.ReadID(s.paths.MachineIDPath); err != nil {
+		return err
+	} else if ok {
+		machineID = id
+	}
+	return store.WithOperationLock(ctx, storePath, store.OperationLockOptions{Operation: operation, MachineID: machineID}, func() error {
+		return fn(machineID)
+	})
+}
+
 func (s *Service) RegisterMachine(ctx context.Context, req RegisterMachineRequest) (machine.Record, error) {
 	storePath, err := s.effectiveStorePath(ctx, req.StorePath)
 	if err != nil {

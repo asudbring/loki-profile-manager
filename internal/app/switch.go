@@ -47,52 +47,52 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 		return SwitchResult{}, fmt.Errorf("switch: invalid store layout: missing %v", validation.Missing)
 	}
 
-	var warnings []string
-	machineID, err := s.EnsureMachineID(ctx)
-	if err != nil {
-		return SwitchResult{}, err
-	}
-	record, registered, err := machine.GetMachine(storePath, machineID)
-	if err != nil {
-		return SwitchResult{}, err
-	}
-	if registered {
-		if err := machine.ValidatePolicy(record, req.ParentProfile, req.Buckets); err != nil {
-			return SwitchResult{}, err
+	var result SwitchResult
+	err = s.withStoreOperationLock(ctx, storePath, "switch", true, func(machineID string) error {
+		var warnings []string
+		record, registered, err := machine.GetMachine(storePath, machineID)
+		if err != nil {
+			return err
 		}
-	} else {
-		warnings = append(warnings, fmt.Sprintf("machine %s is not registered; policy and heartbeat update skipped", machineID))
-	}
+		if registered {
+			if err := machine.ValidatePolicy(record, req.ParentProfile, req.Buckets); err != nil {
+				return err
+			}
+		} else {
+			warnings = append(warnings, fmt.Sprintf("machine %s is not registered; policy and heartbeat update skipped", machineID))
+		}
 
-	plan, err := activation.BuildPlan(ctx, activation.PlanRequest{StorePath: storePath, Profile: req.ParentProfile, Buckets: req.Buckets, Resolver: s.resolver})
-	if err != nil {
-		return SwitchResult{}, err
-	}
-	previousProfile, previousBuckets := s.previousActiveState(ctx, record, registered)
-	execResult, err := activation.Execute(ctx, activation.ExecuteRequest{
-		Database:              s.database,
-		LocalPaths:            s.paths,
-		Plan:                  plan,
-		PreviousActiveProfile: previousProfile,
-		PreviousActiveBuckets: previousBuckets,
-		MachineID:             machineID,
-		SecretProvider:        s.secretProvider,
-		DryRun:                req.DryRun,
-		FailAfter:             req.FailAfter,
-	})
-	result := SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Warnings: warnings, Execution: execResult.Snapshot}
-	if execResult.Snapshot.SnapshotID != "" {
-		result.SnapshotID = execResult.Snapshot.SnapshotID
-	}
-	if err != nil {
-		return result, err
-	}
-	if !req.DryRun && registered {
-		if _, err := s.WriteHeartbeat(ctx, HeartbeatRequest{StorePath: storePath, ActiveProfile: req.ParentProfile, ActiveBuckets: req.Buckets}); err != nil {
-			result.Warnings = append(result.Warnings, fmt.Sprintf("heartbeat update failed: %v", err))
+		plan, err := activation.BuildPlan(ctx, activation.PlanRequest{StorePath: storePath, Profile: req.ParentProfile, Buckets: req.Buckets, Resolver: s.resolver})
+		if err != nil {
+			return err
 		}
-	}
-	return result, nil
+		previousProfile, previousBuckets := s.previousActiveState(ctx, record, registered)
+		execResult, err := activation.Execute(ctx, activation.ExecuteRequest{
+			Database:              s.database,
+			LocalPaths:            s.paths,
+			Plan:                  plan,
+			PreviousActiveProfile: previousProfile,
+			PreviousActiveBuckets: previousBuckets,
+			MachineID:             machineID,
+			SecretProvider:        s.secretProvider,
+			DryRun:                req.DryRun,
+			FailAfter:             req.FailAfter,
+		})
+		result = SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Warnings: warnings, Execution: execResult.Snapshot}
+		if execResult.Snapshot.SnapshotID != "" {
+			result.SnapshotID = execResult.Snapshot.SnapshotID
+		}
+		if err != nil {
+			return err
+		}
+		if !req.DryRun && registered {
+			if _, err := s.WriteHeartbeat(ctx, HeartbeatRequest{StorePath: storePath, ActiveProfile: req.ParentProfile, ActiveBuckets: req.Buckets}); err != nil {
+				result.Warnings = append(result.Warnings, fmt.Sprintf("heartbeat update failed: %v", err))
+			}
+		}
+		return nil
+	})
+	return result, err
 }
 
 func (s *Service) previousActiveState(ctx context.Context, record machine.Record, registered bool) (string, []string) {

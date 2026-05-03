@@ -37,11 +37,15 @@ func (s *Service) Adopt(ctx context.Context, req AdoptRequest) (AdoptResult, err
 	if validation := store.ValidateLayout(storePath); !validation.Valid {
 		return AdoptResult{}, fmt.Errorf("adopt: invalid store layout: missing %v", validation.Missing)
 	}
-	plan, err := migration.BuildAdoptPlan(migration.AdoptRequest{BuildRequest: migration.BuildRequest{StorePath: storePath, Profile: req.Profile, Bucket: req.Bucket}, Resolver: s.resolver, Target: req.Target, Mode: req.Mode, SourceName: req.SourceName})
-	if err != nil {
-		return AdoptResult{}, err
-	}
-	execResult, err := migration.Execute(ctx, migration.ExecuteRequest{Database: s.database, Resolver: s.resolver, Plan: plan, DryRun: req.DryRun, Yes: req.Yes})
-	result := AdoptResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Warnings: execResult.Plan.Warnings}
+	var result AdoptResult
+	err = s.withStoreOperationLock(ctx, storePath, "adopt", !req.DryRun, func(machineID string) error {
+		plan, err := migration.BuildAdoptPlan(migration.AdoptRequest{BuildRequest: migration.BuildRequest{StorePath: storePath, Profile: req.Profile, Bucket: req.Bucket}, Resolver: s.resolver, Target: req.Target, Mode: req.Mode, SourceName: req.SourceName})
+		if err != nil {
+			return err
+		}
+		execResult, err := migration.Execute(ctx, migration.ExecuteRequest{Database: s.database, Resolver: s.resolver, Plan: plan, DryRun: req.DryRun, Yes: req.Yes})
+		result = AdoptResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Warnings: execResult.Plan.Warnings}
+		return err
+	})
 	return result, err
 }

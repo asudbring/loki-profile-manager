@@ -43,11 +43,16 @@ func (s *Service) MigrateRepo(ctx context.Context, req MigrateRepoRequest) (Migr
 	if validation := store.ValidateLayout(storePath); !validation.Valid {
 		return MigrateResult{}, fmt.Errorf("migrate repo: invalid store layout: missing %v", validation.Missing)
 	}
-	plan, err := migration.BuildRepoPlan(migration.RepoRequest{BuildRequest: migration.BuildRequest{StorePath: storePath, Profile: req.Profile, Bucket: req.Bucket}, Resolver: s.resolver, RepoPath: req.RepoPath})
-	if err != nil {
-		return MigrateResult{}, err
-	}
-	return s.executeMigration(ctx, plan, req.DryRun, req.Yes)
+	var result MigrateResult
+	err = s.withStoreOperationLock(ctx, storePath, "migrate-repo", !req.DryRun, func(machineID string) error {
+		plan, err := migration.BuildRepoPlan(migration.RepoRequest{BuildRequest: migration.BuildRequest{StorePath: storePath, Profile: req.Profile, Bucket: req.Bucket}, Resolver: s.resolver, RepoPath: req.RepoPath})
+		if err != nil {
+			return err
+		}
+		result, err = s.executeMigration(ctx, plan, req.DryRun, req.Yes)
+		return err
+	})
+	return result, err
 }
 
 func (s *Service) MigrateLocal(ctx context.Context, req MigrateLocalRequest) (MigrateResult, error) {
@@ -61,11 +66,16 @@ func (s *Service) MigrateLocal(ctx context.Context, req MigrateLocalRequest) (Mi
 	if validation := store.ValidateLayout(storePath); !validation.Valid {
 		return MigrateResult{}, fmt.Errorf("migrate local: invalid store layout: missing %v", validation.Missing)
 	}
-	plan, err := migration.BuildLocalPlan(migration.LocalRequest{BuildRequest: migration.BuildRequest{StorePath: storePath, Profile: req.Profile, Bucket: req.Bucket}, Resolver: s.resolver})
-	if err != nil {
-		return MigrateResult{}, err
-	}
-	return s.executeMigration(ctx, plan, req.DryRun, req.Yes)
+	var result MigrateResult
+	err = s.withStoreOperationLock(ctx, storePath, "migrate-local", !req.DryRun, func(machineID string) error {
+		plan, err := migration.BuildLocalPlan(migration.LocalRequest{BuildRequest: migration.BuildRequest{StorePath: storePath, Profile: req.Profile, Bucket: req.Bucket}, Resolver: s.resolver})
+		if err != nil {
+			return err
+		}
+		result, err = s.executeMigration(ctx, plan, req.DryRun, req.Yes)
+		return err
+	})
+	return result, err
 }
 
 func (s *Service) executeMigration(ctx context.Context, plan migration.Plan, dryRun, yes bool) (MigrateResult, error) {

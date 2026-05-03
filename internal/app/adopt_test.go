@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/allensu/loki-profile-manager/internal/activation"
 	"github.com/allensu/loki-profile-manager/internal/config"
@@ -60,6 +61,33 @@ func TestAdoptWritesManagedTargetAndSwitchSafety(t *testing.T) {
 	writeAppFile(t, target, "changed")
 	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", DryRun: true}); err == nil || !strings.Contains(err.Error(), "hash differs") {
 		t.Fatalf("Switch(changed target) error = %v", err)
+	}
+}
+
+func TestAdoptFailsWhenStoreOperationLockHeld(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := adoptStore(t)
+	target := filepath.Join(home, ".gitconfig")
+	writeAppFile(t, target, "[user]\n\tname = Local\n")
+	unlock, err := store.AcquireOperationLock(ctx, storePath, store.OperationLockOptions{Operation: "test-holder"})
+	if err != nil {
+		t.Fatalf("AcquireOperationLock() error = %v", err)
+	}
+	defer unlock()
+
+	lockCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancel()
+	if _, err := svc.Adopt(lockCtx, AdoptRequest{StorePath: storePath, Target: target, Profile: "work", Yes: true}); err == nil || !strings.Contains(err.Error(), "operation lock") {
+		t.Fatalf("Adopt() error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(storePath, "profiles", "work", "core", "files", ".gitconfig")); !os.IsNotExist(err) {
+		t.Fatalf("store copy exists or stat err = %v", err)
 	}
 }
 

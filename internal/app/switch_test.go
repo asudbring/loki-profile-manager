@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/allensu/loki-profile-manager/internal/config"
 	"github.com/allensu/loki-profile-manager/internal/machine"
@@ -86,6 +87,35 @@ func TestSwitchEnforcesPolicyAndUnsafeOverwrite(t *testing.T) {
 	}
 	if got := readAppFile(t, target); got != "local" {
 		t.Fatalf("unsafe target changed to %q", got)
+	}
+}
+
+func TestSwitchFailsWhenStoreOperationLockHeld(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := switchStore(t, "locked.txt", "hello")
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}, AllowedBuckets: []string{"azure"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	unlock, err := store.AcquireOperationLock(ctx, storePath, store.OperationLockOptions{Operation: "test-holder"})
+	if err != nil {
+		t.Fatalf("AcquireOperationLock() error = %v", err)
+	}
+	defer unlock()
+
+	lockCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
+	defer cancel()
+	if _, err := svc.Switch(lockCtx, SwitchRequest{StorePath: storePath, ParentProfile: "work", Buckets: []string{"azure"}}); err == nil || !strings.Contains(err.Error(), "operation lock") {
+		t.Fatalf("Switch() error = %v", err)
+	}
+	target := filepath.ToSlash(filepath.Join(home, "locked.txt"))
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("target exists or stat err = %v", err)
 	}
 }
 

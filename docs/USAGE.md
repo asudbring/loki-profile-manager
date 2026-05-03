@@ -22,13 +22,14 @@ Current commands:
 | `status` | Implemented |
 | `verify` | Implemented |
 | `switch` | Implemented |
+| `adopt` | Implemented |
+| `migrate repo` | Implemented |
+| `migrate local` | Implemented |
 
 Planned but not implemented:
 
 | Command | Planned purpose |
 |---|---|
-| `migrate` | Import existing repo or local config into a Loki store. |
-| `adopt` | Mark an existing local target as Loki-managed. |
 | `sync` | Handle captures, conflict copies, pending state, and sync checks. |
 | `import-skill` | Import skills from folder, zip, or markdown. |
 | `doctor` | Inspect environment and report remediation steps. |
@@ -145,6 +146,144 @@ loki --store /path/to/loki switch work --yes
 loki --store /path/to/loki switch work content-dev azure --yes
 ```
 
+## `loki adopt`
+
+Capture one existing local target into a profile or bucket and mark it as Loki-managed.
+
+```bash
+loki adopt <target> --profile <profile> [--bucket <bucket>] [--mode <mode>] [--source-name <relative-path>] [--dry-run] [--yes] [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--profile <profile>` | Required profile to adopt into. |
+| `--bucket <bucket>` | Optional bucket to adopt into instead of profile core. |
+| `--mode <mode>` | Adoption mode: `copy`, `symlink`, `merge`, or `render`. When omitted, Loki classifies the target. |
+| `--source-name <relative-path>` | Relative source path to use inside the store. When omitted, Loki derives one from the target path. |
+| `--dry-run` | Show the adoption plan without changing store files, manifests, or local state. Creates and removes a transient operation lock. |
+| `--yes` | Confirm store and local-state writes. Required for real adoption. |
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Requires a configured store path or `--store`.
+- Ensures a local machine ID exists for operation-lock metadata.
+- Acquires the store operation lock before planning or writing.
+- Requires the target to exist under the configured home root.
+- Rejects unsafe source-name paths and unsupported mode/format combinations.
+- Copies the current target into the selected store layer.
+- Adds or updates the selected layer manifest.
+- Writes a local managed-target record so future `switch` can safely update the target when hashes still match.
+- Does not rewrite the adopted local target.
+
+Examples:
+
+```bash
+loki --store /path/to/loki adopt ~/.gitconfig --profile work --dry-run
+loki --store /path/to/loki adopt ~/.gitconfig --profile work --yes
+loki --store /path/to/loki adopt ~/.config/app/settings.json --profile work --bucket azure --mode merge --yes
+loki --store /path/to/loki adopt ~/Documents/PowerShell/Microsoft.PowerShell_profile.ps1 --profile work --source-name powershell/profile.ps1 --yes
+```
+
+## `loki migrate repo`
+
+Import a legacy dotfiles/settings repository into a profile or bucket.
+
+```bash
+loki migrate repo <path> --profile <profile> [--bucket <bucket>] [--dry-run] [--yes] [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--profile <profile>` | Required profile to migrate into. |
+| `--bucket <bucket>` | Optional bucket to migrate into instead of profile core. |
+| `--dry-run` | Show the migration plan without changing store files, manifests, or local state. Creates and removes a transient operation lock. |
+| `--yes` | Confirm store and local-state writes. Required for real migration. |
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Requires a configured store path or `--store`.
+- Ensures a local machine ID exists for operation-lock metadata.
+- Acquires the store operation lock before planning or writing.
+- Walks the repo path and skips generated or sensitive paths such as `.git` and private SSH keys.
+- Copies supported files, templates, and skills into the selected store layer.
+- Adds or updates the selected layer manifest.
+- Writes a managed-target record when the imported source matches an existing local target.
+- Does not rewrite local targets.
+
+Examples:
+
+```bash
+loki --store /path/to/loki migrate repo ~/dotfiles --profile work --dry-run
+loki --store /path/to/loki migrate repo ~/dotfiles --profile work --yes
+loki --store /path/to/loki migrate repo ~/dotfiles --profile work --bucket azure --yes
+```
+
+## `loki migrate local`
+
+Import known settings from the current machine into a profile or bucket.
+
+```bash
+loki migrate local --profile <profile> [--bucket <bucket>] [--dry-run] [--yes] [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--profile <profile>` | Required profile to migrate into. |
+| `--bucket <bucket>` | Optional bucket to migrate into instead of profile core. |
+| `--dry-run` | Show the migration plan without changing store files, manifests, or local state. Creates and removes a transient operation lock. |
+| `--yes` | Confirm store and local-state writes. Required for real migration. |
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Requires a configured store path or `--store`.
+- Ensures a local machine ID exists for operation-lock metadata.
+- Acquires the store operation lock before scanning or writing.
+- Scans known local targets such as shell profiles, Git config, VS Code settings, PowerShell profiles, SSH config, and local skill folders.
+- Copies discovered files and skills into the selected store layer.
+- Adds or updates the selected layer manifest.
+- Writes managed-target records for imported local targets.
+- Does not rewrite local targets.
+
+Examples:
+
+```bash
+loki --store /path/to/loki migrate local --profile work --dry-run
+loki --store /path/to/loki migrate local --profile work --yes
+loki --store /path/to/loki migrate local --profile work --bucket dev-tools --yes
+```
+
+## Store operation lock
+
+`switch`, `adopt`, `migrate repo`, and `migrate local` acquire a cooperative store-level lock before planning or writing:
+
+```text
+<store>/.loki-operation.lock
+```
+
+Behavior:
+
+- Prevents two local Loki processes from mutating the same store path at the same time.
+- Stores operation, machine ID, hostname, PID, acquisition time, expiry time, and a token in JSON.
+- Waits up to 10 seconds for an active lock.
+- Reports a lock as stale after 30 minutes but does not remove it automatically.
+- Removes the lock only when the token still matches, so a late unlock cannot delete a newer lock.
+- Works on Windows, macOS, and Linux with `O_CREATE|O_EXCL` file creation.
+
+Cloud-sync note:
+
+- OneDrive, Dropbox, and similar providers are eventual sync transports, not distributed lock services.
+- The lock is best-effort across machines and strong only for processes that see the same local store path.
+- If a command times out on a lock, remove `<store>/.loki-operation.lock` only after confirming no Loki process is active on any synced machine.
+
 ## Activation modes
 
 Manifest file entries support these modes:
@@ -178,7 +317,7 @@ Supported structured formats:
 | Loki-managed file or directory with changed hash | Blocked. |
 | Target outside configured home root | Blocked during manifest validation. |
 
-The Phase 4.5 `adopt` command is planned to make existing local targets manageable without data loss. Until then, real machines with existing dotfiles or settings will often block activation correctly.
+Use `loki adopt` or `loki migrate local` to capture existing local targets before switching. Real machines with unmanaged dotfiles or settings will block activation until those targets are adopted or moved aside.
 
 ## Template rendering
 
