@@ -38,7 +38,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "loki",
 		Short:         "Manage local profiles, dotfiles, and AI tool skills.",
-		Long:          "Loki Profile Manager switches local dotfile/profile stores and AI tool skills. Phase 1 provides CLI foundations and status bootstrap only.",
+		Long:          "Loki Profile Manager manages local dotfile/profile stores and AI tool skills. Current commands provide status, verification, and manifest-driven profile switching.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

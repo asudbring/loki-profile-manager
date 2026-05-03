@@ -1,6 +1,6 @@
 # Tasks: Loki Profile Manager
 
-**Status:** Ready for implementation  
+**Status:** Phase 4 complete; Phase 4.5 migration/adoption next  
 **Owner:** Allen Su  
 **Last updated:** 2026-05-03
 

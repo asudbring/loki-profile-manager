@@ -1,0 +1,286 @@
+# Architecture
+
+Loki Profile Manager is a local CLI. It uses a synced filesystem folder as the durable source of truth and a machine-local SQLite database for runtime state.
+
+## System overview
+
+```mermaid
+flowchart TB
+    User([User])
+    CLI{loki CLI}
+    App[App service]
+
+    subgraph LocalState[Machine-local state]
+      DB[(SQLite state.sqlite)]
+      Logs[logs/loki.log]
+      Snapshots[activation snapshots]
+      MachineID[machine_id]
+    end
+
+    subgraph Store[Synced Loki store]
+      Registry[registry/machines.json]
+      Heartbeats[registry/machines/*.json]
+      Profiles[profiles/*/manifest.yaml]
+      Files[profile files/templates/skills]
+    end
+
+    subgraph Core[Core packages]
+      StorePkg[store]
+      MachinePkg[machine]
+      ManifestPkg[manifest]
+      ProfilePkg[profile]
+      VerifyPkg[verify]
+      ActivationPkg[activation]
+      InfisicalPkg[infisical]
+    end
+
+    InfisicalCLI[Infisical CLI]
+
+    User -->|invokes| CLI
+    CLI --> App
+    App --> StorePkg
+    App --> MachinePkg
+    App --> VerifyPkg
+    App --> ActivationPkg
+    StorePkg --> Store
+    MachinePkg --> Registry
+    MachinePkg --> Heartbeats
+    MachinePkg --> MachineID
+    VerifyPkg --> ManifestPkg
+    VerifyPkg --> ProfilePkg
+    ActivationPkg --> ManifestPkg
+    ActivationPkg --> ProfilePkg
+    ActivationPkg --> DB
+    ActivationPkg --> Snapshots
+    ActivationPkg --> InfisicalPkg
+    InfisicalPkg -->|render secrets| InfisicalCLI
+    App --> Logs
+```
+
+The CLI is thin. It parses commands and calls the app service. The app service owns local path resolution, logging, database bootstrap, and orchestration. Store data and manifests remain in a user-selected synced folder. Local runtime state remains outside the synced store.
+
+## Data ownership
+
+```mermaid
+flowchart LR
+    subgraph SourceOfTruth[Synced store: source of truth]
+      Manifests[YAML manifests]
+      ProfileFiles[Files, templates, skills]
+      MachineRegistry[Machine registry]
+    end
+
+    subgraph LocalRuntime[Local runtime state]
+      SQLite[(SQLite)]
+      ManagedTargets[managed_targets hashes]
+      KV[kv_state active profile]
+      LocalSnapshots[Snapshots]
+      Logs[Logs]
+    end
+
+    subgraph Targets[User target paths]
+      Dotfiles[Dotfiles]
+      AppSettings[App settings]
+      Rendered[Rendered templates]
+      Links[Symlinks]
+    end
+
+    Manifests -->|plan| Targets
+    ProfileFiles -->|symlink/copy/merge/render| Targets
+    MachineRegistry -->|policy| Targets
+    Targets -->|hash tracking| ManagedTargets
+    KV -->|previous active state| LocalSnapshots
+    Targets -->|before writes| LocalSnapshots
+    SQLite --> ManagedTargets
+    SQLite --> KV
+```
+
+The synced store contains declarative intent. SQLite tracks what this machine last applied and which target hashes are safe to replace. Snapshots are local recovery artifacts, not synced source material.
+
+## Store layout
+
+`internal/store/layout.go` creates and validates this layout:
+
+```text
+loki/
+├── registry/
+│   ├── machines.json
+│   └── machines/
+├── profiles/
+│   ├── common/
+│   │   ├── files/
+│   │   ├── skills/
+│   │   ├── templates/
+│   │   └── manifest.yaml
+│   ├── work/
+│   │   ├── core/
+│   │   │   ├── files/
+│   │   │   ├── skills/
+│   │   │   ├── templates/
+│   │   │   └── manifest.yaml
+│   │   └── buckets/
+│   ├── dev/
+│   └── writer/
+├── conflicts/
+├── snapshots/
+└── logs/
+```
+
+The store directories `conflicts/`, `snapshots/`, and `logs/` exist in the store layout for future sync/provider workflows. Phase 4 activation snapshots are stored in local app state to avoid syncing machine-local recovery data.
+
+## Local state
+
+`internal/config/paths.go` resolves local paths by OS.
+
+Windows:
+
+```text
+%LOCALAPPDATA%\loki-profile-manager\
+```
+
+macOS:
+
+```text
+~/Library/Application Support/loki-profile-manager/
+```
+
+Linux development fallback:
+
+```text
+~/.local/state/loki-profile-manager/
+```
+
+Local files include:
+
+```text
+state.sqlite
+logs/loki.log
+snapshots/
+locks/
+cache/
+machine_id
+```
+
+## SQLite schema
+
+`internal/db/migrations.go` creates:
+
+| Table | Purpose |
+|---|---|
+| `kv_state` | Store path and active profile/bucket state. |
+| `managed_targets` | Target paths, source paths, modes, hashes, layer metadata, and last apply time. |
+| `snapshots` | Snapshot metadata and prior active profile/bucket state. |
+| `pending_captures` | Reserved for future capture/sync workflows. |
+| `command_history` | Reserved for future command audit/history. |
+| `schema_migrations` | Applied local SQLite migrations. |
+
+## Manifest model
+
+Manifests are YAML v1 files. Current file modes:
+
+| Mode | Responsibility |
+|---|---|
+| `symlink` | Create a symlink from target to source. |
+| `copy` | Copy source file or directory to target. |
+| `merge` | Merge structured JSON/YAML/TOML files targeting the same path. |
+| `render` | Render a template using Infisical secret values. |
+
+Profile resolution order:
+
+1. `profiles/common/manifest.yaml`
+2. `profiles/<profile>/core/manifest.yaml`
+3. `profiles/<profile>/buckets/<bucket>/manifest.yaml` in the order requested by the user
+
+Later layers win during structured merge.
+
+## Switch flow
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant CLI as Cobra CLI
+    participant App as App service
+    participant Machine as machine package
+    participant Planner as activation planner
+    participant Safety as overwrite detector
+    participant Snapshot as snapshot store
+    participant Exec as activation executor
+    participant DB as SQLite
+    participant Store as Loki store
+
+    User->>CLI: loki switch work [buckets] [--dry-run]
+    CLI->>App: Switch(request)
+    App->>Machine: Ensure machine_id
+    App->>Machine: Load registry record
+    Machine-->>App: policy result or warning
+    App->>Planner: BuildPlan(store, profile, buckets)
+    Planner->>Store: Read manifests and sources
+    Planner-->>App: activation plan
+    App->>Safety: ValidateSafety(plan, DB)
+    Safety->>DB: Read managed_targets
+    Safety-->>App: safe plan or blocking error
+    alt dry-run
+        App-->>CLI: plan only
+    else activate
+        App->>Snapshot: CreateSnapshot(targets)
+        Snapshot->>DB: Insert snapshot record
+        App->>Exec: Execute operations
+        Exec->>DB: Upsert managed target hashes
+        Exec->>DB: Set active profile/buckets
+        App->>Machine: Update heartbeat
+        App-->>CLI: switch result
+    end
+```
+
+Safety validation happens before snapshots and before any target writes. Rollback runs for failures after snapshot creation.
+
+## Unsafe overwrite protection
+
+The overwrite detector uses `os.Lstat`, symlink inspection, target hashes, and `managed_targets` records.
+
+| Target state | Result |
+|---|---|
+| Missing | Safe. |
+| Loki-managed symlink | Safe when link target matches the expected or previous Loki source. |
+| Loki-managed file/directory hash match | Safe. |
+| Unmanaged file | Blocked. |
+| Unmanaged directory | Blocked. |
+| Broken symlink | Blocked. |
+| Managed hash mismatch | Blocked. |
+
+This is why migration/adoption is required before using Loki on a machine with existing config files.
+
+## Rollback
+
+Activation rollback restores target files from the local snapshot. Targets that did not exist before activation are removed. The active profile/bucket key-value state is restored from snapshot metadata.
+
+Known caveat: rollback does not fully restore prior `managed_targets` rows if a database update fails after target writes. Current execution writes target files first and upserts managed target rows afterward, reducing but not eliminating that edge case.
+
+## Infisical integration
+
+Render mode uses an injectable secret provider. The default provider shells out through the Infisical CLI. Secret values are written only to the intended rendered target file. Missing secrets report names only.
+
+Supported placeholders:
+
+```text
+{{ SECRET_NAME }}
+${SECRET_NAME}
+```
+
+Current CLI strategy:
+
+```text
+infisical run -- printenv SECRET_NAME
+```
+
+This must be verified with the real Infisical CLI before live secret use.
+
+## Current limitations
+
+- No setup CLI.
+- No migration/adoption CLI.
+- No skill import or mirroring.
+- No sync/conflict-copy workflow.
+- No doctor command.
+- No Bubble Tea TUI.
+- `OperationMirror` is currently a no-op.
+- Verify does not reuse activation safety classification because it has no SQLite dependency in its current shape.
