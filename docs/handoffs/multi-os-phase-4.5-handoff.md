@@ -1,6 +1,8 @@
 # Loki Profile Manager multi-OS handoff — Phase 4 complete, Phase 4.5 needed
 
 Created: 2026-05-03
+Last updated: 2026-05-03
+Latest pushed commit at update time: `789d23e`
 Repo cwd when written: `C:\Users\allensu\github\loki-profile-manager`
 
 ## Purpose
@@ -52,6 +54,25 @@ Profile: work
 Operations: 0
 Warning: machine <id> is not registered; policy and heartbeat update skipped
 ```
+
+## Documentation added after initial handoff
+
+Scribe documentation pass completed and pushed after this handoff was first created.
+
+New docs:
+
+- `README.md` — current repo overview and quick examples.
+- `docs/USAGE.md` — implemented CLI commands and flags.
+- `docs/INSTALL.md` — Windows/macOS/Linux install and validation.
+- `docs/ARCHITECTURE.md` — current architecture, diagrams, switch flow, local state, safety model.
+- `docs/DEVELOPMENT.md` — package map, tests, fixtures, secret rules.
+- `docs/ai-ops/install.ai.md` — AI-operator install/test instructions.
+- `SCRIBE-PLAN.md` and `SCRIBE-REPORT.md` — doc audit plan/report.
+
+Small code/doc status updates:
+
+- `internal/cli/root.go` no longer says Phase 1 only.
+- `tasks-loki-profile-manager.md` status says Phase 4 complete and Phase 4.5 next.
 
 ## Important realization
 
@@ -249,10 +270,11 @@ docs/handoffs/multi-os-phase-4.5-handoff.md
 
 ## Start-here checklist on new machine
 
-1. Clone repo.
-2. Open this file.
-3. Run native tests.
-4. Implement Phase 4.5 migration/adoption.
-5. Run migration fixture tests.
-6. Run native macOS + Windows VM smoke tests.
-7. Only then dogfood against real local config paths.
+1. Clone private repo: `https://github.com/asudbring/loki-profile-manager`.
+2. Confirm latest commit is at least `789d23e`.
+3. Open this file plus `README.md`, `docs/DEVELOPMENT.md`, and `docs/ai-ops/install.ai.md`.
+4. Run native tests.
+5. Implement Phase 4.5 migration/adoption.
+6. Run migration fixture tests.
+7. Run native macOS + Windows VM smoke tests.
+8. Only then dogfood against real local config paths.
