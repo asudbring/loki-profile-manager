@@ -21,6 +21,9 @@ func RenderToFile(ctx context.Context, provider SecretProvider, source, target s
 		return fmt.Errorf("read template %s: %w", source, err)
 	}
 	required := infisical.RequiredSecrets(template, declaredSecrets)
+	if err := infisical.ValidateSecretNames(required); err != nil {
+		return err
+	}
 	values, err := provider.GetSecrets(ctx, required)
 	if err != nil {
 		return err

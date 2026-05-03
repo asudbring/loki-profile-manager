@@ -33,7 +33,11 @@ func RequiredSecrets(template []byte, declared []string) []string {
 }
 
 func RenderTemplate(template []byte, secrets map[string]string, required []string) ([]byte, error) {
-	missing := missingSecrets(secrets, RequiredSecrets(template, required))
+	required = RequiredSecrets(template, required)
+	if err := ValidateSecretNames(required); err != nil {
+		return nil, err
+	}
+	missing := missingSecrets(secrets, required)
 	if len(missing) > 0 {
 		return nil, MissingSecretError{Names: missing}
 	}

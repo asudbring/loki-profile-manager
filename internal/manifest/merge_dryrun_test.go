@@ -61,8 +61,8 @@ func TestMergeDryRunDuplicateText(t *testing.T) {
 		t.Fatalf("duplicate target not found: %+v", problems)
 	}
 	copyPath := writeTemp(t, root, "copy.txt", "one")
-	if problems := MergeDryRun([]FileOperation{{SourcePath: left, TargetPath: "/target/same", Entry: FileEntry{Mode: ModeCopy}}, {SourcePath: copyPath, TargetPath: "/target/same", Entry: FileEntry{Mode: ModeCopy}}}); len(problems) != 0 {
-		t.Fatalf("identical sources should pass: %+v", problems)
+	if problems := MergeDryRun([]FileOperation{{SourcePath: left, TargetPath: "/target/same", Entry: FileEntry{Mode: ModeCopy}}, {SourcePath: copyPath, TargetPath: "/target/same", Entry: FileEntry{Mode: ModeCopy}}}); !hasProblem(problems, "merge.duplicate_target") {
+		t.Fatalf("identical duplicate target should block: %+v", problems)
 	}
 }
 

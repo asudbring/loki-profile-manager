@@ -56,6 +56,23 @@ func TestDiscoverParentsBuckets(t *testing.T) {
 	}
 }
 
+func TestResolveRejectsPathNames(t *testing.T) {
+	root := testProfileStore(t)
+	for _, parent := range []string{"../evil", `..\evil`, "/evil", `C:\evil`, "evil/sub", ".", ".."} {
+		if _, err := Resolve(root, parent, nil); err == nil {
+			t.Fatalf("Resolve(%q) error = nil", parent)
+		}
+	}
+	for _, bucket := range []string{"../evil", `..\evil`, "/evil", `C:\evil`, "evil/sub", ".", ".."} {
+		if _, err := Resolve(root, "work", []string{bucket}); err == nil {
+			t.Fatalf("Resolve(bucket %q) error = nil", bucket)
+		}
+	}
+	if _, err := DiscoverBuckets(root, "../evil"); err == nil {
+		t.Fatal("DiscoverBuckets() path parent error = nil")
+	}
+}
+
 func testProfileStore(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "loki")

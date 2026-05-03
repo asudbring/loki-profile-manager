@@ -1,8 +1,10 @@
 package machine
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -47,6 +49,33 @@ func TestUpsertMachineUpdatesWithoutDuplicate(t *testing.T) {
 	}
 	if len(registry.Machines) != 1 || registry.Machines[0].DisplayName != "updated" {
 		t.Fatalf("registry = %+v", registry)
+	}
+}
+
+func TestUpsertMachineConcurrentPreservesRecords(t *testing.T) {
+	root := testStore(t)
+	const workers = 8
+	var wg sync.WaitGroup
+	errs := make([]error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			errs[i] = UpsertMachine(root, testRecord(fmt.Sprintf("machine-%d", i)))
+		}(i)
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("UpsertMachine(%d) error = %v", i, err)
+		}
+	}
+	registry, err := ReadRegistry(root)
+	if err != nil {
+		t.Fatalf("ReadRegistry() error = %v", err)
+	}
+	if len(registry.Machines) != workers {
+		t.Fatalf("registry machines = %d, want %d: %+v", len(registry.Machines), workers, registry)
 	}
 }
 
@@ -97,6 +126,25 @@ func TestDeleteUnknownMachineFails(t *testing.T) {
 	root := testStore(t)
 	if err := DeleteMachine(root, "missing"); err == nil {
 		t.Fatal("DeleteMachine() error = nil, want error")
+	}
+}
+
+func TestRegistryLockUnlockDoesNotRemoveDifferentToken(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "machines.json.lock")
+	unlock, err := acquireRegistryLock(path)
+	if err != nil {
+		t.Fatalf("acquireRegistryLock() error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte("different-holder\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	unlock()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("lock file removed: %v", err)
+	}
+	if string(content) != "different-holder\n" {
+		t.Fatalf("lock content = %q", content)
 	}
 }
 

@@ -13,13 +13,33 @@ var sensitiveKeys = map[string]struct{}{
 	"access_token":  {},
 	"apikey":        {},
 	"api_key":       {},
+	"authorization": {},
+	"bearer":        {},
 	"client_secret": {},
+	"credential":    {},
+	"credentials":   {},
 	"passwd":        {},
 	"password":      {},
+	"private_key":   {},
 	"refresh_token": {},
 	"secret":        {},
 	"secrets":       {},
+	"ssh_key":       {},
 	"token":         {},
+}
+
+var sensitiveKeyTokens = []string{
+	"api_key",
+	"apikey",
+	"authorization",
+	"client_secret",
+	"credential",
+	"password",
+	"private_key",
+	"refresh_token",
+	"secret",
+	"ssh_key",
+	"token",
 }
 
 // Redactor centralizes secret redaction for logs and user-facing diagnostics.
@@ -57,9 +77,16 @@ func (r *Redactor) Register(value string) {
 
 func IsSensitiveKey(key string) bool {
 	key = strings.ToLower(strings.TrimSpace(key))
-	key = strings.ReplaceAll(key, "-", "_")
-	_, ok := sensitiveKeys[key]
-	return ok
+	key = strings.NewReplacer("-", "_", ".", "_", " ", "_").Replace(key)
+	if _, ok := sensitiveKeys[key]; ok {
+		return true
+	}
+	for _, token := range sensitiveKeyTokens {
+		if strings.Contains(key, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Redactor) RedactString(value string) string {

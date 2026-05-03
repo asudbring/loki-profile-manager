@@ -33,3 +33,10 @@ func TestServiceVerifyInvalidStore(t *testing.T) {
 		t.Fatalf("report = %+v", report)
 	}
 }
+
+func TestServiceVerifyNilServiceFails(t *testing.T) {
+	var svc *Service
+	if _, err := svc.Verify(context.Background(), VerifyRequest{}); err == nil {
+		t.Fatal("Verify() error = nil, want nil service error")
+	}
+}

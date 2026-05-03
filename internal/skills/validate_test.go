@@ -55,6 +55,24 @@ func TestValidateFolderBrokenReference(t *testing.T) {
 	}
 }
 
+func TestValidateFolderRejectsAbsoluteLocalReference(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [secret](/etc/passwd), [win](C:\\Users\\alice\\secret.txt), and [web](https://example.com).\n")
+	result := ValidateFolder(dir)
+	if result.Valid || !hasSkillIssue(result.Issues, "skill.reference_absolute") {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
+func hasSkillIssue(issues []Issue, code string) bool {
+	for _, issue := range issues {
+		if issue.Code == code {
+			return true
+		}
+	}
+	return false
+}
+
 func writeSkill(t *testing.T, dir, content string) {
 	t.Helper()
 	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte(content), 0o644); err != nil {

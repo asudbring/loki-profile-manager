@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 )
@@ -21,6 +22,9 @@ func Rollback(ctx context.Context, req RollbackRequest) error {
 		}
 	}
 	if req.Database != nil {
+		if err := RestoreManagedTargets(ctx, req.Database, req.Snapshot.ManagedTargets); err != nil {
+			return err
+		}
 		if err := SetActiveState(ctx, req.Database, req.Snapshot.PreviousActiveProfile, req.Snapshot.PreviousActiveBuckets); err != nil {
 			return err
 		}
@@ -31,6 +35,25 @@ func Rollback(ctx context.Context, req RollbackRequest) error {
 func restoreSnapshotEntry(entry SnapshotEntry) error {
 	switch entry.Kind {
 	case "missing":
+		info, err := os.Lstat(entry.TargetPath)
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		} else if err != nil {
+			return fmt.Errorf("rollback inspect created target %s: %w", entry.TargetPath, err)
+		}
+		if entry.ExpectedHash == "" {
+			return fmt.Errorf("rollback conflict for %s: target was missing before activation and no expected hash was recorded; leaving it in place", entry.TargetPath)
+		}
+		if entry.ExpectedMode != "" && info.Mode().String() != entry.ExpectedMode {
+			return fmt.Errorf("rollback conflict for %s: current mode differs from Loki-created mode; leaving it in place", entry.TargetPath)
+		}
+		hash, err := HashPath(entry.TargetPath)
+		if err != nil {
+			return fmt.Errorf("rollback hash created target %s: %w", entry.TargetPath, err)
+		}
+		if hash != entry.ExpectedHash {
+			return fmt.Errorf("rollback conflict for %s: current hash differs from Loki-created hash; leaving it in place", entry.TargetPath)
+		}
 		if err := removeExisting(entry.TargetPath); err != nil {
 			return fmt.Errorf("rollback remove created target %s: %w", entry.TargetPath, err)
 		}
@@ -54,6 +77,21 @@ func restoreSnapshotEntry(entry SnapshotEntry) error {
 	default:
 		return fmt.Errorf("rollback %s: unknown snapshot kind %q", entry.TargetPath, entry.Kind)
 	}
+}
+
+func RestoreManagedTargets(ctx context.Context, database *sql.DB, targets []ManagedTargetSnapshot) error {
+	for _, target := range targets {
+		if target.Found {
+			if err := PutManagedTarget(ctx, database, target.Record); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := DeleteManagedTarget(ctx, database, target.TargetPath); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func SetActiveState(ctx context.Context, database *sql.DB, profile string, buckets []string) error {

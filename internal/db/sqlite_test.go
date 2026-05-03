@@ -36,3 +36,28 @@ func TestBootstrapRecreateAfterDelete(t *testing.T) {
 	}
 	database.Close()
 }
+
+func TestOpenAppliesConnectionPragmas(t *testing.T) {
+	database, err := Bootstrap(context.Background(), filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+	defer database.Close()
+	if got := database.Stats().MaxOpenConnections; got != 1 {
+		t.Fatalf("MaxOpenConnections = %d, want 1", got)
+	}
+	var foreignKeys int
+	if err := database.QueryRow(`PRAGMA foreign_keys`).Scan(&foreignKeys); err != nil {
+		t.Fatalf("PRAGMA foreign_keys error = %v", err)
+	}
+	if foreignKeys != 1 {
+		t.Fatalf("foreign_keys = %d, want 1", foreignKeys)
+	}
+	var busyTimeout int
+	if err := database.QueryRow(`PRAGMA busy_timeout`).Scan(&busyTimeout); err != nil {
+		t.Fatalf("PRAGMA busy_timeout error = %v", err)
+	}
+	if busyTimeout != 5000 {
+		t.Fatalf("busy_timeout = %d, want 5000", busyTimeout)
+	}
+}

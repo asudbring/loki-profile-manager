@@ -56,6 +56,11 @@ func ValidateFolder(dir string) Result {
 		if skipReference(ref) {
 			continue
 		}
+		if isLocalAbsoluteReference(ref) {
+			result.Valid = false
+			result.Issues = append(result.Issues, Issue{Code: "skill.reference_absolute", Message: fmt.Sprintf("absolute local reference %q is not allowed", ref), Path: skillPath})
+			continue
+		}
 		cleaned := strings.TrimSpace(strings.Split(strings.Split(ref, "#")[0], "?")[0])
 		if cleaned == "" {
 			continue
@@ -111,8 +116,10 @@ func references(body string) []string {
 func skipReference(ref string) bool {
 	ref = strings.TrimSpace(ref)
 	lower := strings.ToLower(ref)
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "mailto:") || strings.HasPrefix(ref, "#") {
-		return true
-	}
-	return filepath.IsAbs(ref) || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, `\`) || (len(ref) >= 2 && ref[1] == ':')
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "mailto:") || strings.HasPrefix(ref, "#")
+}
+
+func isLocalAbsoluteReference(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	return filepath.IsAbs(ref) || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, `\`) || len(ref) >= 2 && ref[1] == ':'
 }

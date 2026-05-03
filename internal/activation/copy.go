@@ -28,11 +28,8 @@ func CopyPath(source, target string) error {
 	if err := copyPathContents(source, tmpTarget, info); err != nil {
 		return err
 	}
-	if err := removeExisting(target); err != nil {
+	if err := replacePath(tmpTarget, target); err != nil {
 		return err
-	}
-	if err := os.Rename(tmpTarget, target); err != nil {
-		return fmt.Errorf("replace %s: %w", target, err)
 	}
 	return nil
 }
@@ -118,6 +115,42 @@ func removeExisting(path string) error {
 	}
 	if err := os.RemoveAll(path); err != nil {
 		return fmt.Errorf("remove existing %s: %w", path, err)
+	}
+	return nil
+}
+
+func replacePath(staged, target string) error {
+	if _, err := os.Lstat(staged); err != nil {
+		return fmt.Errorf("replace %s: staged path invalid: %w", target, err)
+	}
+	var backupRoot, backupPath string
+	backedUp := false
+	if _, err := os.Lstat(target); err == nil {
+		var mkErr error
+		backupRoot, mkErr = os.MkdirTemp(filepath.Dir(target), ".loki-replace-*")
+		if mkErr != nil {
+			return fmt.Errorf("create replacement backup for %s: %w", target, mkErr)
+		}
+		backupPath = filepath.Join(backupRoot, "backup")
+		if err := os.Rename(target, backupPath); err != nil {
+			_ = os.RemoveAll(backupRoot)
+			return fmt.Errorf("backup existing %s: %w", target, err)
+		}
+		backedUp = true
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat existing %s: %w", target, err)
+	}
+	if err := os.Rename(staged, target); err != nil {
+		if backedUp {
+			if restoreErr := os.Rename(backupPath, target); restoreErr != nil {
+				return fmt.Errorf("replace %s: %w; restore backup %s failed: %v; backup preserved under %s for manual recovery", target, err, backupPath, restoreErr, backupRoot)
+			}
+			_ = os.RemoveAll(backupRoot)
+		}
+		return fmt.Errorf("replace %s: %w", target, err)
+	}
+	if backedUp {
+		_ = os.RemoveAll(backupRoot)
 	}
 	return nil
 }

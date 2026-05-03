@@ -8,9 +8,11 @@ import (
 
 func TestSensitiveKeysRedacted(t *testing.T) {
 	redactor := NewRedactor()
-	attr := redactor.RedactAttr(slog.String("token", "secret-token"))
-	if attr.Value.String() != Redacted {
-		t.Fatalf("redacted token = %q, want %q", attr.Value.String(), Redacted)
+	for _, key := range []string{"token", "Authorization", "github.token", "client-secret", "private_key", "INFISICAL_TOKEN"} {
+		attr := redactor.RedactAttr(slog.String(key, "secret-token"))
+		if attr.Value.String() != Redacted {
+			t.Fatalf("redacted %s = %q, want %q", key, attr.Value.String(), Redacted)
+		}
 	}
 }
 
