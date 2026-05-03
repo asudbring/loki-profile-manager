@@ -60,6 +60,7 @@ func TestEnsureStoreCreatesValidStoreAndStatusConfigured(t *testing.T) {
 	svc := testService(t)
 	defer svc.Close()
 	storePath := filepath.Join(t.TempDir(), "loki")
+	wantStorePath := config.CleanForOS("darwin", storePath)
 
 	result, err := svc.EnsureStore(context.Background(), EnsureStoreRequest{StorePath: storePath})
 	if err != nil {
@@ -72,8 +73,8 @@ func TestEnsureStoreCreatesValidStoreAndStatusConfigured(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status() error = %v", err)
 	}
-	if !status.Configured || status.StorePath != storePath {
-		t.Fatalf("status = %+v", status)
+	if !status.Configured || status.StorePath != wantStorePath {
+		t.Fatalf("status = %+v, want store %s", status, wantStorePath)
 	}
 }
 

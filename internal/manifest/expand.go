@@ -200,7 +200,7 @@ func isAbsForOS(goos, value string) bool {
 		}
 		return len(value) >= 3 && value[1] == ':' && (value[2] == '\\' || value[2] == '/')
 	}
-	return strings.HasPrefix(value, "/")
+	return strings.HasPrefix(value, "/") || len(value) >= 3 && value[1] == ':' && (value[2] == '/' || value[2] == '\\')
 }
 
 func isRootForOS(goos, value string) bool {

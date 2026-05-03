@@ -159,7 +159,7 @@ func joinForOS(goos string, parts ...string) string {
 		}
 		return cleanForOS(goos, out)
 	}
-	return path.Clean(strings.Join(cleaned, "/"))
+	return cleanForOS(goos, strings.Join(cleaned, "/"))
 }
 
 func cleanForOS(goos, value string) string {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -101,6 +102,9 @@ func TestRollbackRefusesToRemoveChangedCreatedTarget(t *testing.T) {
 }
 
 func TestRollbackRefusesToRemoveChmodCreatedTarget(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows chmod does not change file mode bits enough for this rollback conflict test")
+	}
 	ctx := context.Background()
 	database := activationDB(t)
 	defer database.Close()

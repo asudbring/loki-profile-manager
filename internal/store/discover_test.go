@@ -3,6 +3,8 @@ package store
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/allensu/loki-profile-manager/internal/config"
 )
 
 func TestDiscoverWindowsEnvOneDrive(t *testing.T) {
@@ -31,7 +33,7 @@ func TestDiscoverMacDropbox(t *testing.T) {
 	home := t.TempDir()
 	dropbox := filepath.Join(home, "Dropbox")
 	candidates := DiscoverProviderFolders(DiscoveryOptions{GOOS: "darwin", HomeDir: home, Exists: func(path string) bool { return path == dropbox }})
-	if !hasCandidate(candidates, ProviderDropbox, dropbox+"/loki") {
+	if !hasCandidate(candidates, ProviderDropbox, config.JoinForOS("darwin", dropbox, StoreDirName)) {
 		t.Fatalf("dropbox candidate missing: %+v", candidates)
 	}
 }
@@ -46,7 +48,7 @@ func TestDiscoverMacCloudStorageOneDrive(t *testing.T) {
 			return []string{cloud}, nil
 		},
 	})
-	if !hasCandidate(candidates, ProviderOneDrive, cloud+"/loki") {
+	if !hasCandidate(candidates, ProviderOneDrive, config.JoinForOS("darwin", cloud, StoreDirName)) {
 		t.Fatalf("cloudstorage candidate missing: %+v", candidates)
 	}
 }
@@ -54,7 +56,7 @@ func TestDiscoverMacCloudStorageOneDrive(t *testing.T) {
 func TestDiscoverManualReturnedWithoutProviders(t *testing.T) {
 	manual := filepath.Join(t.TempDir(), "custom-loki")
 	candidates := DiscoverProviderFolders(DiscoveryOptions{GOOS: "darwin", ManualPath: manual})
-	if len(candidates) == 0 || candidates[0].Provider != ProviderManual || candidates[0].StorePath != manual {
+	if len(candidates) == 0 || candidates[0].Provider != ProviderManual || candidates[0].StorePath != config.CleanForOS("darwin", manual) {
 		t.Fatalf("manual candidate missing: %+v", candidates)
 	}
 }
