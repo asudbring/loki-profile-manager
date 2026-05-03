@@ -68,6 +68,16 @@ func ClassifyTarget(ctx context.Context, database *sql.DB, op Operation) (Safety
 		if found && record.Mode == string(OperationSymlink) && samePath(linkTarget, record.SourcePath) {
 			return SafetyStatus{Class: SafetyManagedSymlink, Safe: true, Message: "existing symlink is managed by Loki", Managed: true}, nil
 		}
+		if found && record.ContentHash != "" {
+			hash, err := HashPath(op.TargetPath)
+			if err != nil {
+				return SafetyStatus{}, err
+			}
+			if hash == record.ContentHash {
+				return SafetyStatus{Class: SafetyManagedFileHash, Safe: true, Message: "existing symlink hash matches Loki state", ExistingHash: hash, Managed: true}, nil
+			}
+			return SafetyStatus{Class: SafetyManagedHashMismatch, Safe: false, Message: "existing symlink hash differs from Loki state; capture or repair before switching", ExistingHash: hash, Managed: true}, nil
+		}
 		return SafetyStatus{Class: SafetyUnmanagedFile, Safe: false, Message: "existing symlink is not recorded as a Loki-managed symlink", Managed: found}, nil
 	}
 
