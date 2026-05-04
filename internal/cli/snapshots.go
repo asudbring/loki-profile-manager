@@ -101,10 +101,11 @@ func newSnapshotsShowCommand(resolver config.PathResolver, globals *globalOption
 
 func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
 	var dryRun bool
+	var yes bool
 	var jsonOutput bool
 	cmd := &cobra.Command{
 		Use:   "restore <snapshot-id>",
-		Short: "Preview a local activation snapshot restore without writing files.",
+		Short: "Restore a local activation snapshot safely.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -119,7 +120,7 @@ func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOpt
 			}
 			defer svc.Close()
 
-			result, err := svc.RestoreSnapshotDryRun(ctx, app.SnapshotRestoreDryRunRequest{SnapshotID: args[0], DryRun: dryRun})
+			result, err := svc.RestoreSnapshot(ctx, app.SnapshotRestoreRequest{SnapshotID: args[0], DryRun: dryRun, Yes: yes})
 			if err != nil {
 				return err
 			}
@@ -128,11 +129,12 @@ func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOpt
 				encoder.SetIndent("", "  ")
 				return encoder.Encode(result)
 			}
-			printSnapshotRestoreDryRun(cmd, result)
+			printSnapshotRestore(cmd, result)
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview restore actions without writing files; required")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview restore actions without writing files and record a restore guard")
+	cmd.Flags().BoolVar(&yes, "yes", false, "execute restore after a matching prior dry-run")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
 	return cmd
 }
@@ -217,21 +219,46 @@ func printSnapshotTarget(out interface{ Write([]byte) (int, error) }, snapshot a
 	}
 }
 
-func printSnapshotRestoreDryRun(cmd *cobra.Command, result app.SnapshotRestoreDryRunResult) {
+func printSnapshotRestore(cmd *cobra.Command, result app.SnapshotRestoreResult) {
 	out := cmd.OutOrStdout()
-	fmt.Fprintln(out, "Loki snapshot restore dry-run")
+	if result.Restored {
+		fmt.Fprintln(out, "Loki snapshot restore complete")
+	} else {
+		fmt.Fprintln(out, "Loki snapshot restore dry-run")
+	}
 	fmt.Fprintf(out, "ID: %s\n", result.SnapshotID)
-	fmt.Fprintln(out, "Mode: dry-run only; no files or local state were changed")
+	if result.Restored {
+		fmt.Fprintln(out, "Mode: restore executed after matching dry-run")
+		fmt.Fprintf(out, "Pre-restore snapshot: %s\n", result.PreRestoreSnapshotID)
+		fmt.Fprintf(out, "Changed targets: %d\n", result.Changed)
+	} else {
+		fmt.Fprintln(out, "Mode: dry-run only; no files or local state were changed")
+		if result.GuardRecorded {
+			fmt.Fprintf(out, "Guard: recorded, expires=%s\n", result.GuardExpiresAt)
+			fmt.Fprintf(out, "Run: loki snapshots restore %s --yes\n", result.SnapshotID)
+		} else if len(result.Blockers) > 0 {
+			fmt.Fprintln(out, "Guard: not recorded")
+		}
+	}
 	previousProfile := result.Summary.PreviousActiveProfile
 	if previousProfile == "" {
 		previousProfile = "not set"
 	}
-	fmt.Fprintf(out, "Would restore active profile: %s\n", previousProfile)
-	fmt.Fprintf(out, "Would restore active buckets: %s\n", formatSnapshotList(result.Summary.PreviousActiveBuckets))
-	fmt.Fprintf(out, "Would restore managed target rows: %d\n", result.Summary.WouldRestoreManagedTargetRows)
+	if result.Restored {
+		fmt.Fprintf(out, "Restored active profile: %s\n", previousProfile)
+		fmt.Fprintf(out, "Restored active buckets: %s\n", formatSnapshotList(result.Summary.PreviousActiveBuckets))
+		fmt.Fprintf(out, "Restored managed target rows: %d\n", result.Summary.WouldRestoreManagedTargetRows)
+	} else {
+		fmt.Fprintf(out, "Would restore active profile: %s\n", previousProfile)
+		fmt.Fprintf(out, "Would restore active buckets: %s\n", formatSnapshotList(result.Summary.PreviousActiveBuckets))
+		fmt.Fprintf(out, "Would restore managed target rows: %d\n", result.Summary.WouldRestoreManagedTargetRows)
+	}
 	fmt.Fprintf(out, "Targets: %d\n", result.Summary.TargetCount)
 	for _, target := range result.Targets {
 		printSnapshotRestoreTarget(out, target)
+	}
+	for _, blocker := range result.Blockers {
+		fmt.Fprintf(out, "Blocker: %s\n", blocker)
 	}
 	for _, warning := range result.Warnings {
 		fmt.Fprintf(out, "Warning: %s\n", warning)

@@ -25,6 +25,7 @@ Current commands:
 | `snapshots list` | Implemented |
 | `snapshots show` | Implemented |
 | `snapshots restore --dry-run` | Implemented |
+| `snapshots restore --yes` | Implemented |
 | `machine register` | Implemented |
 | `machine status` | Implemented |
 | `adopt` | Implemented |
@@ -271,7 +272,7 @@ Behavior:
 - Shortens hashes in human output.
 - Warns when target paths look sensitive, such as `.ssh`, `.env`, token, credential, private, or key paths.
 - Does not print file contents from targets or snapshot entries.
-- Does not restore files. Use `snapshots restore <id> --dry-run` to preview restore actions.
+- Does not restore files. Use `snapshots restore <id> --dry-run` to preview restore actions before `--yes`.
 
 Examples:
 
@@ -282,34 +283,39 @@ loki snapshots show 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --json
 
 ## `loki snapshots restore`
 
-Preview restore actions for one local activation snapshot without changing files.
+Preview or execute a guarded restore for one local activation snapshot.
 
 ```bash
 loki snapshots restore <snapshot-id> --dry-run [--json]
+loki snapshots restore <snapshot-id> --yes [--json]
 ```
 
 Flags:
 
 | Flag | Description |
 |---|---|
-| `--dry-run` | Required. Preview restore actions without writing files or local state. |
+| `--dry-run` | Preview restore actions without writing target files and record a short-lived restore guard. |
+| `--yes` | Execute restore after a matching prior dry-run. Mutually exclusive with `--dry-run`. |
 | `--json` | Emit machine-readable JSON. |
 
 Behavior:
 
-- Requires `--dry-run`; real restore is not implemented.
-- Does not write files, remove files, create symlinks, update SQLite, update heartbeats, or acquire write locks.
-- Does not call rollback code.
-- Reads snapshot metadata and current target metadata only.
-- Computes current hashes for non-sensitive target paths to show whether created targets still match expected hashes.
-- Skips hashing and redacts sensitive-looking target paths such as `.ssh`, `.env`, token, credential, private, `.pem`, or `.key` paths.
+- Requires exactly one of `--dry-run` or `--yes`.
+- `--dry-run` reads snapshot metadata and current target metadata only.
+- `--dry-run` computes current hashes for non-sensitive target paths to show whether created targets still match expected hashes.
+- `--dry-run` records a 15-minute restore guard only when the plan has no blockers.
+- `--yes` requires the guard fingerprint to match the current snapshot, target list, hashes, modes, and blockers from the prior dry-run.
+- `--yes` creates a new pre-restore snapshot of current target files and local state before any writes.
+- `--yes` restores target files, symlinks, managed-target DB rows, and active profile/buckets from the selected snapshot.
+- If restore fails after writes begin, Loki rolls back using the pre-restore snapshot and reports that snapshot ID/path for emergency recovery.
+- Sensitive-looking target paths such as `.ssh`, `.env`, token, credential, private, `.pem`, or `.key` paths are blocked and redacted by default.
 - Never prints target file contents or snapshot entry contents.
-- Does not support `--yes`.
 
 Examples:
 
 ```bash
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --dry-run
+loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --yes
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --dry-run --json
 ```
 

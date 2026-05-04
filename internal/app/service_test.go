@@ -261,12 +261,12 @@ func TestListAndShowSnapshots(t *testing.T) {
 	}
 }
 
-func TestRestoreSnapshotDryRunRequiresDryRun(t *testing.T) {
+func TestRestoreSnapshotRequiresOneMode(t *testing.T) {
 	svc := testService(t)
 	defer svc.Close()
-	_, err := svc.RestoreSnapshotDryRun(context.Background(), SnapshotRestoreDryRunRequest{SnapshotID: "missing"})
-	if err == nil || !strings.Contains(err.Error(), "--dry-run is required") {
-		t.Fatalf("RestoreSnapshotDryRun() error = %v", err)
+	_, err := svc.RestoreSnapshot(context.Background(), SnapshotRestoreRequest{SnapshotID: "missing"})
+	if err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("RestoreSnapshot() error = %v", err)
 	}
 }
 
@@ -289,11 +289,60 @@ func TestRestoreSnapshotDryRunReturnsPlanWithoutWriting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreSnapshotDryRun() error = %v", err)
 	}
-	if !dryRun.DryRun || dryRun.WouldWrite || dryRun.Summary.TargetCount != 1 || dryRun.Summary.RemoveCreatedTargetCount != 1 {
+	if !dryRun.DryRun || dryRun.WouldWrite || !dryRun.GuardRecorded || dryRun.Summary.TargetCount != 1 || dryRun.Summary.RemoveCreatedTargetCount != 1 {
 		t.Fatalf("dryRun = %+v", dryRun)
 	}
 	if got := string(mustReadAppTest(t, target)); got != "new" {
 		t.Fatalf("target changed to %q", got)
+	}
+}
+
+func TestRestoreSnapshotYesRequiresGuard(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	root := t.TempDir()
+	target := filepath.Join(root, "created.txt")
+	source := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(source, []byte("new"), 0o644); err != nil {
+		t.Fatalf("WriteFile(source) error = %v", err)
+	}
+	result, err := activation.Execute(ctx, activation.ExecuteRequest{Database: svc.database, LocalPaths: svc.paths, Plan: activation.Plan{Profile: "work", Operations: []activation.Operation{{Type: activation.OperationCopy, SourcePath: source, TargetPath: target}}}})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	_, err = svc.RestoreSnapshot(ctx, SnapshotRestoreRequest{SnapshotID: result.Snapshot.SnapshotID, Yes: true})
+	if err == nil || !strings.Contains(err.Error(), "dry-run guard") {
+		t.Fatalf("RestoreSnapshot(--yes) error = %v", err)
+	}
+}
+
+func TestRestoreSnapshotYesAfterDryRunRestores(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	root := t.TempDir()
+	target := filepath.Join(root, "created.txt")
+	source := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(source, []byte("new"), 0o644); err != nil {
+		t.Fatalf("WriteFile(source) error = %v", err)
+	}
+	result, err := activation.Execute(ctx, activation.ExecuteRequest{Database: svc.database, LocalPaths: svc.paths, Plan: activation.Plan{Profile: "work", Operations: []activation.Operation{{Type: activation.OperationCopy, SourcePath: source, TargetPath: target}}}})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if _, err := svc.RestoreSnapshot(ctx, SnapshotRestoreRequest{SnapshotID: result.Snapshot.SnapshotID, DryRun: true}); err != nil {
+		t.Fatalf("RestoreSnapshot(--dry-run) error = %v", err)
+	}
+	restored, err := svc.RestoreSnapshot(ctx, SnapshotRestoreRequest{SnapshotID: result.Snapshot.SnapshotID, Yes: true})
+	if err != nil {
+		t.Fatalf("RestoreSnapshot(--yes) error = %v", err)
+	}
+	if !restored.Restored || restored.PreRestoreSnapshotID == "" || restored.Changed != 1 {
+		t.Fatalf("restored = %+v", restored)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("target exists after restore or stat err = %v", err)
 	}
 }
 

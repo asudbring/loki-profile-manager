@@ -22,6 +22,8 @@ type Snapshot struct {
 	MachineID             string                  `json:"machine_id,omitempty"`
 	Path                  string                  `json:"path"`
 	CreatedAt             string                  `json:"created_at"`
+	Reason                string                  `json:"reason,omitempty"`
+	SourceSnapshotID      string                  `json:"source_snapshot_id,omitempty"`
 	PreviousActiveProfile string                  `json:"previous_active_profile,omitempty"`
 	PreviousActiveBuckets []string                `json:"previous_active_buckets"`
 	Targets               []SnapshotEntry         `json:"targets"`
@@ -62,10 +64,13 @@ type CreateSnapshotRequest struct {
 	SnapshotRoot          string
 	MachineID             string
 	Plan                  Plan
+	Reason                string
+	SourceSnapshotID      string
 	PreviousActiveProfile string
 	PreviousActiveBuckets []string
 	Now                   func() time.Time
 	Keep                  int
+	SkipRetention         bool
 }
 
 func CreateSnapshot(ctx context.Context, req CreateSnapshotRequest) (Snapshot, error) {
@@ -88,6 +93,8 @@ func CreateSnapshot(ctx context.Context, req CreateSnapshotRequest) (Snapshot, e
 		MachineID:             req.MachineID,
 		Path:                  root,
 		CreatedAt:             created.Format(time.RFC3339),
+		Reason:                req.Reason,
+		SourceSnapshotID:      req.SourceSnapshotID,
 		PreviousActiveProfile: req.PreviousActiveProfile,
 		PreviousActiveBuckets: cloneStrings(req.PreviousActiveBuckets),
 		Targets:               []SnapshotEntry{},
@@ -123,8 +130,10 @@ func CreateSnapshot(ctx context.Context, req CreateSnapshotRequest) (Snapshot, e
 	if keep <= 0 {
 		keep = 2
 	}
-	if err := EnforceSnapshotRetention(ctx, req.Database, req.SnapshotRoot, keep); err != nil {
-		return Snapshot{}, err
+	if !req.SkipRetention {
+		if err := EnforceSnapshotRetention(ctx, req.Database, req.SnapshotRoot, keep); err != nil {
+			return Snapshot{}, err
+		}
 	}
 	return snapshot, nil
 }

@@ -23,6 +23,20 @@ const Version = "dev"
 
 const kvStorePath = "store_path"
 
+const (
+	restoreGuardPrefix = "snapshot_restore_guard:"
+	restoreGuardTTL    = 15 * time.Minute
+)
+
+type restoreGuard struct {
+	Version     int    `json:"version"`
+	SnapshotID  string `json:"snapshot_id"`
+	Fingerprint string `json:"fingerprint"`
+	TargetCount int    `json:"target_count"`
+	CreatedAt   string `json:"created_at"`
+	ExpiresAt   string `json:"expires_at"`
+}
+
 type Options struct {
 	Resolver       config.PathResolver
 	StoreOverride  string
@@ -92,20 +106,34 @@ type SnapshotShowResult struct {
 	Snapshot    activation.Snapshot `json:"snapshot"`
 }
 
+type SnapshotRestoreRequest struct {
+	SnapshotID string
+	DryRun     bool
+	Yes        bool
+}
+
 type SnapshotRestoreDryRunRequest struct {
 	SnapshotID string
 	DryRun     bool
 }
 
-type SnapshotRestoreDryRunResult struct {
-	SnapshotDir string                        `json:"snapshot_dir"`
-	SnapshotID  string                        `json:"snapshot_id"`
-	DryRun      bool                          `json:"dry_run"`
-	WouldWrite  bool                          `json:"would_write"`
-	Summary     SnapshotRestoreDryRunSummary  `json:"summary"`
-	Targets     []SnapshotRestoreDryRunTarget `json:"targets"`
-	Warnings    []string                      `json:"warnings,omitempty"`
+type SnapshotRestoreResult struct {
+	SnapshotDir          string                        `json:"snapshot_dir"`
+	SnapshotID           string                        `json:"snapshot_id"`
+	DryRun               bool                          `json:"dry_run"`
+	WouldWrite           bool                          `json:"would_write"`
+	Restored             bool                          `json:"restored"`
+	Changed              int                           `json:"changed"`
+	PreRestoreSnapshotID string                        `json:"pre_restore_snapshot_id,omitempty"`
+	GuardRecorded        bool                          `json:"guard_recorded,omitempty"`
+	GuardExpiresAt       string                        `json:"guard_expires_at,omitempty"`
+	Summary              SnapshotRestoreDryRunSummary  `json:"summary"`
+	Targets              []SnapshotRestoreDryRunTarget `json:"targets"`
+	Warnings             []string                      `json:"warnings,omitempty"`
+	Blockers             []string                      `json:"blockers,omitempty"`
 }
+
+type SnapshotRestoreDryRunResult = SnapshotRestoreResult
 
 type SnapshotRestoreDryRunSummary struct {
 	TargetCount                   int      `json:"target_count"`
@@ -345,21 +373,83 @@ func (s *Service) ShowSnapshot(ctx context.Context, req SnapshotShowRequest) (Sn
 }
 
 func (s *Service) RestoreSnapshotDryRun(ctx context.Context, req SnapshotRestoreDryRunRequest) (SnapshotRestoreDryRunResult, error) {
+	return s.RestoreSnapshot(ctx, SnapshotRestoreRequest{SnapshotID: req.SnapshotID, DryRun: req.DryRun})
+}
+
+func (s *Service) RestoreSnapshot(ctx context.Context, req SnapshotRestoreRequest) (SnapshotRestoreResult, error) {
 	if s == nil {
-		return SnapshotRestoreDryRunResult{}, fmt.Errorf("snapshots restore: service is nil")
+		return SnapshotRestoreResult{}, fmt.Errorf("snapshots restore: service is nil")
 	}
-	if !req.DryRun {
-		return SnapshotRestoreDryRunResult{}, fmt.Errorf("snapshots restore: --dry-run is required; real restore is not implemented")
+	if req.DryRun == req.Yes {
+		return SnapshotRestoreResult{}, fmt.Errorf("snapshots restore: run exactly one of --dry-run or --yes")
 	}
-	snapshot, err := activation.LoadSnapshot(ctx, s.database, s.paths.SnapshotDir, req.SnapshotID)
-	if err != nil {
-		return SnapshotRestoreDryRunResult{}, err
+	if req.DryRun {
+		snapshot, err := activation.LoadSnapshot(ctx, s.database, s.paths.SnapshotDir, req.SnapshotID)
+		if err != nil {
+			return SnapshotRestoreResult{}, err
+		}
+		plan, err := activation.BuildRestoreDryRunPlan(ctx, snapshot)
+		if err != nil {
+			return SnapshotRestoreResult{}, err
+		}
+		result := snapshotRestoreResult(s.paths.SnapshotDir, plan)
+		if plan.CanRestore {
+			expiresAt, err := s.recordRestoreGuard(ctx, plan, time.Now())
+			if err != nil {
+				return SnapshotRestoreResult{}, err
+			}
+			result.GuardRecorded = true
+			result.GuardExpiresAt = expiresAt.Format(time.RFC3339Nano)
+		}
+		return result, nil
 	}
-	plan, err := activation.BuildRestoreDryRunPlan(ctx, snapshot)
-	if err != nil {
-		return SnapshotRestoreDryRunResult{}, err
+
+	var result SnapshotRestoreResult
+	if err := s.withLocalOperationLock(ctx, "snapshots restore", func(machineID string) error {
+		snapshot, err := activation.LoadSnapshot(ctx, s.database, s.paths.SnapshotDir, req.SnapshotID)
+		if err != nil {
+			return err
+		}
+		plan, err := activation.BuildRestoreDryRunPlan(ctx, snapshot)
+		if err != nil {
+			return err
+		}
+		result = snapshotRestoreResult(s.paths.SnapshotDir, plan)
+		result.DryRun = false
+		if err := activation.ValidateRestorePlan(plan); err != nil {
+			return err
+		}
+		if err := s.requireRestoreGuard(ctx, plan, time.Now()); err != nil {
+			return err
+		}
+		if err := s.clearRestoreGuard(ctx, plan.Snapshot.SnapshotID); err != nil {
+			return err
+		}
+		profile, buckets, _, err := s.currentLocalActiveState(ctx)
+		if err != nil {
+			return err
+		}
+		restoreResult, err := activation.Restore(ctx, activation.RestoreRequest{
+			Database:              s.database,
+			LocalPaths:            s.paths,
+			Snapshot:              snapshot,
+			MachineID:             machineID,
+			PreviousActiveProfile: profile,
+			PreviousActiveBuckets: buckets,
+			ExpectedFingerprint:   plan.Fingerprint,
+		})
+		if err != nil {
+			return err
+		}
+		result.Restored = true
+		result.WouldWrite = true
+		result.Changed = restoreResult.Changed
+		result.PreRestoreSnapshotID = restoreResult.PreRestoreSnapshot.SnapshotID
+		return nil
+	}); err != nil {
+		return result, err
 	}
-	return snapshotRestoreDryRunResult(s.paths.SnapshotDir, plan), nil
+	return result, nil
 }
 
 func (s *Service) DiscoverStores(ctx context.Context, req DiscoverStoresRequest) (DiscoverStoresResult, error) {
@@ -423,12 +513,13 @@ func (s *Service) currentLocalActiveState(ctx context.Context) (string, []string
 	return profile, buckets, true, nil
 }
 
-func snapshotRestoreDryRunResult(snapshotDir string, plan activation.RestoreDryRunPlan) SnapshotRestoreDryRunResult {
-	result := SnapshotRestoreDryRunResult{
+func snapshotRestoreResult(snapshotDir string, plan activation.RestoreDryRunPlan) SnapshotRestoreResult {
+	result := SnapshotRestoreResult{
 		SnapshotDir: snapshotDir,
 		SnapshotID:  plan.Snapshot.SnapshotID,
 		DryRun:      true,
 		WouldWrite:  false,
+		Blockers:    sanitizeRestoreWarnings(plan.Blockers, restorePlanHasSensitiveTarget(plan)),
 		Summary: SnapshotRestoreDryRunSummary{
 			TargetCount:                   len(plan.Targets),
 			PreviousActiveProfile:         plan.Snapshot.PreviousActiveProfile,
@@ -465,7 +556,7 @@ func snapshotRestoreDryRunTarget(target activation.RestoreDryRunTarget) Snapshot
 		CurrentKind:        target.CurrentKind,
 		CurrentMode:        target.CurrentMode,
 		CurrentHashPrefix:  shortHash(target.CurrentHash),
-		SnapshotHashPrefix: shortHash(target.Entry.Hash),
+		SnapshotHashPrefix: shortHash(firstNonEmptyString(target.SnapshotHash, target.Entry.Hash)),
 		ExpectedHashPrefix: shortHash(target.Entry.ExpectedHash),
 		ExpectedMode:       target.Entry.ExpectedMode,
 		SensitivePath:      target.SensitivePath,
@@ -489,6 +580,15 @@ func snapshotRestoreDryRunTarget(target activation.RestoreDryRunTarget) Snapshot
 	return out
 }
 
+func restorePlanHasSensitiveTarget(plan activation.RestoreDryRunPlan) bool {
+	for _, target := range plan.Targets {
+		if target.SensitivePath || target.SensitiveLinkTarget {
+			return true
+		}
+	}
+	return false
+}
+
 func sanitizeRestoreWarnings(warnings []string, sensitive bool) []string {
 	if len(warnings) == 0 {
 		return nil
@@ -508,6 +608,15 @@ func sanitizeRestoreWarnings(warnings []string, sensitive bool) []string {
 	return sanitized
 }
 
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func shortHash(value string) string {
 	if value == "" {
 		return ""
@@ -516,6 +625,59 @@ func shortHash(value string) string {
 		return value
 	}
 	return value[:12]
+}
+
+func (s *Service) recordRestoreGuard(ctx context.Context, plan activation.RestoreDryRunPlan, now time.Time) (time.Time, error) {
+	expiresAt := now.UTC().Add(restoreGuardTTL)
+	guard := restoreGuard{
+		Version:     1,
+		SnapshotID:  plan.Snapshot.SnapshotID,
+		Fingerprint: plan.Fingerprint,
+		TargetCount: len(plan.Targets),
+		CreatedAt:   now.UTC().Format(time.RFC3339Nano),
+		ExpiresAt:   expiresAt.Format(time.RFC3339Nano),
+	}
+	content, err := json.Marshal(guard)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("marshal snapshot restore guard: %w", err)
+	}
+	if err := db.SetKV(ctx, s.database, restoreGuardKey(plan.Snapshot.SnapshotID), string(content)); err != nil {
+		return time.Time{}, err
+	}
+	return expiresAt, nil
+}
+
+func (s *Service) requireRestoreGuard(ctx context.Context, plan activation.RestoreDryRunPlan, now time.Time) error {
+	raw, ok, err := db.GetKV(ctx, s.database, restoreGuardKey(plan.Snapshot.SnapshotID))
+	if err != nil {
+		return err
+	}
+	if !ok || raw == "" {
+		return fmt.Errorf("snapshots restore: matching --dry-run guard is required; run `loki snapshots restore %s --dry-run` first", plan.Snapshot.SnapshotID)
+	}
+	var guard restoreGuard
+	if err := json.Unmarshal([]byte(raw), &guard); err != nil {
+		_ = s.clearRestoreGuard(ctx, plan.Snapshot.SnapshotID)
+		return fmt.Errorf("snapshots restore: restore guard is invalid; rerun --dry-run")
+	}
+	if guard.Version != 1 || guard.SnapshotID != plan.Snapshot.SnapshotID || guard.Fingerprint != plan.Fingerprint || guard.TargetCount != len(plan.Targets) {
+		_ = s.clearRestoreGuard(ctx, plan.Snapshot.SnapshotID)
+		return fmt.Errorf("snapshots restore: restore guard no longer matches current target state; rerun --dry-run")
+	}
+	expiresAt, err := time.Parse(time.RFC3339Nano, guard.ExpiresAt)
+	if err != nil || !now.UTC().Before(expiresAt) {
+		_ = s.clearRestoreGuard(ctx, plan.Snapshot.SnapshotID)
+		return fmt.Errorf("snapshots restore: restore guard expired; rerun --dry-run")
+	}
+	return nil
+}
+
+func (s *Service) clearRestoreGuard(ctx context.Context, snapshotID string) error {
+	return db.DeleteKV(ctx, s.database, restoreGuardKey(snapshotID))
+}
+
+func restoreGuardKey(snapshotID string) string {
+	return restoreGuardPrefix + strings.TrimSpace(snapshotID)
 }
 
 func statusManagedTargets(records []activation.ManagedTarget) []StatusManagedTarget {
@@ -577,6 +739,18 @@ func (s *Service) currentMachineStatus(storePath string) (MachineStatusResult, e
 	result.Record = &record
 	result.Message = "Machine is registered."
 	return result, nil
+}
+
+func (s *Service) withLocalOperationLock(ctx context.Context, operation string, fn func(machineID string) error) error {
+	var machineID string
+	if id, ok, err := machine.ReadID(s.paths.MachineIDPath); err != nil {
+		return err
+	} else if ok {
+		machineID = id
+	}
+	return store.WithOperationLock(ctx, s.paths.StateDir, store.OperationLockOptions{Operation: operation, MachineID: machineID}, func() error {
+		return fn(machineID)
+	})
 }
 
 func (s *Service) withStoreOperationLock(ctx context.Context, storePath, operation string, createMachineID bool, fn func(machineID string) error) error {

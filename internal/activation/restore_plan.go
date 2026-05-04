@@ -2,10 +2,14 @@ package activation
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -24,9 +28,12 @@ const (
 )
 
 type RestoreDryRunPlan struct {
-	Snapshot Snapshot              `json:"snapshot"`
-	Targets  []RestoreDryRunTarget `json:"targets"`
-	Warnings []string              `json:"warnings,omitempty"`
+	Snapshot    Snapshot              `json:"snapshot"`
+	Targets     []RestoreDryRunTarget `json:"targets"`
+	Warnings    []string              `json:"warnings,omitempty"`
+	Blockers    []string              `json:"blockers,omitempty"`
+	CanRestore  bool                  `json:"can_restore"`
+	Fingerprint string                `json:"fingerprint,omitempty"`
 }
 
 type RestoreDryRunTarget struct {
@@ -36,9 +43,11 @@ type RestoreDryRunTarget struct {
 	CurrentKind         string        `json:"current_kind,omitempty"`
 	CurrentMode         string        `json:"current_mode,omitempty"`
 	CurrentHash         string        `json:"current_hash,omitempty"`
+	SnapshotHash        string        `json:"snapshot_hash,omitempty"`
 	SensitivePath       bool          `json:"sensitive_path"`
 	SensitiveLinkTarget bool          `json:"sensitive_link_target,omitempty"`
 	Warnings            []string      `json:"warnings,omitempty"`
+	Blockers            []string      `json:"blockers,omitempty"`
 }
 
 func BuildRestoreDryRunPlan(ctx context.Context, snapshot Snapshot) (RestoreDryRunPlan, error) {
@@ -54,8 +63,98 @@ func BuildRestoreDryRunPlan(ctx context.Context, snapshot Snapshot) (RestoreDryR
 		for _, warning := range target.Warnings {
 			plan.Warnings = append(plan.Warnings, fmt.Sprintf("%s: %s", target.Action, warning))
 		}
+		for _, blocker := range target.Blockers {
+			plan.Blockers = append(plan.Blockers, fmt.Sprintf("%s: %s", target.Action, blocker))
+		}
 	}
+	plan.CanRestore = len(plan.Blockers) == 0
+	fingerprint, err := RestorePlanFingerprint(plan)
+	if err != nil {
+		return RestoreDryRunPlan{}, err
+	}
+	plan.Fingerprint = fingerprint
 	return plan, nil
+}
+
+func ValidateRestorePlan(plan RestoreDryRunPlan) error {
+	if len(plan.Blockers) == 0 {
+		return nil
+	}
+	return fmt.Errorf("snapshot restore blocked: %s", strings.Join(plan.Blockers, "; "))
+}
+
+func RestorePlanFingerprint(plan RestoreDryRunPlan) (string, error) {
+	targets := make([]restorePlanFingerprintTarget, 0, len(plan.Targets))
+	for _, target := range plan.Targets {
+		targets = append(targets, restorePlanFingerprintTarget{
+			TargetPath:          target.Entry.TargetPath,
+			Kind:                target.Entry.Kind,
+			Action:              target.Action,
+			SnapshotPath:        target.Entry.SnapshotPath,
+			Hash:                target.Entry.Hash,
+			ExpectedHash:        target.Entry.ExpectedHash,
+			ExpectedMode:        target.Entry.ExpectedMode,
+			LinkTarget:          target.Entry.LinkTarget,
+			CurrentExists:       target.CurrentExists,
+			CurrentKind:         target.CurrentKind,
+			CurrentMode:         target.CurrentMode,
+			CurrentHash:         target.CurrentHash,
+			SnapshotHash:        target.SnapshotHash,
+			SensitivePath:       target.SensitivePath,
+			SensitiveLinkTarget: target.SensitiveLinkTarget,
+			Blockers:            cloneStrings(target.Blockers),
+		})
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		if targets[i].TargetPath == targets[j].TargetPath {
+			return targets[i].Kind < targets[j].Kind
+		}
+		return targets[i].TargetPath < targets[j].TargetPath
+	})
+	payload := restorePlanFingerprintPayload{
+		Version:    1,
+		SnapshotID: plan.Snapshot.SnapshotID,
+		CreatedAt:  plan.Snapshot.CreatedAt,
+		Path:       plan.Snapshot.Path,
+		CanRestore: plan.CanRestore,
+		Blockers:   cloneStrings(plan.Blockers),
+		Targets:    targets,
+	}
+	content, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal restore plan fingerprint: %w", err)
+	}
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+type restorePlanFingerprintPayload struct {
+	Version    int                            `json:"version"`
+	SnapshotID string                         `json:"snapshot_id"`
+	CreatedAt  string                         `json:"created_at"`
+	Path       string                         `json:"path"`
+	CanRestore bool                           `json:"can_restore"`
+	Blockers   []string                       `json:"blockers,omitempty"`
+	Targets    []restorePlanFingerprintTarget `json:"targets"`
+}
+
+type restorePlanFingerprintTarget struct {
+	TargetPath          string   `json:"target_path"`
+	Kind                string   `json:"kind"`
+	Action              string   `json:"action"`
+	SnapshotPath        string   `json:"snapshot_path,omitempty"`
+	Hash                string   `json:"hash,omitempty"`
+	ExpectedHash        string   `json:"expected_hash,omitempty"`
+	ExpectedMode        string   `json:"expected_mode,omitempty"`
+	LinkTarget          string   `json:"link_target,omitempty"`
+	CurrentExists       bool     `json:"current_exists"`
+	CurrentKind         string   `json:"current_kind,omitempty"`
+	CurrentMode         string   `json:"current_mode,omitempty"`
+	CurrentHash         string   `json:"current_hash,omitempty"`
+	SnapshotHash        string   `json:"snapshot_hash,omitempty"`
+	SensitivePath       bool     `json:"sensitive_path"`
+	SensitiveLinkTarget bool     `json:"sensitive_link_target,omitempty"`
+	Blockers            []string `json:"blockers,omitempty"`
 }
 
 func inspectRestoreDryRunTarget(snapshotPath string, entry SnapshotEntry) RestoreDryRunTarget {
@@ -66,13 +165,20 @@ func inspectRestoreDryRunTarget(snapshotPath string, entry SnapshotEntry) Restor
 		SensitivePath:       PathLooksSensitive(entry.TargetPath),
 		SensitiveLinkTarget: PathLooksSensitive(entry.LinkTarget),
 	}
+	if target.SensitivePath {
+		target.addBlocker("sensitive-looking target path is blocked by default")
+	}
+	if target.SensitiveLinkTarget {
+		target.addBlocker("sensitive-looking symlink target is blocked by default")
+	}
+
 	info, err := os.Lstat(entry.TargetPath)
 	if errors.Is(err, os.ErrNotExist) {
 		target.CurrentExists = false
 	} else if err != nil {
 		target.Action = RestoreActionUnknown
 		target.CurrentKind = RestoreCurrentKindOther
-		target.Warnings = append(target.Warnings, "could not inspect current target")
+		target.addBlocker("could not inspect current target")
 		return target
 	} else {
 		target.CurrentExists = true
@@ -82,7 +188,7 @@ func inspectRestoreDryRunTarget(snapshotPath string, entry SnapshotEntry) Restor
 			target.Warnings = append(target.Warnings, "sensitive-looking target path; current hash not computed")
 		} else if target.CurrentKind != RestoreCurrentKindSymlink {
 			if hash, hashErr := HashPath(entry.TargetPath); hashErr != nil {
-				target.Warnings = append(target.Warnings, fmt.Sprintf("could not hash current target: %v", hashErr))
+				target.addBlocker("could not hash current target")
 			} else {
 				target.CurrentHash = hash
 			}
@@ -96,38 +202,49 @@ func inspectRestoreDryRunTarget(snapshotPath string, entry SnapshotEntry) Restor
 			return target
 		}
 		if entry.ExpectedHash == "" {
-			target.Warnings = append(target.Warnings, "target was missing before activation and no expected hash was recorded")
+			target.addBlocker("target was missing before activation and no expected hash was recorded")
 		} else if target.SensitivePath {
-			target.Warnings = append(target.Warnings, "expected hash check skipped for sensitive-looking target path")
+			target.addBlocker("expected hash check skipped for sensitive-looking target path")
 		} else if target.CurrentHash != "" && target.CurrentHash != entry.ExpectedHash {
-			target.Warnings = append(target.Warnings, "current hash differs from Loki-created expected hash")
+			target.addBlocker("current hash differs from Loki-created expected hash")
 		}
 		if entry.ExpectedMode != "" && target.CurrentMode != "" && target.CurrentMode != entry.ExpectedMode {
-			target.Warnings = append(target.Warnings, "current mode differs from Loki-created expected mode")
+			target.addBlocker("current mode differs from Loki-created expected mode")
 		}
 	case "file", "directory":
 		if entry.SnapshotPath == "" {
-			target.Warnings = append(target.Warnings, "snapshot entry path is missing")
+			target.addBlocker("snapshot entry path is missing")
 		} else if !snapshotEntryPathInsideSnapshot(snapshotPath, entry.SnapshotPath) {
-			target.Warnings = append(target.Warnings, "snapshot entry path is outside snapshot directory")
+			target.addBlocker("snapshot entry path is outside snapshot directory")
 		} else if info, statErr := os.Lstat(entry.SnapshotPath); statErr != nil {
-			target.Warnings = append(target.Warnings, "snapshot entry is not readable")
+			target.addBlocker("snapshot entry is not readable")
 		} else if info.Mode()&os.ModeSymlink != 0 {
-			target.Warnings = append(target.Warnings, "snapshot entry is a symlink and was not followed")
+			target.addBlocker("snapshot entry is a symlink and was not followed")
+		} else if entry.Hash == "" {
+			target.addBlocker("snapshot entry hash is missing")
+		} else if hash, hashErr := HashPath(entry.SnapshotPath); hashErr != nil {
+			target.addBlocker("could not hash snapshot entry")
+		} else {
+			target.SnapshotHash = hash
+			if hash != entry.Hash {
+				target.addBlocker("snapshot entry hash differs from metadata")
+			}
 		}
 	case "symlink":
 		if entry.LinkTarget == "" {
-			target.Warnings = append(target.Warnings, "snapshot symlink target is missing")
-		}
-		if target.SensitiveLinkTarget {
-			target.Warnings = append(target.Warnings, "sensitive-looking symlink target redacted")
+			target.addBlocker("snapshot symlink target is missing")
 		}
 	case "":
-		target.Warnings = append(target.Warnings, "snapshot entry kind is missing")
+		target.addBlocker("snapshot entry kind is missing")
 	default:
-		target.Warnings = append(target.Warnings, fmt.Sprintf("unknown snapshot entry kind %q", entry.Kind))
+		target.addBlocker(fmt.Sprintf("unknown snapshot entry kind %q", entry.Kind))
 	}
 	return target
+}
+
+func (target *RestoreDryRunTarget) addBlocker(message string) {
+	target.Blockers = append(target.Blockers, message)
+	target.Warnings = append(target.Warnings, message)
 }
 
 func restoreAction(kind string) string {

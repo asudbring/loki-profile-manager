@@ -256,7 +256,9 @@ Activation rollback restores target files from the local snapshot. Targets that 
 
 Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with local `metadata.json` files and marks stale/missing directories as degraded instead of panicking. `loki snapshots show` reads metadata only: target paths, kinds, hashes, modes, and snapshot entry paths. It never reads or prints snapshot entry contents.
 
-`loki snapshots restore <id> --dry-run` previews restore actions without calling rollback, writing files, mutating SQLite, creating symlinks, or acquiring write locks. It hashes only current non-sensitive targets for conflict context and redacts sensitive-looking paths. Real manual restore is intentionally separate and not implemented yet.
+`loki snapshots restore <id> --dry-run` previews restore actions without writing target files or mutating active state. It hashes only current non-sensitive targets for conflict context, redacts sensitive-looking paths, blocks sensitive targets by default, and records a short-lived restore guard when the plan is restorable.
+
+`loki snapshots restore <id> --yes` requires the guard fingerprint from a matching prior dry-run. Before any restore write, it creates a pre-restore snapshot of current target files, managed-target rows, and active profile/buckets with retention disabled. It then restores target files/symlinks from the selected snapshot, restores managed-target rows and active state, and clears the guard. If a restore write fails, Loki rolls back with the pre-restore snapshot and preserves that snapshot for emergency recovery.
 
 ## Infisical integration
 
@@ -280,7 +282,7 @@ This must be verified with the real Infisical CLI before live secret use.
 ## Current limitations
 
 - No setup CLI.
-- No real manual snapshot restore CLI; only restore dry-run preview exists.
+- Manual snapshot restore exists, but sensitive-looking paths are blocked by default and no per-target selective restore exists yet.
 - No skill import or mirroring.
 - No sync/conflict-copy workflow.
 - No doctor command.

@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -53,7 +54,7 @@ func TestSnapshotsListAndShowCLI(t *testing.T) {
 	}
 }
 
-func TestSnapshotsRestoreRequiresDryRun(t *testing.T) {
+func TestSnapshotsRestoreRequiresMode(t *testing.T) {
 	home := t.TempDir()
 	storePath := cliSwitchStore(t, "restore-required.txt", "hello")
 	registerSwitchTestMachine(t, home, storePath)
@@ -66,7 +67,7 @@ func TestSnapshotsRestoreRequiresDryRun(t *testing.T) {
 
 	cmd, _, _ := switchTestCommand(home)
 	cmd.SetArgs([]string{"snapshots", "restore", snapshotID})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "--dry-run is required") {
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "exactly one") {
 		t.Fatalf("restore without dry-run error = %v", err)
 	}
 }
@@ -89,13 +90,46 @@ func TestSnapshotsRestoreDryRunCLI(t *testing.T) {
 		t.Fatalf("snapshots restore --dry-run error = %v", err)
 	}
 	got := out.String()
-	for _, want := range []string{"Loki snapshot restore dry-run", snapshotID, "no files or local state were changed", "remove_created_target", target} {
+	for _, want := range []string{"Loki snapshot restore dry-run", snapshotID, "no files or local state were changed", "Guard: recorded", "remove_created_target", target} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("restore dry-run missing %q: %s", want, got)
 		}
 	}
 	if content := string(mustRead(t, target)); content != "hello" {
 		t.Fatalf("target changed to %q", content)
+	}
+}
+
+func TestSnapshotsRestoreYesAfterDryRunCLI(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "restore-yes.txt", "hello")
+	registerSwitchTestMachine(t, home, storePath)
+	switchCmd, switchOut, _ := switchTestCommand(home)
+	switchCmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := switchCmd.Execute(); err != nil {
+		t.Fatalf("switch error = %v", err)
+	}
+	snapshotID := snapshotIDFromSwitchOutput(t, switchOut.String())
+	target := filepath.ToSlash(filepath.Join(home, "restore-yes.txt"))
+
+	dryRunCmd, _, _ := switchTestCommand(home)
+	dryRunCmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--dry-run"})
+	if err := dryRunCmd.Execute(); err != nil {
+		t.Fatalf("restore dry-run error = %v", err)
+	}
+	restoreCmd, out, _ := switchTestCommand(home)
+	restoreCmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--yes"})
+	if err := restoreCmd.Execute(); err != nil {
+		t.Fatalf("restore --yes error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"Loki snapshot restore complete", "Pre-restore snapshot:", "Changed targets: 1"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("restore --yes output missing %q: %s", want, got)
+		}
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("target exists after restore or stat err = %v", err)
 	}
 }
 
@@ -119,7 +153,7 @@ func TestSnapshotsRestoreDryRunJSONCLI(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatalf("restore JSON invalid: %v\n%s", err, out.String())
 	}
-	if !result.DryRun || result.WouldWrite || result.Summary.TargetCount != 1 || result.Summary.RemoveCreatedTargetCount != 1 {
+	if !result.DryRun || result.WouldWrite || !result.GuardRecorded || result.Summary.TargetCount != 1 || result.Summary.RemoveCreatedTargetCount != 1 {
 		t.Fatalf("result = %+v", result)
 	}
 	if strings.Contains(out.String(), "hello") {
@@ -127,10 +161,28 @@ func TestSnapshotsRestoreDryRunJSONCLI(t *testing.T) {
 	}
 }
 
-func TestSnapshotsRestoreRejectsYes(t *testing.T) {
+func TestSnapshotsRestoreRejectsDryRunAndYes(t *testing.T) {
 	cmd, _, _ := switchTestCommand(t.TempDir())
 	cmd.SetArgs([]string{"snapshots", "restore", "snapshot-id", "--dry-run", "--yes"})
-	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unknown flag: --yes") {
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("restore --dry-run --yes error = %v", err)
+	}
+}
+
+func TestSnapshotsRestoreYesRequiresGuard(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "restore-yes-guard.txt", "hello")
+	registerSwitchTestMachine(t, home, storePath)
+	switchCmd, switchOut, _ := switchTestCommand(home)
+	switchCmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := switchCmd.Execute(); err != nil {
+		t.Fatalf("switch error = %v", err)
+	}
+	snapshotID := snapshotIDFromSwitchOutput(t, switchOut.String())
+
+	cmd, _, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--yes"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "dry-run guard") {
 		t.Fatalf("restore --yes error = %v", err)
 	}
 }
