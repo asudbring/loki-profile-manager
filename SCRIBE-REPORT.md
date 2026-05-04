@@ -17,7 +17,8 @@
 - Windows ARM64 disposable target restore: passed with `dogfood-crossos` and `C:\Users\allen\loki-dogfood\probe.txt`.
 - Windows ARM64 real-dotfile targeted restore: passed for `C:\Users\allen\.config\git\ignore`.
 - Windows ARM64 real-dotfile targeted restore: passed for `C:\Users\allen\.gitconfig`.
-- GitHub Actions CI: green on `4003493 fix: serialize machine id creation`.
+- Windows ARM64 disposable full-restore consent prompt: passed for `dogfood-crossos` and `C:\Users\allen\loki-dogfood\probe.txt`; wrong consent blocked, exact `RESTORE <snapshot-id>` consent restored only the disposable target and active local state.
+- GitHub Actions CI: green on `34fde0d feat: gate full snapshot restore consent`.
 - Milestone tags pushed:
   - `targeted-snapshot-restore-dogfood`
   - `real-dotfile-targeted-restore-dogfood`
@@ -29,6 +30,7 @@
 - Targeted restore with `--target <path>` still requires the dry-run guard but does not prompt for full active-state restore consent.
 - Real-dotfile dogfood used targeted restore only.
 - Full real-dotfile restore was intentionally not run.
+- Full restore consent was dogfooded only on a disposable target snapshot, not real dotfiles.
 - Sensitive-looking paths such as `.ssh`, `.env`, tokens, credentials, private keys, `.pem`, and `.key` remain blocked/redacted by default.
 
 ## Diagrams
