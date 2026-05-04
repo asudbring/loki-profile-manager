@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/allensu/loki-profile-manager/internal/config"
@@ -38,6 +39,38 @@ func TestRunProfileAndPolicyViolation(t *testing.T) {
 	}
 }
 
+func TestRunMachineRecordMissingHasRemediation(t *testing.T) {
+	root := testVerifyStore(t)
+	machineIDPath := filepath.Join(t.TempDir(), "machine_id")
+	if _, err := machine.EnsureID(machineIDPath); err != nil {
+		t.Fatalf("EnsureID() error = %v", err)
+	}
+	report := Run(context.Background(), Request{StorePath: root, ParentProfile: "work", MachineIDPath: machineIDPath, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: "/Users/alice"}})
+	issue, ok := findIssue(report, "machine.record_missing")
+	if !ok {
+		t.Fatalf("report missing machine.record_missing: %+v", report)
+	}
+	if issue.Remediation == "" || !strings.Contains(issue.Remediation, "loki machine register --allow-profile work") {
+		t.Fatalf("record_missing remediation = %q", issue.Remediation)
+	}
+}
+
+func TestRunRegisteredMachineNoRecordMissing(t *testing.T) {
+	root := testVerifyStore(t)
+	machineIDPath := filepath.Join(t.TempDir(), "machine_id")
+	id, err := machine.EnsureID(machineIDPath)
+	if err != nil {
+		t.Fatalf("EnsureID() error = %v", err)
+	}
+	if err := machine.UpsertMachine(root, machine.Record{MachineID: id, AllowedParentProfiles: []string{"work"}, AllowedBuckets: []string{}, LastSeen: "2026-05-03T00:00:00Z"}); err != nil {
+		t.Fatalf("UpsertMachine() error = %v", err)
+	}
+	report := Run(context.Background(), Request{StorePath: root, ParentProfile: "work", MachineIDPath: machineIDPath, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: "/Users/alice"}})
+	if !report.Valid || hasIssue(report, "machine.record_missing") {
+		t.Fatalf("report = %+v", report)
+	}
+}
+
 func TestRunDoesNotCreateMachineID(t *testing.T) {
 	root := testVerifyStore(t)
 	machineIDPath := filepath.Join(t.TempDir(), "machine_id")
@@ -60,10 +93,15 @@ func testVerifyStore(t *testing.T) string {
 }
 
 func hasIssue(report Report, code string) bool {
+	_, ok := findIssue(report, code)
+	return ok
+}
+
+func findIssue(report Report, code string) (Issue, bool) {
 	for _, issue := range report.Issues {
 		if issue.Code == code {
-			return true
+			return issue, true
 		}
 	}
-	return false
+	return Issue{}, false
 }

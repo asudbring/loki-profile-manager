@@ -23,7 +23,8 @@ The dogfood pass is valid only when all are true:
 - Go is available as `windows/arm64` with version `1.23` or newer.
 - OneDrive store exists at `%OneDrive%\LokiProfileManager`.
 - Store contains `profiles\dogfood-crossos\core\manifest.yaml`.
-- `loki verify dogfood-crossos` passes.
+- `loki machine register --allow-profile dogfood-crossos` passes.
+- `loki verify dogfood-crossos` passes without `machine.record_missing`.
 - `loki switch dogfood-crossos --dry-run` shows only the harmless dogfood target.
 - `loki switch dogfood-crossos --yes` passes.
 - `%USERPROFILE%\loki-dogfood\probe.txt` exists and contains text written by the source machine.
@@ -86,9 +87,16 @@ Write-Host "== build =="
 New-Item -ItemType Directory -Force .\bin | Out-Null
 go build -o .\bin\loki.exe .\cmd\loki
 
+Write-Host "== register machine =="
+.\bin\loki.exe --store $Store machine register --allow-profile $Profile
+if ($LASTEXITCODE -ne 0) { throw "machine register failed" }
+
 Write-Host "== verify profile =="
-.\bin\loki.exe --store $Store verify $Profile
-if ($LASTEXITCODE -ne 0) { throw "verify failed" }
+$verifyOutput = & .\bin\loki.exe --store $Store verify $Profile 2>&1
+$verifyExit = $LASTEXITCODE
+$verifyOutput | ForEach-Object { $_ }
+if ($verifyExit -ne 0) { throw "verify failed" }
+if (($verifyOutput | Out-String) -match "machine\.record_missing") { throw "verify reported machine.record_missing after registration" }
 
 Write-Host "== dry-run switch =="
 $dryRunOutput = & .\bin\loki.exe --store $Store switch $Profile --dry-run 2>&1
@@ -122,6 +130,7 @@ RESULT: PASS|FAIL
 COMMIT: <git log -1 --oneline>
 GO: <go env GOOS GOARCH GOVERSION, single line>
 PROFILE: dogfood-crossos
+MACHINE_REGISTER: passed|failed
 VERIFY: passed|failed
 DRY_RUN: passed|failed
 SWITCH: passed|failed|skipped

@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -65,6 +66,9 @@ func printHumanStatus(cmd *cobra.Command, status app.StatusResult) {
 	}
 	fmt.Fprintf(out, "Local state: %s\n", status.LocalStatePath)
 	fmt.Fprintf(out, "Database: %s\n", status.DatabasePath)
+	if status.Configured {
+		printStatusMachine(out, status)
+	}
 	if len(status.Missing) > 0 {
 		fmt.Fprintf(out, "Missing: %d paths\n", len(status.Missing))
 	}
@@ -74,4 +78,34 @@ func printHumanStatus(cmd *cobra.Command, status app.StatusResult) {
 		return
 	}
 	fmt.Fprintln(out, status.Message)
+}
+
+func printStatusMachine(out interface{ Write([]byte) (int, error) }, status app.StatusResult) {
+	if status.MachineID == "" {
+		fmt.Fprintln(out, "Machine: not registered")
+		if status.MachineWarning != "" {
+			fmt.Fprintf(out, "Machine warning: %s\n", status.MachineWarning)
+		}
+		if status.MachineMessage != "" {
+			fmt.Fprintf(out, "Machine next step: %s\n", status.MachineMessage)
+		}
+		return
+	}
+	if status.MachineRegistered {
+		fmt.Fprintf(out, "Machine: registered (%s)\n", status.MachineID)
+		if status.MachineDisplayName != "" {
+			fmt.Fprintf(out, "Machine name: %s\n", status.MachineDisplayName)
+		}
+		if len(status.MachineAllowedParentProfiles) > 0 {
+			fmt.Fprintf(out, "Allowed profiles: %s\n", strings.Join(status.MachineAllowedParentProfiles, ", "))
+		}
+		if len(status.MachineAllowedBuckets) > 0 {
+			fmt.Fprintf(out, "Allowed buckets: %s\n", strings.Join(status.MachineAllowedBuckets, ", "))
+		}
+		return
+	}
+	fmt.Fprintf(out, "Machine: unregistered (%s)\n", status.MachineID)
+	if status.MachineWarning != "" {
+		fmt.Fprintf(out, "Machine warning: %s\n", status.MachineWarning)
+	}
 }

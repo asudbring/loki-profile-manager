@@ -16,6 +16,7 @@ import (
 func TestSwitchDryRunCLI(t *testing.T) {
 	home := t.TempDir()
 	storePath := cliSwitchStore(t, "cli.txt", "hello")
+	registerSwitchTestMachine(t, home, storePath)
 	cmd, out, _ := switchTestCommand(home)
 	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--dry-run"})
 	if err := cmd.Execute(); err != nil {
@@ -32,6 +33,7 @@ func TestSwitchDryRunCLI(t *testing.T) {
 func TestSwitchCLIUnsafeOverwriteReturnsError(t *testing.T) {
 	home := t.TempDir()
 	storePath := cliSwitchStore(t, "unsafe.txt", "new")
+	registerSwitchTestMachine(t, home, storePath)
 	target := filepath.ToSlash(filepath.Join(home, "unsafe.txt"))
 	if err := os.WriteFile(target, []byte("local"), 0o644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -43,6 +45,15 @@ func TestSwitchCLIUnsafeOverwriteReturnsError(t *testing.T) {
 	}
 	if got := string(mustRead(t, target)); got != "local" {
 		t.Fatalf("target changed to %q", got)
+	}
+}
+
+func registerSwitchTestMachine(t *testing.T, home, storePath string) {
+	t.Helper()
+	cmd, _, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "machine", "register", "--allow-profile", "work"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("machine register error = %v", err)
 	}
 }
 

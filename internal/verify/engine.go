@@ -3,6 +3,7 @@ package verify
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/allensu/loki-profile-manager/internal/config"
 	"github.com/allensu/loki-profile-manager/internal/machine"
@@ -108,12 +109,34 @@ func checkMachinePolicy(report *Report, storeRoot, machineID, parent string, buc
 		return
 	}
 	if !ok {
-		report.Add(Issue{Severity: SeverityWarning, Code: "machine.record_missing", Message: fmt.Sprintf("machine %s is not registered; policy check skipped", machineID)})
+		report.Add(Issue{Severity: SeverityWarning, Code: "machine.record_missing", Message: fmt.Sprintf("machine %s is not registered; policy check skipped", machineID), Remediation: registerMachineRemediation(parent, buckets)})
 		return
 	}
 	if err := machine.ValidatePolicy(record, parent, buckets); err != nil {
 		report.Add(Issue{Severity: SeverityBlocking, Code: "machine.policy_blocked", Message: err.Error(), Remediation: "Update registry/machines.json allowed_parent_profiles or allowed_buckets for this machine."})
 	}
+}
+
+func registerMachineRemediation(parent string, buckets []string) string {
+	var builder strings.Builder
+	builder.WriteString("Run `loki machine register")
+	parent = strings.TrimSpace(parent)
+	if parent != "" {
+		builder.WriteString(" --allow-profile ")
+		builder.WriteString(parent)
+	}
+	seen := map[string]bool{}
+	for _, bucket := range buckets {
+		bucket = strings.TrimSpace(bucket)
+		if bucket == "" || seen[bucket] {
+			continue
+		}
+		seen[bucket] = true
+		builder.WriteString(" --allow-bucket ")
+		builder.WriteString(bucket)
+	}
+	builder.WriteString("` or update registry/machines.json.")
+	return builder.String()
 }
 
 func validateLayerSkills(report *Report, layer profile.Layer) {

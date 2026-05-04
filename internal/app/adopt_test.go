@@ -22,6 +22,9 @@ func TestAdoptWritesManagedTargetAndSwitchSafety(t *testing.T) {
 	}
 	defer svc.Close()
 	storePath := adoptStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
 	target := filepath.Join(home, ".gitconfig")
 	writeAppFile(t, target, "[user]\n\tname = Local\n")
 

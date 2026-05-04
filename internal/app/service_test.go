@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/allensu/loki-profile-manager/internal/config"
@@ -91,6 +92,54 @@ func TestEnsureMachineIDReusesSameID(t *testing.T) {
 	}
 	if first != second {
 		t.Fatalf("second id = %q, want %q", second, first)
+	}
+}
+
+func TestStatusReportsUnregisteredMachine(t *testing.T) {
+	svc := testService(t)
+	defer svc.Close()
+	storePath := filepath.Join(t.TempDir(), "loki")
+	if _, err := svc.EnsureStore(context.Background(), EnsureStoreRequest{StorePath: storePath}); err != nil {
+		t.Fatalf("EnsureStore() error = %v", err)
+	}
+	machineID, err := svc.EnsureMachineID(context.Background())
+	if err != nil {
+		t.Fatalf("EnsureMachineID() error = %v", err)
+	}
+
+	status, err := svc.Status(context.Background(), StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.MachineID != machineID || status.MachineRegistered {
+		t.Fatalf("status = %+v, want unregistered machine %s", status, machineID)
+	}
+	if !strings.Contains(status.MachineWarning, "not registered") {
+		t.Fatalf("MachineWarning = %q", status.MachineWarning)
+	}
+}
+
+func TestStatusIncludesRegisteredMachine(t *testing.T) {
+	svc := testService(t)
+	defer svc.Close()
+	storePath := filepath.Join(t.TempDir(), "loki")
+	if _, err := svc.EnsureStore(context.Background(), EnsureStoreRequest{StorePath: storePath}); err != nil {
+		t.Fatalf("EnsureStore() error = %v", err)
+	}
+	registered, err := svc.RegisterMachine(context.Background(), RegisterMachineRequest{StorePath: storePath, DisplayName: "test machine", AllowedParentProfiles: []string{"work"}, AllowedBuckets: []string{"azure"}})
+	if err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+
+	status, err := svc.Status(context.Background(), StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if !status.MachineRegistered || status.MachineID != registered.MachineID {
+		t.Fatalf("status = %+v, want registered machine %s", status, registered.MachineID)
+	}
+	if status.MachineDisplayName != "test machine" || len(status.MachineAllowedParentProfiles) != 1 || status.MachineAllowedParentProfiles[0] != "work" {
+		t.Fatalf("machine status fields = %+v", status)
 	}
 }
 

@@ -17,7 +17,7 @@ func TestHelpPrints(t *testing.T) {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	got := out.String()
-	if !strings.Contains(got, "Loki Profile Manager") || !strings.Contains(got, "status") {
+	if !strings.Contains(got, "Loki Profile Manager") || !strings.Contains(got, "status") || !strings.Contains(got, "machine") {
 		t.Fatalf("help output missing expected text: %s", got)
 	}
 }

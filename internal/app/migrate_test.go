@@ -21,6 +21,9 @@ func TestMigrateLocalWritesAdoptionRecords(t *testing.T) {
 	}
 	defer svc.Close()
 	storePath := adoptStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
 	target := filepath.Join(home, ".gitconfig")
 	writeAppFile(t, target, "[user]\n\temail = local@example.test\n")
 
@@ -71,6 +74,9 @@ func TestMigrateRepoAdoptsMatchingExistingTarget(t *testing.T) {
 	}
 	defer svc.Close()
 	storePath := adoptStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
 	repo := t.TempDir()
 	writeAppFile(t, filepath.Join(repo, ".gitconfig"), "[core]\n\teditor = vim\n")
 	writeAppFile(t, filepath.Join(home, ".gitconfig"), "[core]\n\teditor = vim\n")

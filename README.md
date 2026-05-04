@@ -6,7 +6,7 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 
 - Repository visibility: private.
 - Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented.
-- Current commands: `status`, `verify`, `switch`, `migrate repo`, `migrate local`, and `adopt`.
+- Current commands: `status`, `verify`, `switch`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `sync`, `import-skill`, `doctor`, and `tui`.
 - License: not selected yet.
 
@@ -52,6 +52,12 @@ Verify a store:
 
 ```bash
 go run ./cmd/loki --store /path/to/loki verify
+```
+
+Register this machine for a profile and bucket policy:
+
+```bash
+go run ./cmd/loki --store /path/to/loki machine register --allow-profile work --allow-bucket azure
 ```
 
 Dry-run profile activation:

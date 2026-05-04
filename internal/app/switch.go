@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/allensu/loki-profile-manager/internal/activation"
 	"github.com/allensu/loki-profile-manager/internal/db"
@@ -54,12 +55,11 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 		if err != nil {
 			return err
 		}
-		if registered {
-			if err := machine.ValidatePolicy(record, req.ParentProfile, req.Buckets); err != nil {
-				return err
-			}
-		} else {
-			warnings = append(warnings, fmt.Sprintf("machine %s is not registered; policy and heartbeat update skipped", machineID))
+		if !registered {
+			return fmt.Errorf("switch: machine %s is not registered; run `%s` before switching", machineID, switchRegisterCommand(req.ParentProfile, req.Buckets))
+		}
+		if err := machine.ValidatePolicy(record, req.ParentProfile, req.Buckets); err != nil {
+			return err
 		}
 
 		plan, err := activation.BuildPlan(ctx, activation.PlanRequest{StorePath: storePath, Profile: req.ParentProfile, Buckets: req.Buckets, Resolver: s.resolver})
@@ -93,6 +93,27 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 		return nil
 	})
 	return result, err
+}
+
+func switchRegisterCommand(parent string, buckets []string) string {
+	var builder strings.Builder
+	builder.WriteString("loki machine register")
+	parent = strings.TrimSpace(parent)
+	if parent != "" {
+		builder.WriteString(" --allow-profile ")
+		builder.WriteString(parent)
+	}
+	seen := map[string]bool{}
+	for _, bucket := range buckets {
+		bucket = strings.TrimSpace(bucket)
+		if bucket == "" || seen[bucket] {
+			continue
+		}
+		seen[bucket] = true
+		builder.WriteString(" --allow-bucket ")
+		builder.WriteString(bucket)
+	}
+	return builder.String()
 }
 
 func (s *Service) previousActiveState(ctx context.Context, record machine.Record, registered bool) (string, []string) {

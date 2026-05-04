@@ -22,6 +22,8 @@ Current commands:
 | `status` | Implemented |
 | `verify` | Implemented |
 | `switch` | Implemented |
+| `machine register` | Implemented |
+| `machine status` | Implemented |
 | `adopt` | Implemented |
 | `migrate repo` | Implemented |
 | `migrate local` | Implemented |
@@ -56,6 +58,7 @@ Behavior:
 - Uses `--store` first when provided.
 - Otherwise reads the configured store path from local key-value state.
 - Validates the store layout if a store path is configured.
+- Reports current machine registration when the store layout is valid, without creating a machine ID.
 
 Examples:
 
@@ -63,6 +66,69 @@ Examples:
 loki status
 loki status --json
 loki --store /path/to/loki status
+```
+
+## `loki machine register`
+
+Register or update this device in the synced machine registry.
+
+```bash
+loki machine register --allow-profile <profile> [--allow-bucket <bucket> ...] [--name <name>] [--active-profile <profile>] [--active-bucket <bucket> ...] [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--name <name>` | Human-readable machine name. Defaults to hostname. |
+| `--allow-profile <profile>` | Parent profile this machine may activate. Repeat or comma-separate. Required for a new registration. |
+| `--allow-bucket <bucket>` | Bucket this machine may activate. Repeat or comma-separate. |
+| `--active-profile <profile>` | Active parent profile to record in the registry. |
+| `--active-bucket <bucket>` | Active bucket to record in the registry. Repeat or comma-separate. |
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Requires a configured store path or `--store`.
+- Ensures a local machine ID exists.
+- Writes or updates `registry/machines.json` for this machine.
+- Writes the machine heartbeat under `registry/machines/<machine_id>.json`.
+- Preserves existing policy fields when re-running without policy flags.
+
+Examples:
+
+```bash
+loki --store /path/to/loki machine register --name "Allen Mac" --allow-profile work
+loki --store /path/to/loki machine register --allow-profile work --allow-bucket content-dev --allow-bucket azure
+loki --store /path/to/loki machine register --allow-profile work,dev --json
+```
+
+## `loki machine status`
+
+Show this device's local machine ID and registry status.
+
+```bash
+loki machine status [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Requires a configured store path or `--store`.
+- Reads the local machine ID if present.
+- Reads `registry/machines.json` and reports whether this machine is registered.
+- Does not create a machine ID.
+
+Examples:
+
+```bash
+loki --store /path/to/loki machine status
+loki --store /path/to/loki machine status --json
 ```
 
 ## `loki verify`
@@ -90,6 +156,7 @@ Behavior:
 - If no profile is provided, attempts to use the current machine's active profile from the registry.
 - Validates manifest schema, source paths, target expansion, modes, formats, ignore patterns, skill folders, and structured mergeability.
 - Enforces machine policy when a machine record is available.
+- Warns with `machine.record_missing` and a `loki machine register ...` remediation when a local machine ID exists but no registry record exists.
 - Returns a nonzero exit code when blocking issues exist.
 
 Examples:
@@ -120,8 +187,8 @@ Behavior:
 
 - Requires a configured store path or `--store`.
 - Ensures a local machine ID exists.
-- Enforces machine policy if the machine is registered in the store registry.
-- Allows the switch with a warning if the machine is not registered. This keeps fixture and bootstrap stores usable before setup exists.
+- Requires this machine to be registered in the store registry before planning or writing.
+- Enforces machine policy from `registry/machines.json`.
 - Builds an activation plan from the selected profile layers.
 - Classifies target safety before writing.
 - Blocks unmanaged files, unmanaged directories, broken symlinks, managed hash mismatches, and targets outside the configured home root.
@@ -334,4 +401,4 @@ Secret values come from the Infisical CLI through an injectable provider. Missin
 
 - Commands return exit code `0` on success.
 - `verify` returns nonzero when blocking issues exist.
-- `switch` returns nonzero for invalid profile/bucket selection, machine policy violations, unsafe targets, merge failures, render failures, write failures, or rollback failures.
+- `switch` returns nonzero for invalid profile/bucket selection, missing machine registration, machine policy violations, unsafe targets, merge failures, render failures, write failures, or rollback failures.

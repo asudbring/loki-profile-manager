@@ -41,14 +41,23 @@ type Service struct {
 type StatusRequest struct{}
 
 type StatusResult struct {
-	Configured     bool     `json:"configured"`
-	StorePath      string   `json:"store_path"`
-	StoreOverride  string   `json:"store_override"`
-	LocalStatePath string   `json:"local_state_path"`
-	DatabasePath   string   `json:"database_path"`
-	Message        string   `json:"message"`
-	Version        string   `json:"version"`
-	Missing        []string `json:"missing,omitempty"`
+	Configured                   bool     `json:"configured"`
+	StorePath                    string   `json:"store_path"`
+	StoreOverride                string   `json:"store_override"`
+	LocalStatePath               string   `json:"local_state_path"`
+	DatabasePath                 string   `json:"database_path"`
+	Message                      string   `json:"message"`
+	Version                      string   `json:"version"`
+	Missing                      []string `json:"missing,omitempty"`
+	MachineID                    string   `json:"machine_id,omitempty"`
+	MachineRegistered            bool     `json:"machine_registered"`
+	MachineDisplayName           string   `json:"machine_display_name,omitempty"`
+	MachineAllowedParentProfiles []string `json:"machine_allowed_parent_profiles,omitempty"`
+	MachineAllowedBuckets        []string `json:"machine_allowed_buckets,omitempty"`
+	MachineActiveProfile         string   `json:"machine_active_profile,omitempty"`
+	MachineActiveBuckets         []string `json:"machine_active_buckets,omitempty"`
+	MachineMessage               string   `json:"machine_message,omitempty"`
+	MachineWarning               string   `json:"machine_warning,omitempty"`
 }
 
 type DiscoverStoresRequest struct {
@@ -77,6 +86,20 @@ type RegisterMachineRequest struct {
 	AllowedBuckets        []string
 	ActiveProfile         string
 	ActiveBuckets         []string
+}
+
+type MachineStatusRequest struct {
+	StorePath string
+}
+
+type MachineStatusResult struct {
+	StorePath     string          `json:"store_path,omitempty"`
+	MachineIDPath string          `json:"machine_id_path,omitempty"`
+	MachineID     string          `json:"machine_id,omitempty"`
+	Registered    bool            `json:"registered"`
+	Record        *machine.Record `json:"record,omitempty"`
+	Message       string          `json:"message,omitempty"`
+	Warning       string          `json:"warning,omitempty"`
 }
 
 type HeartbeatRequest struct {
@@ -179,6 +202,22 @@ func (s *Service) Status(ctx context.Context, req StatusRequest) (StatusResult, 
 	status.Missing = validation.Missing
 	if validation.Valid {
 		status.Message = "Loki store is configured."
+		machineStatus, err := s.currentMachineStatus(storePath)
+		status.MachineID = machineStatus.MachineID
+		status.MachineRegistered = machineStatus.Registered
+		status.MachineMessage = machineStatus.Message
+		if err != nil {
+			status.MachineWarning = err.Error()
+		} else {
+			status.MachineWarning = machineStatus.Warning
+		}
+		if machineStatus.Record != nil {
+			status.MachineDisplayName = machineStatus.Record.DisplayName
+			status.MachineAllowedParentProfiles = cloneStrings(machineStatus.Record.AllowedParentProfiles)
+			status.MachineAllowedBuckets = cloneStrings(machineStatus.Record.AllowedBuckets)
+			status.MachineActiveProfile = machineStatus.Record.ActiveProfile
+			status.MachineActiveBuckets = cloneStrings(machineStatus.Record.ActiveBuckets)
+		}
 	} else {
 		status.Message = "Loki store path is configured but layout is invalid."
 	}
@@ -227,6 +266,49 @@ func (s *Service) EnsureMachineID(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("ensure machine id: service is nil")
 	}
 	return machine.EnsureID(s.paths.MachineIDPath)
+}
+
+func (s *Service) MachineStatus(ctx context.Context, req MachineStatusRequest) (MachineStatusResult, error) {
+	if s == nil {
+		return MachineStatusResult{}, fmt.Errorf("machine status: service is nil")
+	}
+	storePath, err := s.effectiveStorePath(ctx, req.StorePath)
+	if err != nil {
+		return MachineStatusResult{}, err
+	}
+	if validation := store.ValidateLayout(storePath); !validation.Valid {
+		return MachineStatusResult{}, fmt.Errorf("machine status: invalid store layout: missing %v", validation.Missing)
+	}
+	return s.currentMachineStatus(storePath)
+}
+
+func (s *Service) currentMachineStatus(storePath string) (MachineStatusResult, error) {
+	result := MachineStatusResult{
+		StorePath:     storePath,
+		MachineIDPath: s.paths.MachineIDPath,
+		Message:       "Machine ID has not been created. Run `loki machine register --allow-profile <profile>` to register this device.",
+	}
+	machineID, ok, err := machine.ReadID(s.paths.MachineIDPath)
+	if err != nil {
+		return result, fmt.Errorf("machine status: %w", err)
+	}
+	if !ok {
+		return result, nil
+	}
+	result.MachineID = machineID
+	result.Message = "Machine ID exists locally but is missing from synced registry."
+	record, registered, err := machine.GetMachine(storePath, machineID)
+	if err != nil {
+		return result, fmt.Errorf("machine status: %w", err)
+	}
+	if !registered {
+		result.Warning = fmt.Sprintf("machine %s is not registered; run `loki machine register --allow-profile <profile>` to add it to registry/machines.json", machineID)
+		return result, nil
+	}
+	result.Registered = true
+	result.Record = &record
+	result.Message = "Machine is registered."
+	return result, nil
 }
 
 func (s *Service) withStoreOperationLock(ctx context.Context, storePath, operation string, createMachineID bool, fn func(machineID string) error) error {

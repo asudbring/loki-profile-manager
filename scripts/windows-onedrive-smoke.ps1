@@ -148,6 +148,10 @@ Ensure-LokiStore $StorePath
 & $bin --store $StorePath verify
 if ($LASTEXITCODE -ne 0) { throw "verify failed after store layout creation" }
 
+Write-Step "register machine for smoke policy"
+& $bin --store $StorePath machine register --allow-profile $SmokeProfile --allow-bucket $SmokeBucket
+if ($LASTEXITCODE -ne 0) { throw "machine registration failed" }
+
 Write-Step "OneDrive local sync probe"
 $probe = Join-Path $StorePath "sync-probe-vm.txt"
 "vm wrote $(Get-Date -Format o)" | Set-Content -Path $probe -Encoding UTF8

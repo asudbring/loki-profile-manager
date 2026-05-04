@@ -80,6 +80,7 @@ Run status:
 Run a dry-run switch against a valid temp store once one exists:
 
 ```bash
+go run ./cmd/loki --store /path/to/loki machine register --allow-profile work
 go run ./cmd/loki --store /path/to/loki switch work --dry-run
 ```
 
@@ -129,7 +130,7 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 
 ## Smoke test with a valid store
 
-The store layout can be created by application service code, but no setup CLI exists yet. For a command-line smoke test, create the minimal layout manually or use an existing fixture store.
+The store layout can be created by application service code. For a command-line smoke test, create the minimal layout manually or use an existing fixture store, then register the current machine before switching.
 
 Linux/macOS shell:
 
@@ -149,6 +150,7 @@ merge_rules: {}
 targets: {}
 EOF
 done
+go run ./cmd/loki --store "$STORE" machine register --allow-profile work
 go run ./cmd/loki --store "$STORE" verify work
 go run ./cmd/loki --store "$STORE" switch work --dry-run
 ```
@@ -161,7 +163,7 @@ Profile: work
 Operations: 0
 ```
 
-An unregistered-machine warning is expected for a manually created smoke store.
+No `machine.record_missing` warning should appear after `machine register` succeeds.
 
 ## OneDrive Windows VM smoke
 

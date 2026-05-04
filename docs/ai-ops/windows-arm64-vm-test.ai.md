@@ -264,6 +264,8 @@ Profile:  vm-smoke-20260503235959
 Bucket:   vm-bucket-20260503235959
 ...
 Sensitive key not copied.
+== register machine for smoke policy ==
+...
 == bucket migrate and real switch ==
 ...
 == result ==
@@ -316,6 +318,7 @@ Run only after the source machine has adopted a harmless dogfood bucket into the
 Set-Location $env:USERPROFILE\github\loki-profile-manager
 $store = Join-Path $env:OneDrive "LokiProfileManager"
 
+.\bin\loki.exe --store $store machine register --allow-profile work --allow-bucket dogfood
 .\bin\loki.exe --store $store verify work dogfood
 .\bin\loki.exe --store $store switch work dogfood --dry-run
 ```

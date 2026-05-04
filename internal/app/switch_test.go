@@ -58,6 +58,24 @@ func TestSwitchDryRunWritesNothingAndRealSwitchUpdatesHeartbeat(t *testing.T) {
 	}
 }
 
+func TestSwitchFailsWhenMachineUnregistered(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := switchStore(t, "unregistered.txt", "hello")
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work"}); err == nil || !strings.Contains(err.Error(), "not registered") {
+		t.Fatalf("Switch() error = %v", err)
+	}
+	target := filepath.ToSlash(filepath.Join(home, "unregistered.txt"))
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("target exists or stat err = %v", err)
+	}
+}
+
 func TestSwitchEnforcesPolicyAndUnsafeOverwrite(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()

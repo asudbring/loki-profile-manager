@@ -211,7 +211,7 @@ sequenceDiagram
     CLI->>App: Switch(request)
     App->>Machine: Ensure machine_id
     App->>Machine: Load registry record
-    Machine-->>App: policy result or warning
+    Machine-->>App: policy result or blocking registration/policy error
     App->>Planner: BuildPlan(store, profile, buckets)
     Planner->>Store: Read manifests and sources
     Planner-->>App: activation plan
