@@ -3,6 +3,7 @@ param(
   [string]$OneDrivePath = "",
   [string]$StorePath = "",
   [string]$TestRoot = "",
+  [string]$SmokeId = "",
   [switch]$SkipValidation,
   [switch]$KeepData
 )
@@ -90,16 +91,34 @@ if (-not (Test-Path $oneDrive)) {
 if (-not $StorePath) {
   $StorePath = Join-Path $oneDrive "LokiProfileManager"
 }
+if (-not $SmokeId) {
+  $SmokeId = Get-Date -Format "yyyyMMddHHmmss"
+}
+$SmokeId = $SmokeId.Trim()
+if ($SmokeId -notmatch '^[A-Za-z0-9._-]+$') {
+  throw "SmokeId must contain only letters, numbers, dot, underscore, or hyphen: $SmokeId"
+}
+$SmokeProfile = "vm-smoke-$SmokeId"
+$SmokeBucket = "vm-bucket-$SmokeId"
+$SmokeProfilePath = Join-Path $StorePath "profiles\$SmokeProfile"
+
+$defaultTestRoot = -not $TestRoot
 if (-not $TestRoot) {
-  $TestRoot = Join-Path $env:USERPROFILE "loki-vm-test"
+  $TestRoot = Join-Path $env:USERPROFILE "loki-vm-test-$SmokeId"
 }
 
 Write-Step "paths"
 Write-Host "OneDrive: $oneDrive"
 Write-Host "Store:    $StorePath"
 Write-Host "TestRoot: $TestRoot"
+Write-Host "Profile:  $SmokeProfile"
+Write-Host "Bucket:   $SmokeBucket"
 
 New-Item -ItemType Directory -Force $StorePath | Out-Null
+if ($defaultTestRoot -and (Test-Path $TestRoot)) {
+  Write-Host "Resetting disposable test root: $TestRoot"
+  Remove-Item $TestRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 New-Item -ItemType Directory -Force $TestRoot | Out-Null
 
 Write-Step "pin OneDrive store local"
@@ -135,29 +154,29 @@ Write-Host "Confirm this file appears on the other machine before dogfooding."
 Write-Step "adopt dry-run writes nothing"
 $adoptTarget = Join-Path $TestRoot ".gitconfig"
 "[user]`n`tname = Loki VM" | Set-Content -Path $adoptTarget -Encoding UTF8
-& $bin --store $StorePath adopt $adoptTarget --profile work --dry-run
+& $bin --store $StorePath adopt $adoptTarget --profile $SmokeProfile --dry-run
 if ($LASTEXITCODE -ne 0) { throw "adopt dry-run failed" }
 
 Write-Step "adopt apply"
-& $bin --store $StorePath adopt $adoptTarget --profile work --yes
+& $bin --store $StorePath adopt $adoptTarget --profile $SmokeProfile --yes
 if ($LASTEXITCODE -ne 0) { throw "adopt apply failed" }
-& $bin --store $StorePath verify work
+& $bin --store $StorePath verify $SmokeProfile
 if ($LASTEXITCODE -ne 0) { throw "verify after adopt failed" }
-& $bin --store $StorePath switch work --dry-run
+& $bin --store $StorePath switch $SmokeProfile --dry-run
 if ($LASTEXITCODE -ne 0) { throw "switch dry-run after adopt failed" }
 
 Write-Step "changed adopted target blocks switch"
 Add-Content -Path $adoptTarget -Value "`n[alias]`n`tco = checkout"
-& $bin --store $StorePath switch work --dry-run
+& $bin --store $StorePath switch $SmokeProfile --dry-run
 if ($LASTEXITCODE -eq 0) {
   throw "switch dry-run succeeded after adopted target changed; expected safety block"
 }
 Write-Host "Safety block observed as expected."
 
 Write-Step "re-adopt changed target"
-& $bin --store $StorePath adopt $adoptTarget --profile work --yes
+& $bin --store $StorePath adopt $adoptTarget --profile $SmokeProfile --yes
 if ($LASTEXITCODE -ne 0) { throw "re-adopt failed" }
-& $bin --store $StorePath switch work --dry-run
+& $bin --store $StorePath switch $SmokeProfile --dry-run
 if ($LASTEXITCODE -ne 0) { throw "switch dry-run after re-adopt failed" }
 
 Write-Step "migrate repo"
@@ -165,19 +184,19 @@ $legacy = Join-Path $TestRoot "legacy"
 New-Item -ItemType Directory -Force (Join-Path $legacy "loki-vm-test") | Out-Null
 '{"repo": true}' | Set-Content -Path (Join-Path $legacy "loki-vm-test\repo-settings.json") -Encoding UTF8
 '{"repo": true}' | Set-Content -Path (Join-Path $TestRoot "repo-settings.json") -Encoding UTF8
-& $bin --store $StorePath migrate repo $legacy --profile work --dry-run
+& $bin --store $StorePath migrate repo $legacy --profile $SmokeProfile --dry-run
 if ($LASTEXITCODE -ne 0) { throw "migrate repo dry-run failed" }
-& $bin --store $StorePath migrate repo $legacy --profile work --yes
+& $bin --store $StorePath migrate repo $legacy --profile $SmokeProfile --yes
 if ($LASTEXITCODE -ne 0) { throw "migrate repo apply failed" }
-& $bin --store $StorePath verify work
+& $bin --store $StorePath verify $SmokeProfile
 if ($LASTEXITCODE -ne 0) { throw "verify after migrate repo failed" }
 
 Write-Step "sensitive file skip"
 New-Item -ItemType Directory -Force (Join-Path $legacy ".ssh") | Out-Null
 "FAKE PRIVATE KEY - DO NOT IMPORT" | Set-Content -Path (Join-Path $legacy ".ssh\id_ed25519") -Encoding UTF8
-& $bin --store $StorePath migrate repo $legacy --profile work --dry-run
+& $bin --store $StorePath migrate repo $legacy --profile $SmokeProfile --dry-run
 if ($LASTEXITCODE -ne 0) { throw "migrate repo dry-run with sensitive file failed" }
-$leaked = Get-ChildItem $StorePath -Recurse -File | Where-Object { $_.Name -eq "id_ed25519" }
+$leaked = Get-ChildItem $SmokeProfilePath -Recurse -File | Where-Object { $_.Name -eq "id_ed25519" }
 if ($leaked) {
   throw "sensitive SSH key was copied into store: $($leaked.FullName)"
 }
@@ -188,11 +207,11 @@ $bucketLegacy = Join-Path $TestRoot "legacy-bucket"
 New-Item -ItemType Directory -Force (Join-Path $bucketLegacy "loki-vm-test") | Out-Null
 "bucket works from OneDrive store" | Set-Content -Path (Join-Path $bucketLegacy "loki-vm-test\bucket.txt") -Encoding UTF8
 Remove-Item (Join-Path $TestRoot "bucket.txt") -Force -ErrorAction SilentlyContinue
-& $bin --store $StorePath migrate repo $bucketLegacy --profile work --bucket vm-bucket --yes
+& $bin --store $StorePath migrate repo $bucketLegacy --profile $SmokeProfile --bucket $SmokeBucket --yes
 if ($LASTEXITCODE -ne 0) { throw "bucket migrate failed" }
-& $bin --store $StorePath verify work vm-bucket
+& $bin --store $StorePath verify $SmokeProfile $SmokeBucket
 if ($LASTEXITCODE -ne 0) { throw "verify bucket failed" }
-& $bin --store $StorePath switch work vm-bucket --yes
+& $bin --store $StorePath switch $SmokeProfile $SmokeBucket --yes
 if ($LASTEXITCODE -ne 0) { throw "real switch failed" }
 $bucketTarget = Join-Path $TestRoot "bucket.txt"
 if ((Get-Content $bucketTarget -Raw).Trim() -ne "bucket works from OneDrive store") {

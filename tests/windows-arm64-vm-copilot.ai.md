@@ -10,6 +10,7 @@ You are Copilot CLI running inside a Windows 11 ARM64 VM. Validate `loki-profile
 - Do not commit or push.
 - Stop on first unexpected failure and report the last failing command plus last 40 lines of output.
 - Treat `unsafe target overwrite blocked` as expected only when followed by `Safety block observed as expected.`
+- The smoke script creates a unique `vm-smoke-<timestamp>` profile and `vm-bucket-<timestamp>` bucket so existing OneDrive store profiles cannot contaminate the run.
 - Do not remove `.loki-operation.lock` unless no `loki` process is active and the lock is clearly stale.
 
 ## Success criteria
@@ -21,6 +22,7 @@ The validation passes only if all are true:
 - `scripts\validate-local.ps1` ends with `validation complete`.
 - `scripts\windows-onedrive-smoke.ps1` ends with `Windows OneDrive smoke passed.`
 - `%OneDrive%\LokiProfileManager\sync-probe-vm.txt` exists.
+- Smoke output prints a `Profile:  vm-smoke-...` line and a `Bucket:   vm-bucket-...` line.
 - Final output contains `Windows ARM64 VM validation passed.`
 
 ## Task
@@ -146,5 +148,6 @@ GO: <go env GOOS GOARCH GOVERSION, single line>
 VALIDATE_LOCAL: passed|failed
 ONEDRIVE_SMOKE: passed|failed
 PROBE: <probe path or missing>
+SMOKE_PROFILE: <vm-smoke-* or unknown>
 NOTES: <only failures, skipped items, or sync caveats>
 ```

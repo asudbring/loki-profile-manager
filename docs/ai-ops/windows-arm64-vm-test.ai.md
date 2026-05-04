@@ -36,7 +36,8 @@ side_effects:
   - downloads Go modules into the Go module cache
   - writes build artifact .\bin\loki.exe
   - creates or updates OneDrive\LokiProfileManager
-  - creates and removes $env:USERPROFILE\loki-vm-test unless -KeepData is passed
+  - creates a unique vm-smoke-<timestamp> profile and vm-bucket-<timestamp> bucket inside the Loki store
+  - creates and removes $env:USERPROFILE\loki-vm-test-<timestamp> unless -KeepData is passed
   - writes OneDrive\LokiProfileManager\sync-probe-vm.txt
 requires_network: true
 requires_sudo: false
@@ -64,6 +65,7 @@ The run succeeds only when all are true:
 - `.\scripts\validate-local.ps1` ends with `validation complete`.
 - `.\scripts\windows-onedrive-smoke.ps1` ends with `Windows OneDrive smoke passed.`.
 - `$env:OneDrive\LokiProfileManager\sync-probe-vm.txt` exists.
+- Smoke output includes a unique `Profile:  vm-smoke-...` line and `Bucket:   vm-bucket-...` line.
 - The source machine later sees the same `sync-probe-vm.txt` through OneDrive.
 
 ## Fast path: run this in Windows PowerShell
@@ -237,6 +239,7 @@ Optional parameters:
 ```powershell
 .\scripts\windows-onedrive-smoke.ps1 -OneDrivePath "$env:OneDrive"
 .\scripts\windows-onedrive-smoke.ps1 -StorePath "$env:OneDrive\LokiProfileManager"
+.\scripts\windows-onedrive-smoke.ps1 -SmokeId "manual-rerun-1"
 .\scripts\windows-onedrive-smoke.ps1 -SkipValidation
 .\scripts\windows-onedrive-smoke.ps1 -KeepData
 ```
@@ -244,6 +247,9 @@ Optional parameters:
 Expected successful tail:
 
 ```text
+Profile:  vm-smoke-20260503235959
+Bucket:   vm-bucket-20260503235959
+...
 Sensitive key not copied.
 == bucket migrate and real switch ==
 ...
@@ -366,10 +372,10 @@ Then rerun the failed command.
 
 ### Smoke test left disposable data
 
-Default behavior removes `$env:USERPROFILE\loki-vm-test` and keeps the OneDrive store. If `-KeepData` was used, clean manually:
+Default behavior removes `$env:USERPROFILE\loki-vm-test-<timestamp>` and keeps the OneDrive store. If `-KeepData` was used, clean manually:
 
 ```powershell
-Remove-Item "$env:USERPROFILE\loki-vm-test" -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:USERPROFILE\loki-vm-test-*" -Recurse -Force -ErrorAction SilentlyContinue
 ```
 
 Do not delete the OneDrive store unless the source machine owner confirms it is disposable.
