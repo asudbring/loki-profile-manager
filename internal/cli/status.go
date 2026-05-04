@@ -40,7 +40,7 @@ func newStatusCommand(resolver config.PathResolver, globals *globalOptions, fact
 				encoder.SetIndent("", "  ")
 				return encoder.Encode(status)
 			}
-			printHumanStatus(cmd, status)
+			printHumanStatus(cmd, status, globals.verbose)
 			return nil
 		},
 	}
@@ -48,7 +48,7 @@ func newStatusCommand(resolver config.PathResolver, globals *globalOptions, fact
 	return cmd
 }
 
-func printHumanStatus(cmd *cobra.Command, status app.StatusResult) {
+func printHumanStatus(cmd *cobra.Command, status app.StatusResult, verbose bool) {
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, "Loki Profile Manager")
 	fmt.Fprintln(out)
@@ -66,6 +66,22 @@ func printHumanStatus(cmd *cobra.Command, status app.StatusResult) {
 	}
 	fmt.Fprintf(out, "Local state: %s\n", status.LocalStatePath)
 	fmt.Fprintf(out, "Database: %s\n", status.DatabasePath)
+	if status.ActiveProfile != "" {
+		fmt.Fprintf(out, "Active profile: %s", status.ActiveProfile)
+		if status.ActiveSource != "" {
+			fmt.Fprintf(out, " (%s)", status.ActiveSource)
+		}
+		fmt.Fprintln(out)
+		if len(status.ActiveBuckets) > 0 {
+			fmt.Fprintf(out, "Active buckets: %s\n", strings.Join(status.ActiveBuckets, ", "))
+		}
+	} else {
+		fmt.Fprintln(out, "Active profile: not set")
+	}
+	fmt.Fprintf(out, "Managed targets: %d\n", status.ManagedTargetCount)
+	if verbose && len(status.ManagedTargets) > 0 {
+		printManagedTargets(out, status.ManagedTargets)
+	}
 	if status.Configured {
 		printStatusMachine(out, status)
 	}
@@ -78,6 +94,23 @@ func printHumanStatus(cmd *cobra.Command, status app.StatusResult) {
 		return
 	}
 	fmt.Fprintln(out, status.Message)
+}
+
+func printManagedTargets(out interface{ Write([]byte) (int, error) }, targets []app.StatusManagedTarget) {
+	fmt.Fprintln(out, "Managed target list:")
+	for _, target := range targets {
+		fmt.Fprintf(out, "- %s [%s]", target.TargetPath, target.Mode)
+		if target.LayerKind != "" || target.LayerName != "" {
+			fmt.Fprintf(out, " layer=%s/%s", target.LayerKind, target.LayerName)
+		}
+		if target.SourcePath != "" {
+			fmt.Fprintf(out, " source=%s", target.SourcePath)
+		}
+		if target.LastAppliedAt != "" {
+			fmt.Fprintf(out, " last_applied=%s", target.LastAppliedAt)
+		}
+		fmt.Fprintln(out)
+	}
 }
 
 func printStatusMachine(out interface{ Write([]byte) (int, error) }, status app.StatusResult) {

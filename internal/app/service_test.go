@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/allensu/loki-profile-manager/internal/activation"
 	"github.com/allensu/loki-profile-manager/internal/config"
 	"github.com/allensu/loki-profile-manager/internal/machine"
 )
@@ -140,6 +142,87 @@ func TestStatusIncludesRegisteredMachine(t *testing.T) {
 	}
 	if status.MachineDisplayName != "test machine" || len(status.MachineAllowedParentProfiles) != 1 || status.MachineAllowedParentProfiles[0] != "work" {
 		t.Fatalf("machine status fields = %+v", status)
+	}
+}
+
+func TestStatusIncludesLocalActiveStateAndManagedTargets(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	storePath := filepath.Join(t.TempDir(), "loki")
+	if _, err := svc.EnsureStore(ctx, EnsureStoreRequest{StorePath: storePath}); err != nil {
+		t.Fatalf("EnsureStore() error = %v", err)
+	}
+	if err := activation.SetActiveState(ctx, svc.database, "work", []string{"azure"}); err != nil {
+		t.Fatalf("SetActiveState() error = %v", err)
+	}
+	targetRoot := t.TempDir()
+	first := filepath.Join(targetRoot, "b.txt")
+	second := filepath.Join(targetRoot, "a.txt")
+	for _, target := range []string{first, second} {
+		op := activation.Operation{Type: activation.OperationCopy, TargetPath: target, SourcePath: target + ".source", LayerKind: "core", LayerName: "work"}
+		if err := activation.PutManagedTarget(ctx, svc.database, activation.ManagedTarget{TargetPath: op.TargetPath, SourcePath: op.SourcePath, Mode: string(op.Type), ContentHash: "hash", LayerKind: op.LayerKind, LayerName: op.LayerName, LastAppliedAt: time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)}); err != nil {
+			t.Fatalf("PutManagedTarget() error = %v", err)
+		}
+	}
+
+	status, err := svc.Status(ctx, StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.ActiveProfile != "work" || status.ActiveSource != "local_state" || len(status.ActiveBuckets) != 1 || status.ActiveBuckets[0] != "azure" {
+		t.Fatalf("active status = %+v", status)
+	}
+	if status.ManagedTargetCount != 2 || len(status.ManagedTargets) != 2 {
+		t.Fatalf("managed target status = %+v", status.ManagedTargets)
+	}
+	if status.ManagedTargets[0].TargetPath != second || status.ManagedTargets[1].TargetPath != first {
+		t.Fatalf("managed targets not sorted: %+v", status.ManagedTargets)
+	}
+}
+
+func TestStatusFallsBackToMachineActiveState(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	storePath := filepath.Join(t.TempDir(), "loki")
+	if _, err := svc.EnsureStore(ctx, EnsureStoreRequest{StorePath: storePath}); err != nil {
+		t.Fatalf("EnsureStore() error = %v", err)
+	}
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}, ActiveProfile: "work", ActiveBuckets: []string{"azure"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+
+	status, err := svc.Status(ctx, StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.ActiveProfile != "work" || status.ActiveSource != "machine_registry" || len(status.ActiveBuckets) != 1 || status.ActiveBuckets[0] != "azure" {
+		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestStatusPrefersLocalActiveOverMachineRegistry(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	storePath := filepath.Join(t.TempDir(), "loki")
+	if _, err := svc.EnsureStore(ctx, EnsureStoreRequest{StorePath: storePath}); err != nil {
+		t.Fatalf("EnsureStore() error = %v", err)
+	}
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"dev"}, ActiveProfile: "dev"}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	if err := activation.SetActiveState(ctx, svc.database, "work", nil); err != nil {
+		t.Fatalf("SetActiveState() error = %v", err)
+	}
+
+	status, err := svc.Status(ctx, StatusRequest{})
+	if err != nil {
+		t.Fatalf("Status() error = %v", err)
+	}
+	if status.ActiveProfile != "work" || status.ActiveSource != "local_state" {
+		t.Fatalf("status = %+v", status)
 	}
 }
 

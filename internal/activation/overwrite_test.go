@@ -75,6 +75,39 @@ func TestClassifyTargetSafetyStates(t *testing.T) {
 	}
 }
 
+func TestListManagedTargetsSorted(t *testing.T) {
+	ctx := context.Background()
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	first := filepath.Join(root, "b.txt")
+	second := filepath.Join(root, "a.txt")
+	for _, path := range []string{first, second} {
+		writeFile(t, path, path)
+		hash, err := HashPath(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		op := Operation{Type: OperationCopy, TargetPath: path, SourcePath: path + ".source", LayerName: "work", LayerKind: "core"}
+		if err := UpsertManagedTarget(ctx, database, op, hash, time.Now()); err != nil {
+			t.Fatalf("UpsertManagedTarget() error = %v", err)
+		}
+	}
+	records, err := ListManagedTargets(ctx, database)
+	if err != nil {
+		t.Fatalf("ListManagedTargets() error = %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("records = %+v", records)
+	}
+	if records[0].TargetPath != second || records[1].TargetPath != first {
+		t.Fatalf("records not sorted by target path: %+v", records)
+	}
+	if records[0].Mode != string(OperationCopy) || records[0].LayerName != "work" || records[0].LayerKind != "core" || records[0].SourcePath == "" {
+		t.Fatalf("record fields = %+v", records[0])
+	}
+}
+
 func TestClassifyTargetBrokenSymlinkBlocks(t *testing.T) {
 	ctx := context.Background()
 	database := activationDB(t)

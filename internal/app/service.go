@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -41,23 +42,37 @@ type Service struct {
 type StatusRequest struct{}
 
 type StatusResult struct {
-	Configured                   bool     `json:"configured"`
-	StorePath                    string   `json:"store_path"`
-	StoreOverride                string   `json:"store_override"`
-	LocalStatePath               string   `json:"local_state_path"`
-	DatabasePath                 string   `json:"database_path"`
-	Message                      string   `json:"message"`
-	Version                      string   `json:"version"`
-	Missing                      []string `json:"missing,omitempty"`
-	MachineID                    string   `json:"machine_id,omitempty"`
-	MachineRegistered            bool     `json:"machine_registered"`
-	MachineDisplayName           string   `json:"machine_display_name,omitempty"`
-	MachineAllowedParentProfiles []string `json:"machine_allowed_parent_profiles,omitempty"`
-	MachineAllowedBuckets        []string `json:"machine_allowed_buckets,omitempty"`
-	MachineActiveProfile         string   `json:"machine_active_profile,omitempty"`
-	MachineActiveBuckets         []string `json:"machine_active_buckets,omitempty"`
-	MachineMessage               string   `json:"machine_message,omitempty"`
-	MachineWarning               string   `json:"machine_warning,omitempty"`
+	Configured                   bool                  `json:"configured"`
+	StorePath                    string                `json:"store_path"`
+	StoreOverride                string                `json:"store_override"`
+	LocalStatePath               string                `json:"local_state_path"`
+	DatabasePath                 string                `json:"database_path"`
+	Message                      string                `json:"message"`
+	Version                      string                `json:"version"`
+	Missing                      []string              `json:"missing,omitempty"`
+	ActiveProfile                string                `json:"active_profile,omitempty"`
+	ActiveBuckets                []string              `json:"active_buckets,omitempty"`
+	ActiveSource                 string                `json:"active_source,omitempty"`
+	ManagedTargetCount           int                   `json:"managed_target_count"`
+	ManagedTargets               []StatusManagedTarget `json:"managed_targets,omitempty"`
+	MachineID                    string                `json:"machine_id,omitempty"`
+	MachineRegistered            bool                  `json:"machine_registered"`
+	MachineDisplayName           string                `json:"machine_display_name,omitempty"`
+	MachineAllowedParentProfiles []string              `json:"machine_allowed_parent_profiles,omitempty"`
+	MachineAllowedBuckets        []string              `json:"machine_allowed_buckets,omitempty"`
+	MachineActiveProfile         string                `json:"machine_active_profile,omitempty"`
+	MachineActiveBuckets         []string              `json:"machine_active_buckets,omitempty"`
+	MachineMessage               string                `json:"machine_message,omitempty"`
+	MachineWarning               string                `json:"machine_warning,omitempty"`
+}
+
+type StatusManagedTarget struct {
+	TargetPath    string `json:"target_path"`
+	SourcePath    string `json:"source_path,omitempty"`
+	Mode          string `json:"mode"`
+	LayerKind     string `json:"layer_kind,omitempty"`
+	LayerName     string `json:"layer_name,omitempty"`
+	LastAppliedAt string `json:"last_applied_at,omitempty"`
 }
 
 type DiscoverStoresRequest struct {
@@ -189,6 +204,20 @@ func (s *Service) Status(ctx context.Context, req StatusRequest) (StatusResult, 
 		Message:        "Loki is not configured. Setup is not implemented in Phase 1.",
 		Version:        Version,
 	}
+	if profile, buckets, ok, err := s.currentLocalActiveState(ctx); err != nil {
+		return StatusResult{}, err
+	} else if ok {
+		status.ActiveProfile = profile
+		status.ActiveBuckets = buckets
+		status.ActiveSource = "local_state"
+	}
+	managedTargets, err := activation.ListManagedTargets(ctx, s.database)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	status.ManagedTargetCount = len(managedTargets)
+	status.ManagedTargets = statusManagedTargets(managedTargets)
+
 	storePath, ok, err := s.configuredStorePath(ctx)
 	if err != nil {
 		return StatusResult{}, err
@@ -217,6 +246,11 @@ func (s *Service) Status(ctx context.Context, req StatusRequest) (StatusResult, 
 			status.MachineAllowedBuckets = cloneStrings(machineStatus.Record.AllowedBuckets)
 			status.MachineActiveProfile = machineStatus.Record.ActiveProfile
 			status.MachineActiveBuckets = cloneStrings(machineStatus.Record.ActiveBuckets)
+			if status.ActiveProfile == "" && machineStatus.Record.ActiveProfile != "" {
+				status.ActiveProfile = machineStatus.Record.ActiveProfile
+				status.ActiveBuckets = cloneStrings(machineStatus.Record.ActiveBuckets)
+				status.ActiveSource = "machine_registry"
+			}
 		}
 	} else {
 		status.Message = "Loki store path is configured but layout is invalid."
@@ -266,6 +300,41 @@ func (s *Service) EnsureMachineID(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("ensure machine id: service is nil")
 	}
 	return machine.EnsureID(s.paths.MachineIDPath)
+}
+
+func (s *Service) currentLocalActiveState(ctx context.Context) (string, []string, bool, error) {
+	profile, ok, err := db.GetKV(ctx, s.database, kvActiveProfile)
+	if err != nil {
+		return "", nil, false, err
+	}
+	if !ok || profile == "" {
+		return "", nil, false, nil
+	}
+	buckets := []string{}
+	if raw, ok, err := db.GetKV(ctx, s.database, kvActiveBuckets); err != nil {
+		return "", nil, false, err
+	} else if ok && raw != "" {
+		_ = json.Unmarshal([]byte(raw), &buckets)
+	}
+	return profile, buckets, true, nil
+}
+
+func statusManagedTargets(records []activation.ManagedTarget) []StatusManagedTarget {
+	if len(records) == 0 {
+		return nil
+	}
+	out := make([]StatusManagedTarget, 0, len(records))
+	for _, record := range records {
+		out = append(out, StatusManagedTarget{
+			TargetPath:    record.TargetPath,
+			SourcePath:    record.SourcePath,
+			Mode:          record.Mode,
+			LayerKind:     record.LayerKind,
+			LayerName:     record.LayerName,
+			LastAppliedAt: record.LastAppliedAt,
+		})
+	}
+	return out
 }
 
 func (s *Service) MachineStatus(ctx context.Context, req MachineStatusRequest) (MachineStatusResult, error) {

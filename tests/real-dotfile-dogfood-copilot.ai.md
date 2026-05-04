@@ -31,6 +31,7 @@ The dogfood pass is valid when all are true:
 - `loki switch work --dry-run` either:
   - succeeds and shows only `%USERPROFILE%\.config\git\ignore` and `%USERPROFILE%\.gitconfig`, then `switch --yes` passes; or
   - blocks only because an expected target already exists unmanaged, proving unsafe overwrite protection.
+- `loki --verbose status` reports active profile `work` and lists the expected managed targets.
 
 ## Task
 
@@ -159,6 +160,18 @@ foreach ($target in $ExpectedTargets) {
   }
 }
 
+Write-Host "== status audit =="
+$statusOutput = & .\bin\loki.exe --store $Store --verbose status 2>&1
+$statusExit = $LASTEXITCODE
+$statusOutput | ForEach-Object { $_ }
+if ($statusExit -ne 0) { throw "status audit failed" }
+$statusText = ($statusOutput | Out-String)
+if ($statusText -notmatch "Active profile: work") { throw "status did not report active profile work" }
+if ($statusText -notmatch "Managed target list:") { throw "status did not list managed targets in verbose mode" }
+foreach ($target in $ExpectedTargets) {
+  if ($statusText -notmatch [regex]::Escape($target)) { throw "status did not list expected target: $target" }
+}
+
 Write-Host "Real dotfile dogfood completed."
 Write-Host "RESULT: PASS"
 Write-Host "COMMIT: $commit"
@@ -168,6 +181,7 @@ Write-Host "MACHINE_REGISTER: passed"
 Write-Host "VERIFY: passed"
 Write-Host "DRY_RUN: passed"
 Write-Host "SWITCH: $SwitchState"
+Write-Host "STATUS: passed"
 Write-Host "TARGETS: $($ExpectedTargets -join '; ')"
 $TargetHashSummary = (($TargetHashes.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } | Sort-Object) -join '; ')
 Write-Host "TARGET_HASHES: $TargetHashSummary"
@@ -187,6 +201,7 @@ MACHINE_REGISTER: passed|failed
 VERIFY: passed|failed
 DRY_RUN: passed|failed
 SWITCH: passed|blocked|failed|skipped
+STATUS: passed|failed|skipped
 TARGETS: <target paths or missing>
 TARGET_HASHES: <path=sha256/path=missing pairs>
 NOTES: <only failures, safety block, sync wait, or lock caveats>

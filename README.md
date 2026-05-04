@@ -42,10 +42,11 @@ For full cross-platform setup and validation, see [`docs/INSTALL.md`](docs/INSTA
 
 ## Quick examples
 
-Show local status:
+Show local status, active profile, and managed target count:
 
 ```bash
 go run ./cmd/loki status
+go run ./cmd/loki --verbose status
 ```
 
 Verify a store:

@@ -113,7 +113,7 @@ func GetManagedTarget(ctx context.Context, database *sql.DB, targetPath string) 
 		return ManagedTarget{}, false, fmt.Errorf("get managed target: database is nil")
 	}
 	var record ManagedTarget
-	err := database.QueryRowContext(ctx, `SELECT target_path, COALESCE(source_path, ''), mode, COALESCE(content_hash, ''), COALESCE(layer_kind, ''), COALESCE(layer_name, ''), last_applied_at, COALESCE(metadata_json, '') FROM managed_targets WHERE target_path = ?`, targetPath).Scan(&record.TargetPath, &record.SourcePath, &record.Mode, &record.ContentHash, &record.LayerKind, &record.LayerName, &record.LastAppliedAt, &record.MetadataJSON)
+	err := database.QueryRowContext(ctx, managedTargetSelectSQL+` WHERE target_path = ?`, targetPath).Scan(&record.TargetPath, &record.SourcePath, &record.Mode, &record.ContentHash, &record.LayerKind, &record.LayerName, &record.LastAppliedAt, &record.MetadataJSON)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ManagedTarget{}, false, nil
 	}
@@ -122,6 +122,31 @@ func GetManagedTarget(ctx context.Context, database *sql.DB, targetPath string) 
 	}
 	return record, true, nil
 }
+
+func ListManagedTargets(ctx context.Context, database *sql.DB) ([]ManagedTarget, error) {
+	if database == nil {
+		return nil, fmt.Errorf("list managed targets: database is nil")
+	}
+	rows, err := database.QueryContext(ctx, managedTargetSelectSQL+` ORDER BY target_path`)
+	if err != nil {
+		return nil, fmt.Errorf("list managed targets: %w", err)
+	}
+	defer rows.Close()
+	var records []ManagedTarget
+	for rows.Next() {
+		var record ManagedTarget
+		if err := rows.Scan(&record.TargetPath, &record.SourcePath, &record.Mode, &record.ContentHash, &record.LayerKind, &record.LayerName, &record.LastAppliedAt, &record.MetadataJSON); err != nil {
+			return nil, fmt.Errorf("scan managed target: %w", err)
+		}
+		records = append(records, record)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate managed targets: %w", err)
+	}
+	return records, nil
+}
+
+const managedTargetSelectSQL = `SELECT target_path, COALESCE(source_path, ''), mode, COALESCE(content_hash, ''), COALESCE(layer_kind, ''), COALESCE(layer_name, ''), last_applied_at, COALESCE(metadata_json, '') FROM managed_targets`
 
 func UpsertManagedTarget(ctx context.Context, database *sql.DB, op Operation, contentHash string, now time.Time) error {
 	if database == nil {

@@ -42,7 +42,7 @@ Planned but not implemented:
 Show local Loki status.
 
 ```bash
-loki status [--json]
+loki status [--json] [--verbose]
 ```
 
 Flags:
@@ -50,6 +50,7 @@ Flags:
 | Flag | Description |
 |---|---|
 | `--json` | Emit machine-readable JSON. |
+| `--verbose` | Also list locally managed targets in human output. |
 
 Behavior:
 
@@ -58,6 +59,8 @@ Behavior:
 - Uses `--store` first when provided.
 - Otherwise reads the configured store path from local key-value state.
 - Validates the store layout if a store path is configured.
+- Reports the active profile and buckets from local state, falling back to the synced machine registry.
+- Reports locally managed target count; `--verbose` lists target paths, modes, layers, and source paths.
 - Reports current machine registration when the store layout is valid, without creating a machine ID.
 
 Examples:
@@ -66,6 +69,7 @@ Examples:
 loki status
 loki status --json
 loki --store /path/to/loki status
+loki --store /path/to/loki --verbose status
 ```
 
 ## `loki machine register`
