@@ -93,6 +93,7 @@ Full snapshot restore without `--target` requires a matching prior dry-run guard
 - [`docs/INSTALL.md`](docs/INSTALL.md) — Windows, macOS, Linux, and Docker validation.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current components, data ownership, and switch flow.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — package map and development workflow.
+- [`CHANGELOG.md`](CHANGELOG.md) — pre-release dogfood and safety milestones.
 - [`docs/ai-ops/install.ai.md`](docs/ai-ops/install.ai.md) — AI-operator install/test procedure.
 - [`docs/ai-ops/windows-arm64-vm-test.ai.md`](docs/ai-ops/windows-arm64-vm-test.ai.md) — AI-operator Windows ARM64 VM + OneDrive validation procedure.
 - [`tests/windows-arm64-vm-copilot.ai.md`](tests/windows-arm64-vm-copilot.ai.md) — Copilot CLI prompt for running Windows ARM64 VM validation.

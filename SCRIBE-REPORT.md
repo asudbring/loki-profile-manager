@@ -7,6 +7,7 @@
 - `docs/INSTALL.md` — cross-platform install and validation for Windows, macOS, Linux, Docker fallback, and smoke testing.
 - `docs/ARCHITECTURE.md` — system overview, data ownership, store layout, local state, SQLite schema, manifest model, switch flow, safety model, rollback, and current limitations.
 - `docs/DEVELOPMENT.md` — package map, test/build commands, fixture guidance, and secret-handling rules.
+- `CHANGELOG.md` — pre-release dogfood and safety milestones for snapshot reporting, guarded restore, targeted restore, real-dotfile targeted restore, and full restore consent.
 - `docs/ai-ops/install.ai.md` — AI-operator companion for cloning, validating, building, and smoke-testing the private repository.
 - `tests/cross-machine-dogfood-copilot.ai.md` — Windows ARM64 disposable target dogfood prompt, including targeted snapshot restore.
 - `tests/real-dotfile-dogfood-copilot.ai.md` — Windows ARM64 real low-risk dotfile switch/status/snapshot dry-run prompt.
@@ -42,13 +43,12 @@
 ## Deferred / out of scope
 
 - `LICENSE` — not created because no license choice exists. README states all rights reserved until a license file is added.
-- `CHANGELOG.md` — not created because there are no formal releases yet.
 - `docs/DEPLOY.md` — not applicable; this is a local CLI with no deploy target.
 - `sync`, `import-skill`, `doctor`, and `tui` — documented as planned but not implemented.
 - Full real-dotfile snapshot restore dogfood — deferred until there is explicit need beyond targeted restore validation.
 
 ## Suggested follow-ups
 
-- Add `CHANGELOG.md` if tags become release milestones.
+- Promote milestone tags to semver releases only after packaging expectations are defined.
 - Re-run Scribe after `sync`, `import-skill`, `doctor`, or TUI land.
 - Consider a non-interactive full-restore override only if a future automation workflow needs it; keep default interactive consent.
