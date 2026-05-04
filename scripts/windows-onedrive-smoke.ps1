@@ -106,6 +106,10 @@ $defaultTestRoot = -not $TestRoot
 if (-not $TestRoot) {
   $TestRoot = Join-Path $env:USERPROFILE "loki-vm-test-$SmokeId"
 }
+$TestRootName = Split-Path -Path $TestRoot -Leaf
+if (-not $TestRootName) {
+  throw "TestRoot must have a leaf directory name: $TestRoot"
+}
 
 Write-Step "paths"
 Write-Host "OneDrive: $oneDrive"
@@ -181,8 +185,9 @@ if ($LASTEXITCODE -ne 0) { throw "switch dry-run after re-adopt failed" }
 
 Write-Step "migrate repo"
 $legacy = Join-Path $TestRoot "legacy"
-New-Item -ItemType Directory -Force (Join-Path $legacy "loki-vm-test") | Out-Null
-'{"repo": true}' | Set-Content -Path (Join-Path $legacy "loki-vm-test\repo-settings.json") -Encoding UTF8
+$legacyHomeRel = Join-Path $legacy $TestRootName
+New-Item -ItemType Directory -Force $legacyHomeRel | Out-Null
+'{"repo": true}' | Set-Content -Path (Join-Path $legacyHomeRel "repo-settings.json") -Encoding UTF8
 '{"repo": true}' | Set-Content -Path (Join-Path $TestRoot "repo-settings.json") -Encoding UTF8
 & $bin --store $StorePath migrate repo $legacy --profile $SmokeProfile --dry-run
 if ($LASTEXITCODE -ne 0) { throw "migrate repo dry-run failed" }
@@ -204,8 +209,9 @@ Write-Host "Sensitive key not copied."
 
 Write-Step "bucket migrate and real switch"
 $bucketLegacy = Join-Path $TestRoot "legacy-bucket"
-New-Item -ItemType Directory -Force (Join-Path $bucketLegacy "loki-vm-test") | Out-Null
-"bucket works from OneDrive store" | Set-Content -Path (Join-Path $bucketLegacy "loki-vm-test\bucket.txt") -Encoding UTF8
+$bucketLegacyHomeRel = Join-Path $bucketLegacy $TestRootName
+New-Item -ItemType Directory -Force $bucketLegacyHomeRel | Out-Null
+"bucket works from OneDrive store" | Set-Content -Path (Join-Path $bucketLegacyHomeRel "bucket.txt") -Encoding UTF8
 Remove-Item (Join-Path $TestRoot "bucket.txt") -Force -ErrorAction SilentlyContinue
 & $bin --store $StorePath migrate repo $bucketLegacy --profile $SmokeProfile --bucket $SmokeBucket --yes
 if ($LASTEXITCODE -ne 0) { throw "bucket migrate failed" }
