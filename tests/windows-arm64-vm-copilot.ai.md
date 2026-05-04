@@ -48,6 +48,19 @@ if (-not (Test-Path $env:OneDrive)) { throw "OneDrive path missing: $env:OneDriv
 Write-Host "== tools =="
 git --version
 if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
+  $goSdkRoot = Join-Path $env:USERPROFILE "go-sdk"
+  $goCandidate = Get-ChildItem $goSdkRoot -Directory -Filter "go*" -ErrorAction SilentlyContinue |
+    Sort-Object Name -Descending |
+    ForEach-Object { Join-Path $_.FullName "go\bin\go.exe" } |
+    Where-Object { Test-Path $_ } |
+    Select-Object -First 1
+  if ($goCandidate) {
+    $env:GOROOT = Split-Path (Split-Path $goCandidate -Parent) -Parent
+    $env:PATH = "$(Join-Path $env:GOROOT 'bin');$env:PATH"
+    Write-Host "Activated existing user-local Go SDK: $env:GOROOT"
+  }
+}
+if (-not (Get-Command go -ErrorAction SilentlyContinue)) {
   throw "Go is not on PATH. Run the Go bootstrap block, then rerun this validation block."
 }
 go version
