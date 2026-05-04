@@ -18,6 +18,7 @@ This repo is a Go 1.23 CLI project. The code is organized around a thin Cobra CL
 | `internal/profile` | Profile layer resolution. |
 | `internal/skills` | Skill folder validation. |
 | `internal/verify` | Store, manifest, skill, and policy verification reports. |
+| `internal/doctor` | Read-only environment, store, machine, snapshot, lock, SQLite, dependency, and conflict-copy diagnostics. |
 | `internal/activation` | Activation planning, safety, symlink/copy/merge/render, snapshots, rollback, and managed target state. |
 | `internal/infisical` | Infisical CLI wrapper and template renderer. |
 
@@ -175,7 +176,7 @@ For Infisical-related tests:
 
 ## Current implementation phase
 
-Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, and scoped `--target` restore. Sensitive-looking restore targets remain blocked by default.
+Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, and `doctor` diagnostics. Sensitive-looking restore targets remain blocked by default.
 
 Relevant historical handoff:
 

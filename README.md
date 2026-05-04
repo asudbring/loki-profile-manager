@@ -6,8 +6,8 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 
 - Repository visibility: private.
 - Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented; guarded snapshot inspection and restore implemented.
-- Current commands: `status`, `verify`, `switch`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
-- Not implemented yet: `sync`, `import-skill`, `doctor`, and `tui`.
+- Current commands: `status`, `verify`, `switch`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Not implemented yet: `sync`, `import-skill`, and `tui`.
 - License: not selected yet.
 
 ## What it does today
@@ -53,6 +53,13 @@ Verify a store:
 
 ```bash
 go run ./cmd/loki --store /path/to/loki verify
+```
+
+Run environment/store diagnostics:
+
+```bash
+go run ./cmd/loki doctor
+go run ./cmd/loki --store /path/to/loki doctor --json
 ```
 
 Register this machine for a profile and bucket policy:

@@ -61,3 +61,65 @@ func TestOpenAppliesConnectionPragmas(t *testing.T) {
 		t.Fatalf("busy_timeout = %d, want 5000", busyTimeout)
 	}
 }
+
+func TestOpenExistingReadOnlyMissingDoesNotCreate(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "state.sqlite")
+	database, exists, err := OpenExistingReadOnly(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("OpenExistingReadOnly() error = %v", err)
+	}
+	if database != nil || exists {
+		t.Fatalf("database=%v exists=%v, want nil false", database, exists)
+	}
+	if _, err := os.Stat(dbPath); !os.IsNotExist(err) {
+		t.Fatalf("database was created or stat failed: %v", err)
+	}
+}
+
+func TestOpenExistingReadOnlyRejectsWrites(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "state.sqlite")
+	writable, err := Bootstrap(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+	writable.Close()
+
+	database, exists, err := OpenExistingReadOnly(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("OpenExistingReadOnly() error = %v", err)
+	}
+	defer database.Close()
+	if !exists {
+		t.Fatal("exists = false, want true")
+	}
+	if _, err := database.Exec(`INSERT INTO kv_state (key, value, updated_at) VALUES ('x', 'y', 'now')`); err == nil {
+		t.Fatal("read-only database write error = nil")
+	}
+}
+
+func TestOpenExistingReadOnlyHandlesSpacesInPath(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "dir with spaces", "state.sqlite")
+	writable, err := Bootstrap(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+	writable.Close()
+
+	database, exists, err := OpenExistingReadOnly(context.Background(), dbPath)
+	if err != nil {
+		t.Fatalf("OpenExistingReadOnly() error = %v", err)
+	}
+	defer database.Close()
+	if !exists {
+		t.Fatal("exists = false, want true")
+	}
+	assertTablesExist(t, database, []string{"schema_migrations", "kv_state"})
+}
+
+func TestSQLiteReadOnlyDSNNormalizesWindowsPath(t *testing.T) {
+	got := sqliteReadOnlyDSN(`C:\Users\alice\AppData\Local\loki-profile-manager\state.sqlite`)
+	want := `file:C:/Users/alice/AppData/Local/loki-profile-manager/state.sqlite?mode=ro`
+	if got != want {
+		t.Fatalf("sqliteReadOnlyDSN() = %q, want %q", got, want)
+	}
+}

@@ -22,6 +22,7 @@ Current commands:
 | `status` | Implemented |
 | `verify` | Implemented |
 | `switch` | Implemented |
+| `doctor` | Implemented |
 | `snapshots list` | Implemented |
 | `snapshots show` | Implemented |
 | `snapshots restore --dry-run` | Implemented |
@@ -38,7 +39,6 @@ Planned but not implemented:
 |---|---|
 | `sync` | Handle captures, conflict copies, pending state, and sync checks. |
 | `import-skill` | Import skills from folder, zip, or markdown. |
-| `doctor` | Inspect environment and report remediation steps. |
 | `tui` | Bubble Tea interactive UI. |
 
 ## `loki status`
@@ -174,6 +174,40 @@ loki --store /path/to/loki verify
 loki --store /path/to/loki verify work
 loki --store /path/to/loki verify work content-dev azure
 loki --store /path/to/loki verify work --json
+```
+
+## `loki doctor`
+
+Inspect local environment, store layout, machine registry, snapshots, operation locks, provider conflict-copy filenames, SQLite state, and Infisical CLI readiness.
+
+```bash
+loki doctor [--json]
+loki --store /path/to/loki doctor [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Uses `--store` first when provided; otherwise reads the configured store path from local key-value state.
+- Does not create local state, a store, machine ID, registry record, snapshot, or target file.
+- Opens existing local SQLite state read-only; a missing database is reported as a warning.
+- Reports warning-only diagnostics with exit code 0.
+- Returns a nonzero exit code when blocking issues exist, such as an invalid configured store layout or SQLite integrity failure.
+- Checks local state paths, SQLite integrity and tables, provider discovery, store layout, operation locks, machine registration and stale heartbeats, snapshot metadata, conflict-copy filenames, and Infisical CLI presence.
+- Does not fetch or print secret values and does not read target or snapshot file contents.
+
+Examples:
+
+```bash
+loki doctor
+loki doctor --json
+loki --store /path/to/loki doctor
+loki --store /path/to/loki doctor --json
 ```
 
 ## `loki switch`

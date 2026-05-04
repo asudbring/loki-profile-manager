@@ -62,5 +62,6 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newMigrateCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newAdoptCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newMachineCommand(opts.Resolver, globals, factory))
+	cmd.AddCommand(newDoctorCommand(opts.Resolver, globals, factory))
 	return cmd
 }

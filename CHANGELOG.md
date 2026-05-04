@@ -6,7 +6,8 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 
 ## Unreleased
 
-- Planned: `sync`, `import-skill`, `doctor`, and `tui` commands remain unimplemented.
+- Added `loki doctor [--json]` for read-only environment, store, machine, snapshot, lock, SQLite, conflict-copy, and Infisical CLI diagnostics.
+- Planned: `sync`, `import-skill`, and `tui` commands remain unimplemented.
 - Planned: packaging/release workflow not yet defined.
 
 ## full-restore-consent-dogfood — 2026-05-04

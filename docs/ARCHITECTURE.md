@@ -30,6 +30,7 @@ flowchart TB
       ManifestPkg[manifest]
       ProfilePkg[profile]
       VerifyPkg[verify]
+      DoctorPkg[doctor]
       ActivationPkg[activation]
       InfisicalPkg[infisical]
     end
@@ -41,6 +42,7 @@ flowchart TB
     App --> StorePkg
     App --> MachinePkg
     App --> VerifyPkg
+    App --> DoctorPkg
     App --> ActivationPkg
     StorePkg --> Store
     MachinePkg --> Registry
@@ -57,7 +59,7 @@ flowchart TB
     App --> Logs
 ```
 
-The CLI is thin. It parses commands and calls the app service. The app service owns local path resolution, logging, database bootstrap, and orchestration. Store data and manifests remain in a user-selected synced folder. Local runtime state remains outside the synced store.
+The CLI is thin. It parses commands and calls the app service. The app service owns local path resolution, logging, database bootstrap, and orchestration. `doctor` uses a diagnostic path that resolves local paths and opens existing SQLite state read-only instead of bootstrapping it. Store data and manifests remain in a user-selected synced folder. Local runtime state remains outside the synced store.
 
 ## Data ownership
 
@@ -282,10 +284,9 @@ This must be verified with the real Infisical CLI before live secret use.
 ## Current limitations
 
 - No setup CLI.
-- Manual snapshot restore exists, but sensitive-looking paths are blocked by default and no per-target selective restore exists yet.
+- Manual snapshot restore exists; sensitive-looking paths are blocked/redacted by default, and per-target restore is available with `--target`.
 - No skill import or mirroring.
-- No sync/conflict-copy workflow.
-- No doctor command.
+- No sync/conflict-copy workflow beyond doctor detection.
 - No Bubble Tea TUI.
 - `OperationMirror` is currently a no-op.
 - Verify does not reuse activation safety classification because it has no SQLite dependency in its current shape.

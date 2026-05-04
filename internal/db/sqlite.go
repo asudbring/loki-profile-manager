@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "modernc.org/sqlite"
 )
@@ -46,6 +48,42 @@ func Bootstrap(ctx context.Context, dbPath string) (*sql.DB, error) {
 		return nil, err
 	}
 	return database, nil
+}
+
+func OpenExistingReadOnly(ctx context.Context, dbPath string) (*sql.DB, bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if dbPath == "" {
+		return nil, false, fmt.Errorf("open sqlite read-only: database path is required")
+	}
+	info, err := os.Stat(dbPath)
+	if os.IsNotExist(err) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, fmt.Errorf("stat sqlite database %s: %w", dbPath, err)
+	}
+	if info.IsDir() {
+		return nil, false, fmt.Errorf("open sqlite read-only: %s is a directory", dbPath)
+	}
+
+	database, err := sql.Open(DriverName, sqliteReadOnlyDSN(dbPath))
+	if err != nil {
+		return nil, true, fmt.Errorf("open sqlite read-only: %w", err)
+	}
+	database.SetMaxOpenConns(1)
+	if err := database.PingContext(ctx); err != nil {
+		database.Close()
+		return nil, true, fmt.Errorf("ping sqlite read-only: %w", err)
+	}
+	return database, true, nil
+}
+
+func sqliteReadOnlyDSN(dbPath string) string {
+	path := strings.ReplaceAll(filepath.ToSlash(dbPath), `\`, "/")
+	path = strings.ReplaceAll(url.PathEscape(path), "%2F", "/")
+	return "file:" + path + "?mode=ro"
 }
 
 func applyPragmas(ctx context.Context, database *sql.DB) error {
