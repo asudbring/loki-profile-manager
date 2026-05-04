@@ -22,6 +22,7 @@ Current commands:
 | `status` | Implemented |
 | `verify` | Implemented |
 | `switch` | Implemented |
+| `sync` | Implemented |
 | `doctor` | Implemented |
 | `snapshots list` | Implemented |
 | `snapshots show` | Implemented |
@@ -37,7 +38,6 @@ Planned but not implemented:
 
 | Command | Planned purpose |
 |---|---|
-| `sync` | Handle captures, conflict copies, pending state, and sync checks. |
 | `import-skill` | Import skills from folder, zip, or markdown. |
 | `tui` | Bubble Tea interactive UI. |
 
@@ -174,6 +174,43 @@ loki --store /path/to/loki verify
 loki --store /path/to/loki verify work
 loki --store /path/to/loki verify work content-dev azure
 loki --store /path/to/loki verify work --json
+```
+
+## `loki sync`
+
+Resolve local provider conflict-copy files in the Loki store using current-machine-wins semantics.
+
+```bash
+loki sync --dry-run [--json]
+loki sync --yes [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Scan and report conflict-copy files without deleting them. |
+| `--yes` | Delete detected conflict-copy files and update the machine heartbeat. |
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Requires a configured store path or `--store`.
+- Requires exactly one of `--dry-run` or `--yes`.
+- Scans only filenames under the Loki store for known OneDrive/Dropbox conflict-copy patterns.
+- `--dry-run` acquires the cooperative store operation lock, reports planned deletions, and does not create a machine ID or delete files.
+- `--yes` acquires the cooperative store operation lock, ensures a local machine ID, requires that machine to be registered, deletes conflict-copy files, and updates heartbeat.
+- Regular files and symlinks with strong provider conflict-copy names are deletable. Broad `case conflict` names, conflict-copy directories, and non-regular filesystem entries are skipped and reported for manual review.
+- No provider APIs are called; OneDrive/Dropbox desktop clients still perform actual cloud replication.
+- This MVP does not implement watcher capture, pending captured changes, or full bidirectional sync.
+- No losing-content backup is created for deleted provider conflict copies.
+
+Examples:
+
+```bash
+loki --store /path/to/loki sync --dry-run
+loki --store /path/to/loki sync --dry-run --json
+loki --store /path/to/loki sync --yes
 ```
 
 ## `loki doctor`

@@ -6,11 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -20,6 +18,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/infisical"
 	"github.com/allensu/loki-profile-manager/internal/machine"
 	"github.com/allensu/loki-profile-manager/internal/store"
+	"github.com/allensu/loki-profile-manager/internal/storesync"
 )
 
 const (
@@ -408,73 +407,24 @@ func addDependencyChecks(ctx context.Context, report *Report) {
 }
 
 func addConflictChecks(report *Report, storePath string) {
-	matches, truncated, err := findConflictCopies(storePath, conflictScanLimit)
+	scan, err := storesync.ScanConflicts(storesync.ConflictScanOptions{Root: storePath, Limit: conflictScanLimit})
 	if err != nil {
 		report.add(Check{Severity: SeverityWarning, Code: "sync.conflict_scan_failed", Category: "sync", Message: err.Error(), Path: storePath})
 		return
 	}
-	if len(matches) == 0 {
+	if len(scan.Conflicts) == 0 {
 		report.add(Check{Severity: SeverityInfo, Code: "sync.conflict_copy_none", Category: "sync", Message: "no provider conflict-copy filenames found", Path: storePath})
 		return
 	}
-	details := map[string]string{"count": strconv.Itoa(len(matches))}
-	if truncated {
+	details := map[string]string{"count": strconv.Itoa(len(scan.Conflicts))}
+	if scan.Truncated {
 		details["truncated"] = "true"
 	}
 	code := "sync.conflict_copy_found"
-	if truncated {
+	if scan.Truncated {
 		code = "sync.conflict_scan_truncated"
 	}
-	report.add(Check{Severity: SeverityWarning, Code: code, Category: "sync", Message: fmt.Sprintf("%d provider conflict-copy filename(s) found", len(matches)), Path: safePath(matches[0]), Remediation: "Inspect conflict copies before deleting or reconciling them.", Details: details})
-}
-
-func findConflictCopies(root string, limit int) ([]string, bool, error) {
-	matches := []string{}
-	truncated := false
-	var scanErr error
-	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil {
-			if scanErr == nil {
-				scanErr = fmt.Errorf("scan %s: %w", path, err)
-			}
-			return nil
-		}
-		if entry.IsDir() {
-			name := entry.Name()
-			if name == ".git" || name == "node_modules" || name == ".DS_Store" {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if !isConflictCopyName(entry.Name()) {
-			return nil
-		}
-		matches = append(matches, path)
-		if len(matches) >= limit {
-			truncated = true
-			return fs.SkipAll
-		}
-		return nil
-	})
-	if errors.Is(err, fs.SkipAll) {
-		err = nil
-	}
-	if err == nil {
-		err = scanErr
-	}
-	sort.Strings(matches)
-	return matches, truncated, err
-}
-
-func isConflictCopyName(name string) bool {
-	lower := strings.ToLower(name)
-	patterns := []string{"conflicted copy", "conflict copy", "sync conflict", "case conflict"}
-	for _, pattern := range patterns {
-		if strings.Contains(lower, pattern) {
-			return true
-		}
-	}
-	return strings.Contains(lower, "conflict") && (strings.Contains(lower, "onedrive") || strings.Contains(lower, "dropbox"))
+	report.add(Check{Severity: SeverityWarning, Code: code, Category: "sync", Message: fmt.Sprintf("%d provider conflict-copy filename(s) found", len(scan.Conflicts)), Path: safePath(scan.Conflicts[0].Path), Remediation: "Inspect conflict copies before deleting or reconciling them.", Details: details})
 }
 
 func safePath(pathValue string) string {

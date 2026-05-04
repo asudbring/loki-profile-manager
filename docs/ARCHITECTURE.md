@@ -31,6 +31,7 @@ flowchart TB
       ProfilePkg[profile]
       VerifyPkg[verify]
       DoctorPkg[doctor]
+      SyncPkg[storesync]
       ActivationPkg[activation]
       InfisicalPkg[infisical]
     end
@@ -43,6 +44,7 @@ flowchart TB
     App --> MachinePkg
     App --> VerifyPkg
     App --> DoctorPkg
+    App --> SyncPkg
     App --> ActivationPkg
     StorePkg --> Store
     MachinePkg --> Registry
@@ -51,6 +53,7 @@ flowchart TB
     VerifyPkg --> ManifestPkg
     VerifyPkg --> ProfilePkg
     ActivationPkg --> ManifestPkg
+    SyncPkg --> Store
     ActivationPkg --> ProfilePkg
     ActivationPkg --> DB
     ActivationPkg --> Snapshots
@@ -235,6 +238,38 @@ sequenceDiagram
 
 Safety validation happens before snapshots and before any target writes. Rollback runs for failures after snapshot creation.
 
+## Sync MVP flow
+
+`loki sync` currently resolves provider conflict-copy files only. It does not call OneDrive/Dropbox APIs, run a background watcher, or capture changed app targets.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant App
+    participant Lock as store lock
+    participant Scanner as storesync scanner
+    participant Store as Loki store
+    participant Machine as machine registry
+
+    User->>CLI: loki sync --dry-run or --yes
+    CLI->>App: Sync(request)
+    App->>Store: Validate layout
+    App->>Lock: Acquire cooperative operation lock
+    App->>Scanner: Scan conflict-copy filenames
+    Scanner->>Store: Walk store paths, no file contents
+    alt dry-run
+        App-->>CLI: planned deletions
+    else yes
+        App->>Machine: Require registered current machine
+        App->>Store: Delete file/symlink conflict copies
+        App->>Machine: Update heartbeat
+        App-->>CLI: deleted/skipped counts
+    end
+```
+
+The current-machine-wins policy means detected provider conflict-copy files are treated as losing provider artifacts. Loki deletes regular-file and symlink conflict copies only after `--yes` when the filename has a strong provider conflict-copy signal. Broad `case conflict` names, directory conflict copies, and non-regular entries are skipped and reported. No losing-content backup is created.
+
 ## Unsafe overwrite protection
 
 The overwrite detector uses `os.Lstat`, symlink inspection, target hashes, and `managed_targets` records.
@@ -286,7 +321,7 @@ This must be verified with the real Infisical CLI before live secret use.
 - No setup CLI.
 - Manual snapshot restore exists; sensitive-looking paths are blocked/redacted by default, and per-target restore is available with `--target`.
 - No skill import or mirroring.
-- No sync/conflict-copy workflow beyond doctor detection.
+- Sync is conflict-copy cleanup only; watcher capture and full provider-state reconciliation are not implemented.
 - No Bubble Tea TUI.
 - `OperationMirror` is currently a no-op.
 - Verify does not reuse activation safety classification because it has no SQLite dependency in its current shape.

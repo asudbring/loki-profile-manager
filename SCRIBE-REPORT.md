@@ -3,7 +3,7 @@
 ## Current documentation state
 
 - `README.md` — root overview, implemented command list, install-from-source quick path, snapshot restore examples, and documentation links.
-- `docs/USAGE.md` — current CLI reference for `status`, `verify`, `doctor`, `switch`, `snapshots list/show/restore`, `machine`, `adopt`, and `migrate` commands.
+- `docs/USAGE.md` — current CLI reference for `status`, `verify`, `doctor`, `switch`, `sync`, `snapshots list/show/restore`, `machine`, `adopt`, and `migrate` commands.
 - `docs/INSTALL.md` — release archive install, checksum verification, source install, cross-platform validation, Docker fallback, and smoke testing.
 - `docs/ARCHITECTURE.md` — system overview, data ownership, store layout, local state, SQLite schema, manifest model, switch flow, safety model, rollback, and current limitations.
 - `docs/DEVELOPMENT.md` — package map, test/build/release commands, fixture guidance, and secret-handling rules.
@@ -44,11 +44,11 @@
 
 - `LICENSE` — not created because no license choice exists. README states all rights reserved until a license file is added.
 - `docs/DEPLOY.md` — not applicable; this is a local CLI with no deploy target.
-- `sync`, `import-skill`, and `tui` — documented as planned but not implemented.
+- `import-skill` and `tui` — documented as planned but not implemented. `sync` is implemented only for provider conflict-copy cleanup, not watcher capture/full reconciliation.
 - Full real-dotfile snapshot restore dogfood — deferred until there is explicit need beyond targeted restore validation.
 
 ## Suggested follow-ups
 
 - Use semver tags such as `v0.1.0-doctor.1` for packaged prereleases; milestone tags remain dogfood markers only.
-- Re-run Scribe after `sync`, `import-skill`, or TUI land.
+- Re-run Scribe after `import-skill`, watcher/full sync, or TUI land.
 - Consider a non-interactive full-restore override only if a future automation workflow needs it; keep default interactive consent.

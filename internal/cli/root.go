@@ -60,6 +60,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newStatusCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newVerifyCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newSwitchCommand(opts.Resolver, globals, factory))
+	cmd.AddCommand(newSyncCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newSnapshotsCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newMigrateCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newAdoptCommand(opts.Resolver, globals, factory))

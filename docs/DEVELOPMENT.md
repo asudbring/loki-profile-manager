@@ -203,7 +203,7 @@ For Infisical-related tests:
 
 ## Current implementation phase
 
-Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, and `doctor` diagnostics. Sensitive-looking restore targets remain blocked by default.
+Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, and sync conflict-copy cleanup. Sensitive-looking restore targets remain blocked by default.
 
 Relevant historical handoff:
 
