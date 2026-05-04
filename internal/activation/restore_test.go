@@ -72,6 +72,60 @@ func TestRestoreRemovesCreatedTarget(t *testing.T) {
 	}
 }
 
+func TestRestoreTargetOnlyChangesSelectedPath(t *testing.T) {
+	ctx := context.Background()
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	first := filepath.Join(root, "first.txt")
+	second := filepath.Join(root, "second.txt")
+	writeFile(t, first, "first-old")
+	writeFile(t, second, "second-old")
+	snapshot, err := CreateSnapshot(ctx, CreateSnapshotRequest{Database: database, SnapshotRoot: filepath.Join(root, "snapshots"), Plan: Plan{Profile: "work", Operations: []Operation{{Type: OperationCopy, TargetPath: first}, {Type: OperationCopy, TargetPath: second}}}, PreviousActiveProfile: "dev"})
+	if err != nil {
+		t.Fatalf("CreateSnapshot() error = %v", err)
+	}
+	writeFile(t, first, "first-new")
+	writeFile(t, second, "second-new")
+	restored, err := Restore(ctx, RestoreRequest{Database: database, LocalPaths: config.LocalPaths{SnapshotDir: filepath.Join(root, "snapshots")}, Snapshot: snapshot, Target: first})
+	if err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	if restored.Changed != 1 || len(restored.Plan.Targets) != 1 || restored.Plan.Targets[0].Entry.TargetPath != first {
+		t.Fatalf("restored = %+v", restored)
+	}
+	if got := readFile(t, first); got != "first-old" {
+		t.Fatalf("first = %q", got)
+	}
+	if got := readFile(t, second); got != "second-new" {
+		t.Fatalf("second = %q", got)
+	}
+}
+
+func TestRestoreTargetDoesNotRestoreActiveState(t *testing.T) {
+	ctx := context.Background()
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	target := filepath.Join(root, "target.txt")
+	writeFile(t, target, "old")
+	snapshot, err := CreateSnapshot(ctx, CreateSnapshotRequest{Database: database, SnapshotRoot: filepath.Join(root, "snapshots"), Plan: Plan{Profile: "work", Operations: []Operation{{Type: OperationCopy, TargetPath: target}}}, PreviousActiveProfile: "dev", PreviousActiveBuckets: []string{"old"}})
+	if err != nil {
+		t.Fatalf("CreateSnapshot() error = %v", err)
+	}
+	writeFile(t, target, "new")
+	if err := SetActiveState(ctx, database, "work", []string{"new"}); err != nil {
+		t.Fatalf("SetActiveState() error = %v", err)
+	}
+	if _, err := Restore(ctx, RestoreRequest{Database: database, LocalPaths: config.LocalPaths{SnapshotDir: filepath.Join(root, "snapshots")}, Snapshot: snapshot, Target: target}); err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	profile, buckets, ok, err := activeStateForTest(ctx, database)
+	if err != nil || !ok || profile != "work" || len(buckets) != 1 || buckets[0] != "new" {
+		t.Fatalf("active state = %q %+v %v %v", profile, buckets, ok, err)
+	}
+}
+
 func TestRestoreBlocksSensitiveTarget(t *testing.T) {
 	ctx := context.Background()
 	database := activationDB(t)

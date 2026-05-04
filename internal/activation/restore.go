@@ -18,6 +18,7 @@ type RestoreRequest struct {
 	PreviousActiveProfile string
 	PreviousActiveBuckets []string
 	Now                   func() time.Time
+	Target                string
 	ExpectedFingerprint   string
 	FailAfter             int
 }
@@ -33,7 +34,7 @@ func Restore(ctx context.Context, req RestoreRequest) (RestoreResult, error) {
 	if req.LocalPaths.SnapshotDir == "" {
 		return RestoreResult{}, fmt.Errorf("restore snapshot: snapshot directory is required")
 	}
-	plan, err := BuildRestoreDryRunPlan(ctx, req.Snapshot)
+	plan, err := BuildRestoreDryRunPlanWithOptions(ctx, req.Snapshot, RestorePlanOptions{Target: req.Target})
 	if err != nil {
 		return RestoreResult{}, err
 	}
@@ -100,11 +101,31 @@ func Restore(ctx context.Context, req RestoreRequest) (RestoreResult, error) {
 		}
 	}
 	if req.Database != nil {
-		if err := RestoreDatabaseState(ctx, req.Database, plan.Snapshot.ManagedTargets, plan.Snapshot.PreviousActiveProfile, plan.Snapshot.PreviousActiveBuckets); err != nil {
+		var err error
+		if plan.TargetFilter == "" {
+			err = RestoreDatabaseState(ctx, req.Database, plan.Snapshot.ManagedTargets, plan.Snapshot.PreviousActiveProfile, plan.Snapshot.PreviousActiveBuckets)
+		} else {
+			err = RestoreManagedTargetsAtomic(ctx, req.Database, filterManagedTargetSnapshots(plan.Snapshot.ManagedTargets, plan.Targets))
+		}
+		if err != nil {
 			return result, rollbackAfterRestoreFailure(ctx, req.Database, rollbackSnapshot, plan.Snapshot, err)
 		}
 	}
 	return result, nil
+}
+
+func filterManagedTargetSnapshots(targets []ManagedTargetSnapshot, restoreTargets []RestoreDryRunTarget) []ManagedTargetSnapshot {
+	selected := map[string]bool{}
+	for _, target := range restoreTargets {
+		selected[target.Entry.TargetPath] = true
+	}
+	out := []ManagedTargetSnapshot{}
+	for _, target := range targets {
+		if selected[target.TargetPath] {
+			out = append(out, target)
+		}
+	}
+	return out
 }
 
 func snapshotTargetIndex(snapshot Snapshot, targetPath string) int {

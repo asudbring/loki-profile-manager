@@ -346,6 +346,48 @@ func TestRestoreSnapshotYesAfterDryRunRestores(t *testing.T) {
 	}
 }
 
+func TestRestoreSnapshotTargetGuardIsScoped(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	root := t.TempDir()
+	firstSource := filepath.Join(root, "first-source.txt")
+	secondSource := filepath.Join(root, "second-source.txt")
+	firstTarget := filepath.Join(root, "first.txt")
+	secondTarget := filepath.Join(root, "second.txt")
+	if err := os.WriteFile(firstSource, []byte("first"), 0o644); err != nil {
+		t.Fatalf("WriteFile(firstSource) error = %v", err)
+	}
+	if err := os.WriteFile(secondSource, []byte("second"), 0o644); err != nil {
+		t.Fatalf("WriteFile(secondSource) error = %v", err)
+	}
+	plan := activation.Plan{Profile: "work", Operations: []activation.Operation{{Type: activation.OperationCopy, SourcePath: firstSource, TargetPath: firstTarget}, {Type: activation.OperationCopy, SourcePath: secondSource, TargetPath: secondTarget}}}
+	result, err := activation.Execute(ctx, activation.ExecuteRequest{Database: svc.database, LocalPaths: svc.paths, Plan: plan})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if _, err := svc.RestoreSnapshot(ctx, SnapshotRestoreRequest{SnapshotID: result.Snapshot.SnapshotID, DryRun: true, Target: firstTarget}); err != nil {
+		t.Fatalf("RestoreSnapshot(first --dry-run) error = %v", err)
+	}
+	_, err = svc.RestoreSnapshot(ctx, SnapshotRestoreRequest{SnapshotID: result.Snapshot.SnapshotID, Yes: true, Target: secondTarget})
+	if err == nil || !strings.Contains(err.Error(), "dry-run guard") {
+		t.Fatalf("RestoreSnapshot(second --yes) error = %v", err)
+	}
+	restored, err := svc.RestoreSnapshot(ctx, SnapshotRestoreRequest{SnapshotID: result.Snapshot.SnapshotID, Yes: true, Target: firstTarget})
+	if err != nil {
+		t.Fatalf("RestoreSnapshot(first --yes) error = %v", err)
+	}
+	if !restored.Restored || restored.Summary.TargetCount != 1 {
+		t.Fatalf("restored = %+v", restored)
+	}
+	if _, err := os.Stat(firstTarget); !os.IsNotExist(err) {
+		t.Fatalf("first target exists after restore or stat err = %v", err)
+	}
+	if got := string(mustReadAppTest(t, secondTarget)); got != "second" {
+		t.Fatalf("second target changed to %q", got)
+	}
+}
+
 func TestRegisterPolicyHeartbeatAndDeleteMachine(t *testing.T) {
 	svc := testService(t)
 	defer svc.Close()

@@ -288,6 +288,8 @@ Preview or execute a guarded restore for one local activation snapshot.
 ```bash
 loki snapshots restore <snapshot-id> --dry-run [--json]
 loki snapshots restore <snapshot-id> --yes [--json]
+loki snapshots restore <snapshot-id> --target <path> --dry-run [--json]
+loki snapshots restore <snapshot-id> --target <path> --yes [--json]
 ```
 
 Flags:
@@ -296,6 +298,7 @@ Flags:
 |---|---|
 | `--dry-run` | Preview restore actions without writing target files and record a short-lived restore guard. |
 | `--yes` | Execute restore after a matching prior dry-run. Mutually exclusive with `--dry-run`. |
+| `--target <path>` | Restore only the exact matching snapshot target path. |
 | `--json` | Emit machine-readable JSON. |
 
 Behavior:
@@ -304,9 +307,11 @@ Behavior:
 - `--dry-run` reads snapshot metadata and current target metadata only.
 - `--dry-run` computes current hashes for non-sensitive target paths to show whether created targets still match expected hashes.
 - `--dry-run` records a 15-minute restore guard only when the plan has no blockers.
-- `--yes` requires the guard fingerprint to match the current snapshot, target list, hashes, modes, and blockers from the prior dry-run.
+- `--yes` requires the guard fingerprint to match the current snapshot, restore scope, target list, hashes, modes, and blockers from the prior dry-run.
 - `--yes` creates a new pre-restore snapshot of current target files and local state before any writes.
-- `--yes` restores target files, symlinks, managed-target DB rows, and active profile/buckets from the selected snapshot.
+- Full `--yes` restores target files, symlinks, managed-target DB rows, and active profile/buckets from the selected snapshot.
+- `--target` restores only the selected snapshot target and its managed-target row. It does not restore global active profile/buckets.
+- `--target` must exactly match a snapshot target path; restoring a child inside a directory snapshot is not supported unless that child was captured as its own target.
 - If restore fails after writes begin, Loki rolls back using the pre-restore snapshot and reports that snapshot ID/path for emergency recovery.
 - Sensitive-looking target paths such as `.ssh`, `.env`, token, credential, private, `.pem`, or `.key` paths are blocked and redacted by default.
 - Never prints target file contents or snapshot entry contents.
@@ -316,6 +321,8 @@ Examples:
 ```bash
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --dry-run
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --yes
+loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --target ~/.config/git/ignore --dry-run
+loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --target ~/.config/git/ignore --yes
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --dry-run --json
 ```
 

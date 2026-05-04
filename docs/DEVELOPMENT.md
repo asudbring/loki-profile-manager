@@ -125,7 +125,7 @@ go build -o loki.exe ./cmd/loki
 - Use Docker when the host does not have Go installed.
 - Test Windows path expansion and symlink behavior on a Windows VM before dogfooding.
 - Test macOS symlink and local-state paths on a macOS host before dogfooding.
-- For rollback hardening, validate `loki snapshots list`, `loki snapshots show <id>`, `loki snapshots restore <id> --dry-run`, and guarded `loki snapshots restore <id> --yes` on disposable targets before real dotfile recovery.
+- For rollback hardening, validate `loki snapshots list`, `loki snapshots show <id>`, `loki snapshots restore <id> --dry-run`, guarded `loki snapshots restore <id> --yes`, and `--target <path>` scoped restore on disposable targets before real dotfile recovery.
 
 ## Local state during tests
 
@@ -175,7 +175,7 @@ For Infisical-related tests:
 
 ## Current implementation phase
 
-Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, and guarded manual restore. Sensitive-looking restore targets remain blocked by default.
+Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, and scoped `--target` restore. Sensitive-looking restore targets remain blocked by default.
 
 Relevant historical handoff:
 

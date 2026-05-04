@@ -102,6 +102,7 @@ func newSnapshotsShowCommand(resolver config.PathResolver, globals *globalOption
 func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
 	var dryRun bool
 	var yes bool
+	var target string
 	var jsonOutput bool
 	cmd := &cobra.Command{
 		Use:   "restore <snapshot-id>",
@@ -120,7 +121,7 @@ func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOpt
 			}
 			defer svc.Close()
 
-			result, err := svc.RestoreSnapshot(ctx, app.SnapshotRestoreRequest{SnapshotID: args[0], DryRun: dryRun, Yes: yes})
+			result, err := svc.RestoreSnapshot(ctx, app.SnapshotRestoreRequest{SnapshotID: args[0], DryRun: dryRun, Yes: yes, Target: target})
 			if err != nil {
 				return err
 			}
@@ -135,6 +136,7 @@ func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOpt
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview restore actions without writing files and record a restore guard")
 	cmd.Flags().BoolVar(&yes, "yes", false, "execute restore after a matching prior dry-run")
+	cmd.Flags().StringVar(&target, "target", "", "restore only the matching target path from the snapshot")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
 	return cmd
 }
@@ -227,6 +229,9 @@ func printSnapshotRestore(cmd *cobra.Command, result app.SnapshotRestoreResult) 
 		fmt.Fprintln(out, "Loki snapshot restore dry-run")
 	}
 	fmt.Fprintf(out, "ID: %s\n", result.SnapshotID)
+	if result.TargetFilter != "" || result.TargetFilterRedacted {
+		fmt.Fprintf(out, "Target filter: %s\n", formatRestoreTargetFilter(result))
+	}
 	if result.Restored {
 		fmt.Fprintln(out, "Mode: restore executed after matching dry-run")
 		fmt.Fprintf(out, "Pre-restore snapshot: %s\n", result.PreRestoreSnapshotID)
@@ -235,7 +240,7 @@ func printSnapshotRestore(cmd *cobra.Command, result app.SnapshotRestoreResult) 
 		fmt.Fprintln(out, "Mode: dry-run only; no files or local state were changed")
 		if result.GuardRecorded {
 			fmt.Fprintf(out, "Guard: recorded, expires=%s\n", result.GuardExpiresAt)
-			fmt.Fprintf(out, "Run: loki snapshots restore %s --yes\n", result.SnapshotID)
+			fmt.Fprintf(out, "Run: loki snapshots restore %s%s --yes\n", result.SnapshotID, formatRestoreTargetFlag(result))
 		} else if len(result.Blockers) > 0 {
 			fmt.Fprintln(out, "Guard: not recorded")
 		}
@@ -263,6 +268,20 @@ func printSnapshotRestore(cmd *cobra.Command, result app.SnapshotRestoreResult) 
 	for _, warning := range result.Warnings {
 		fmt.Fprintf(out, "Warning: %s\n", warning)
 	}
+}
+
+func formatRestoreTargetFilter(result app.SnapshotRestoreResult) string {
+	if result.TargetFilterRedacted || result.TargetFilter == "" {
+		return "(redacted-sensitive-path)"
+	}
+	return result.TargetFilter
+}
+
+func formatRestoreTargetFlag(result app.SnapshotRestoreResult) string {
+	if result.TargetFilterRedacted || result.TargetFilter == "" {
+		return ""
+	}
+	return " --target " + result.TargetFilter
 }
 
 func printSnapshotRestoreTarget(out interface{ Write([]byte) (int, error) }, target app.SnapshotRestoreDryRunTarget) {

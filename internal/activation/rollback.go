@@ -91,6 +91,24 @@ func RestoreManagedTargets(ctx context.Context, database *sql.DB, targets []Mana
 	return nil
 }
 
+func RestoreManagedTargetsAtomic(ctx context.Context, database *sql.DB, targets []ManagedTargetSnapshot) error {
+	if database == nil {
+		return fmt.Errorf("restore managed targets: database is nil")
+	}
+	tx, err := database.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin restore managed targets: %w", err)
+	}
+	defer tx.Rollback()
+	if err := restoreManagedTargetsTx(ctx, tx, targets); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit restore managed targets: %w", err)
+	}
+	return nil
+}
+
 func RestoreDatabaseState(ctx context.Context, database *sql.DB, targets []ManagedTargetSnapshot, profile string, buckets []string) error {
 	if database == nil {
 		return fmt.Errorf("restore database state: database is nil")
@@ -100,16 +118,8 @@ func RestoreDatabaseState(ctx context.Context, database *sql.DB, targets []Manag
 		return fmt.Errorf("begin restore database state: %w", err)
 	}
 	defer tx.Rollback()
-	for _, target := range targets {
-		if target.Found {
-			if err := putManagedTargetTx(ctx, tx, target.Record); err != nil {
-				return err
-			}
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM managed_targets WHERE target_path = ?`, target.TargetPath); err != nil {
-			return fmt.Errorf("delete managed target %s: %w", target.TargetPath, err)
-		}
+	if err := restoreManagedTargetsTx(ctx, tx, targets); err != nil {
+		return err
 	}
 	encoded, err := json.Marshal(cloneStrings(buckets))
 	if err != nil {
@@ -127,6 +137,21 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit restore database state: %w", err)
+	}
+	return nil
+}
+
+func restoreManagedTargetsTx(ctx context.Context, tx *sql.Tx, targets []ManagedTargetSnapshot) error {
+	for _, target := range targets {
+		if target.Found {
+			if err := putManagedTargetTx(ctx, tx, target.Record); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM managed_targets WHERE target_path = ?`, target.TargetPath); err != nil {
+			return fmt.Errorf("delete managed target %s: %w", target.TargetPath, err)
+		}
 	}
 	return nil
 }

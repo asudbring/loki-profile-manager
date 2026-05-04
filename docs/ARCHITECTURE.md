@@ -258,7 +258,7 @@ Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with
 
 `loki snapshots restore <id> --dry-run` previews restore actions without writing target files or mutating active state. It hashes only current non-sensitive targets for conflict context, redacts sensitive-looking paths, blocks sensitive targets by default, and records a short-lived restore guard when the plan is restorable.
 
-`loki snapshots restore <id> --yes` requires the guard fingerprint from a matching prior dry-run. Before any restore write, it creates a pre-restore snapshot of current target files, managed-target rows, and active profile/buckets with retention disabled. It then restores target files/symlinks from the selected snapshot, restores managed-target rows and active state, and clears the guard. If a restore write fails, Loki rolls back with the pre-restore snapshot and preserves that snapshot for emergency recovery.
+`loki snapshots restore <id> --yes` requires the guard fingerprint from a matching prior dry-run. Before any restore write, it creates a pre-restore snapshot of current target files, managed-target rows, and active profile/buckets with retention disabled. It then restores target files/symlinks from the selected snapshot, restores managed-target rows and active state, and clears the guard. If a restore write fails, Loki rolls back with the pre-restore snapshot and preserves that snapshot for emergency recovery. `--target <path>` scopes both guard and restore to one exact snapshot target; targeted restore updates only that target and its managed-target row, not global active profile/buckets.
 
 ## Infisical integration
 

@@ -100,6 +100,31 @@ func TestSnapshotsRestoreDryRunCLI(t *testing.T) {
 	}
 }
 
+func TestSnapshotsRestoreDryRunTargetCLI(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "restore-target.txt", "hello")
+	registerSwitchTestMachine(t, home, storePath)
+	switchCmd, switchOut, _ := switchTestCommand(home)
+	switchCmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := switchCmd.Execute(); err != nil {
+		t.Fatalf("switch error = %v", err)
+	}
+	snapshotID := snapshotIDFromSwitchOutput(t, switchOut.String())
+	target := filepath.ToSlash(filepath.Join(home, "restore-target.txt"))
+
+	cmd, out, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--target", target, "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("restore target dry-run error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"Target filter:", target, "Guard: recorded", "--target " + target} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("restore target dry-run missing %q: %s", want, got)
+		}
+	}
+}
+
 func TestSnapshotsRestoreYesAfterDryRunCLI(t *testing.T) {
 	home := t.TempDir()
 	storePath := cliSwitchStore(t, "restore-yes.txt", "hello")

@@ -28,12 +28,17 @@ const (
 )
 
 type RestoreDryRunPlan struct {
-	Snapshot    Snapshot              `json:"snapshot"`
-	Targets     []RestoreDryRunTarget `json:"targets"`
-	Warnings    []string              `json:"warnings,omitempty"`
-	Blockers    []string              `json:"blockers,omitempty"`
-	CanRestore  bool                  `json:"can_restore"`
-	Fingerprint string                `json:"fingerprint,omitempty"`
+	Snapshot     Snapshot              `json:"snapshot"`
+	TargetFilter string                `json:"target_filter,omitempty"`
+	Targets      []RestoreDryRunTarget `json:"targets"`
+	Warnings     []string              `json:"warnings,omitempty"`
+	Blockers     []string              `json:"blockers,omitempty"`
+	CanRestore   bool                  `json:"can_restore"`
+	Fingerprint  string                `json:"fingerprint,omitempty"`
+}
+
+type RestorePlanOptions struct {
+	Target string
 }
 
 type RestoreDryRunTarget struct {
@@ -51,8 +56,16 @@ type RestoreDryRunTarget struct {
 }
 
 func BuildRestoreDryRunPlan(ctx context.Context, snapshot Snapshot) (RestoreDryRunPlan, error) {
-	plan := RestoreDryRunPlan{Snapshot: snapshotWithDefaults(snapshot, snapshot.SnapshotID, snapshot.Path)}
-	for _, entry := range plan.Snapshot.Targets {
+	return BuildRestoreDryRunPlanWithOptions(ctx, snapshot, RestorePlanOptions{})
+}
+
+func BuildRestoreDryRunPlanWithOptions(ctx context.Context, snapshot Snapshot, opts RestorePlanOptions) (RestoreDryRunPlan, error) {
+	plan := RestoreDryRunPlan{Snapshot: snapshotWithDefaults(snapshot, snapshot.SnapshotID, snapshot.Path), TargetFilter: strings.TrimSpace(opts.Target)}
+	entries, err := filteredSnapshotEntries(plan.Snapshot.Targets, plan.TargetFilter)
+	if err != nil {
+		return RestoreDryRunPlan{}, err
+	}
+	for _, entry := range entries {
 		select {
 		case <-ctx.Done():
 			return RestoreDryRunPlan{}, ctx.Err()
@@ -74,6 +87,45 @@ func BuildRestoreDryRunPlan(ctx context.Context, snapshot Snapshot) (RestoreDryR
 	}
 	plan.Fingerprint = fingerprint
 	return plan, nil
+}
+
+func filteredSnapshotEntries(entries []SnapshotEntry, targetFilter string) ([]SnapshotEntry, error) {
+	targetFilter = strings.TrimSpace(targetFilter)
+	if targetFilter == "" {
+		return entries, nil
+	}
+	matches := []SnapshotEntry{}
+	for _, entry := range entries {
+		if restorePathMatches(entry.TargetPath, targetFilter) {
+			matches = append(matches, entry)
+		}
+	}
+	if len(matches) == 0 {
+		return nil, fmt.Errorf("snapshots restore: target not found in snapshot")
+	}
+	if len(matches) > 1 {
+		return nil, fmt.Errorf("snapshots restore: target filter matched multiple snapshot entries")
+	}
+	return matches, nil
+}
+
+func restorePathMatches(snapshotTarget, targetFilter string) bool {
+	if snapshotTarget == "" || targetFilter == "" {
+		return false
+	}
+	if cleanPathForRestoreMatch(snapshotTarget) == cleanPathForRestoreMatch(targetFilter) {
+		return true
+	}
+	snapshotAbs, snapshotErr := filepath.Abs(snapshotTarget)
+	filterAbs, filterErr := filepath.Abs(targetFilter)
+	if snapshotErr == nil && filterErr == nil && cleanPathForRestoreMatch(snapshotAbs) == cleanPathForRestoreMatch(filterAbs) {
+		return true
+	}
+	return false
+}
+
+func cleanPathForRestoreMatch(value string) string {
+	return filepath.Clean(strings.TrimSpace(value))
 }
 
 func ValidateRestorePlan(plan RestoreDryRunPlan) error {
@@ -112,13 +164,14 @@ func RestorePlanFingerprint(plan RestoreDryRunPlan) (string, error) {
 		return targets[i].TargetPath < targets[j].TargetPath
 	})
 	payload := restorePlanFingerprintPayload{
-		Version:    1,
-		SnapshotID: plan.Snapshot.SnapshotID,
-		CreatedAt:  plan.Snapshot.CreatedAt,
-		Path:       plan.Snapshot.Path,
-		CanRestore: plan.CanRestore,
-		Blockers:   cloneStrings(plan.Blockers),
-		Targets:    targets,
+		Version:      2,
+		SnapshotID:   plan.Snapshot.SnapshotID,
+		CreatedAt:    plan.Snapshot.CreatedAt,
+		Path:         plan.Snapshot.Path,
+		TargetFilter: plan.TargetFilter,
+		CanRestore:   plan.CanRestore,
+		Blockers:     cloneStrings(plan.Blockers),
+		Targets:      targets,
 	}
 	content, err := json.Marshal(payload)
 	if err != nil {
@@ -129,13 +182,14 @@ func RestorePlanFingerprint(plan RestoreDryRunPlan) (string, error) {
 }
 
 type restorePlanFingerprintPayload struct {
-	Version    int                            `json:"version"`
-	SnapshotID string                         `json:"snapshot_id"`
-	CreatedAt  string                         `json:"created_at"`
-	Path       string                         `json:"path"`
-	CanRestore bool                           `json:"can_restore"`
-	Blockers   []string                       `json:"blockers,omitempty"`
-	Targets    []restorePlanFingerprintTarget `json:"targets"`
+	Version      int                            `json:"version"`
+	SnapshotID   string                         `json:"snapshot_id"`
+	CreatedAt    string                         `json:"created_at"`
+	Path         string                         `json:"path"`
+	TargetFilter string                         `json:"target_filter,omitempty"`
+	CanRestore   bool                           `json:"can_restore"`
+	Blockers     []string                       `json:"blockers,omitempty"`
+	Targets      []restorePlanFingerprintTarget `json:"targets"`
 }
 
 type restorePlanFingerprintTarget struct {

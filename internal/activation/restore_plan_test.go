@@ -75,6 +75,62 @@ func TestBuildRestoreDryRunPlanRejectsSnapshotEntryOutsideSnapshot(t *testing.T)
 	}
 }
 
+func TestBuildRestoreDryRunPlanTargetFiltersOneExactPath(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "first.txt")
+	second := filepath.Join(root, "second.txt")
+	firstEntry := filepath.Join(root, "snap", "entries", "000")
+	secondEntry := filepath.Join(root, "snap", "entries", "001")
+	writeFile(t, first, "first-new")
+	writeFile(t, second, "second-new")
+	writeFile(t, firstEntry, "first-old")
+	writeFile(t, secondEntry, "second-old")
+	firstHash, err := HashPath(firstEntry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondHash, err := HashPath(secondEntry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	snapshot := Snapshot{SnapshotID: "snap", Path: filepath.Join(root, "snap"), Targets: []SnapshotEntry{
+		{TargetPath: first, Kind: "file", Hash: firstHash, SnapshotPath: firstEntry},
+		{TargetPath: second, Kind: "file", Hash: secondHash, SnapshotPath: secondEntry},
+	}}
+	full, err := BuildRestoreDryRunPlan(context.Background(), snapshot)
+	if err != nil {
+		t.Fatalf("BuildRestoreDryRunPlan() error = %v", err)
+	}
+	filtered, err := BuildRestoreDryRunPlanWithOptions(context.Background(), snapshot, RestorePlanOptions{Target: second})
+	if err != nil {
+		t.Fatalf("BuildRestoreDryRunPlanWithOptions() error = %v", err)
+	}
+	if len(filtered.Targets) != 1 || filtered.Targets[0].Entry.TargetPath != second || filtered.TargetFilter != second {
+		t.Fatalf("filtered = %+v", filtered)
+	}
+	if filtered.Fingerprint == full.Fingerprint {
+		t.Fatal("filtered fingerprint equals full fingerprint")
+	}
+}
+
+func TestBuildRestoreDryRunPlanTargetMissing(t *testing.T) {
+	snapshot := Snapshot{SnapshotID: "snap", Targets: []SnapshotEntry{{TargetPath: filepath.Join(t.TempDir(), "target"), Kind: "missing"}}}
+	_, err := BuildRestoreDryRunPlanWithOptions(context.Background(), snapshot, RestorePlanOptions{Target: filepath.Join(t.TempDir(), "other")})
+	if err == nil || !strings.Contains(err.Error(), "target not found") {
+		t.Fatalf("BuildRestoreDryRunPlanWithOptions() error = %v", err)
+	}
+}
+
+func TestBuildRestoreDryRunPlanTargetDoesNotMatchDirectoryChild(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "dir")
+	snapshot := Snapshot{SnapshotID: "snap", Targets: []SnapshotEntry{{TargetPath: dir, Kind: "directory"}}}
+	_, err := BuildRestoreDryRunPlanWithOptions(context.Background(), snapshot, RestorePlanOptions{Target: filepath.Join(dir, "child.txt")})
+	if err == nil || !strings.Contains(err.Error(), "target not found") {
+		t.Fatalf("BuildRestoreDryRunPlanWithOptions() error = %v", err)
+	}
+}
+
 func TestBuildRestoreDryRunPlanSensitiveTargetSkipsHash(t *testing.T) {
 	root := t.TempDir()
 	target := filepath.Join(root, ".ssh", "id_ed25519")
