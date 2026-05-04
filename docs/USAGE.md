@@ -308,9 +308,10 @@ Behavior:
 - `--dry-run` computes current hashes for non-sensitive target paths to show whether created targets still match expected hashes.
 - `--dry-run` records a 15-minute restore guard only when the plan has no blockers.
 - `--yes` requires the guard fingerprint to match the current snapshot, restore scope, target list, hashes, modes, and blockers from the prior dry-run.
+- Full `--yes` without `--target` also requires an interactive confirmation phrase: `RESTORE <snapshot-id>`. The prompt is written to stderr, including when `--json` is requested.
 - `--yes` creates a new pre-restore snapshot of current target files and local state before any writes.
 - Full `--yes` restores target files, symlinks, managed-target DB rows, and active profile/buckets from the selected snapshot.
-- `--target` restores only the selected snapshot target and its managed-target row. It does not restore global active profile/buckets.
+- `--target` restores only the selected snapshot target and its managed-target row. It does not restore global active profile/buckets and does not prompt for full active-state restore consent.
 - `--target` must exactly match a snapshot target path; restoring a child inside a directory snapshot is not supported unless that child was captured as its own target.
 - If restore fails after writes begin, Loki rolls back using the pre-restore snapshot and reports that snapshot ID/path for emergency recovery.
 - Sensitive-looking target paths such as `.ssh`, `.env`, token, credential, private, `.pem`, or `.key` paths are blocked and redacted by default.
@@ -321,6 +322,7 @@ Examples:
 ```bash
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --dry-run
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --yes
+# Type the exact prompt phrase: RESTORE 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --target ~/.config/git/ignore --dry-run
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --target ~/.config/git/ignore --yes
 loki snapshots restore 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --dry-run --json

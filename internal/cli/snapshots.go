@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
 	"strings"
 
@@ -109,6 +111,9 @@ func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOpt
 		Short: "Restore a local activation snapshot safely.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireFullRestoreConsent(cmd, args[0], target, dryRun, yes); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			svc, err := factory(ctx, app.Options{
 				Resolver:      resolver,
@@ -139,6 +144,26 @@ func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOpt
 	cmd.Flags().StringVar(&target, "target", "", "restore only the matching target path from the snapshot")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
 	return cmd
+}
+
+func requireFullRestoreConsent(cmd *cobra.Command, snapshotID, target string, dryRun, yes bool) error {
+	if dryRun || !yes || strings.TrimSpace(target) != "" {
+		return nil
+	}
+	expected := "RESTORE " + snapshotID
+	errOut := cmd.ErrOrStderr()
+	fmt.Fprintf(errOut, "Full snapshot restore will restore all targets and local active-state from snapshot %s.\n", snapshotID)
+	fmt.Fprintln(errOut, "This can remove files created by Loki activation and overwrite managed target paths.")
+	fmt.Fprintln(errOut, "Use --target <path> for a targeted restore that avoids full active-state restore.")
+	fmt.Fprintf(errOut, "Type %q to continue: ", expected)
+	line, err := bufio.NewReader(cmd.InOrStdin()).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("snapshots restore: read full restore consent: %w", err)
+	}
+	if strings.TrimSpace(line) != expected {
+		return fmt.Errorf("snapshots restore: full restore consent not confirmed")
+	}
+	return nil
 }
 
 func printSnapshotList(cmd *cobra.Command, result app.SnapshotListResult) {

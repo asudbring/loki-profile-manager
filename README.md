@@ -5,8 +5,8 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: private.
-- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented.
-- Current commands: `status`, `verify`, `switch`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented; guarded snapshot inspection and restore implemented.
+- Current commands: `status`, `verify`, `switch`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `sync`, `import-skill`, `doctor`, and `tui`.
 - License: not selected yet.
 
@@ -75,6 +75,18 @@ go run ./cmd/loki --store /path/to/loki switch work --yes
 
 `--yes` does not bypass unsafe overwrite protection.
 
+Inspect and restore snapshots:
+
+```bash
+go run ./cmd/loki snapshots list
+go run ./cmd/loki snapshots show <snapshot-id>
+go run ./cmd/loki snapshots restore <snapshot-id> --dry-run
+go run ./cmd/loki snapshots restore <snapshot-id> --target ~/.config/git/ignore --dry-run
+go run ./cmd/loki snapshots restore <snapshot-id> --target ~/.config/git/ignore --yes
+```
+
+Full snapshot restore without `--target` requires a matching prior dry-run guard and an interactive confirmation phrase: `RESTORE <snapshot-id>`. Targeted restore still requires the dry-run guard but does not prompt for full active-state restore consent.
+
 ## Documentation
 
 - [`docs/USAGE.md`](docs/USAGE.md) — current CLI commands, flags, and behavior.
@@ -86,6 +98,7 @@ go run ./cmd/loki --store /path/to/loki switch work --yes
 - [`tests/windows-arm64-vm-copilot.ai.md`](tests/windows-arm64-vm-copilot.ai.md) — Copilot CLI prompt for running Windows ARM64 VM validation.
 - [`tests/cross-machine-dogfood-copilot.ai.md`](tests/cross-machine-dogfood-copilot.ai.md) — Copilot CLI prompt for cross-machine OneDrive dogfood verification.
 - [`tests/real-dotfile-dogfood-copilot.ai.md`](tests/real-dotfile-dogfood-copilot.ai.md) — Copilot CLI prompt for the first real low-risk dotfile dogfood.
+- [`tests/real-dotfile-targeted-restore-consent-copilot.ai.md`](tests/real-dotfile-targeted-restore-consent-copilot.ai.md) — consent-gated prompt for real-dotfile targeted snapshot restore.
 - [`docs/handoffs/multi-os-phase-4.5-handoff.md`](docs/handoffs/multi-os-phase-4.5-handoff.md) — continuation handoff for macOS and Windows VM work.
 - [`spec-loki-profile-manager.md`](spec-loki-profile-manager.md), [`plan-loki-profile-manager.md`](plan-loki-profile-manager.md), and [`tasks-loki-profile-manager.md`](tasks-loki-profile-manager.md) — planning documents, not a guarantee of implemented behavior.
 

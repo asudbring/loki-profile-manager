@@ -144,6 +144,7 @@ func TestSnapshotsRestoreYesAfterDryRunCLI(t *testing.T) {
 	}
 	restoreCmd, out, _ := switchTestCommand(home)
 	restoreCmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--yes"})
+	restoreCmd.SetIn(strings.NewReader("RESTORE " + snapshotID + "\n"))
 	if err := restoreCmd.Execute(); err != nil {
 		t.Fatalf("restore --yes error = %v", err)
 	}
@@ -155,6 +156,70 @@ func TestSnapshotsRestoreYesAfterDryRunCLI(t *testing.T) {
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("target exists after restore or stat err = %v", err)
+	}
+}
+
+func TestSnapshotsRestoreFullYesRejectsWrongConsent(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "restore-consent.txt", "hello")
+	registerSwitchTestMachine(t, home, storePath)
+	switchCmd, switchOut, _ := switchTestCommand(home)
+	switchCmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := switchCmd.Execute(); err != nil {
+		t.Fatalf("switch error = %v", err)
+	}
+	snapshotID := snapshotIDFromSwitchOutput(t, switchOut.String())
+	target := filepath.ToSlash(filepath.Join(home, "restore-consent.txt"))
+
+	dryRunCmd, _, _ := switchTestCommand(home)
+	dryRunCmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--dry-run"})
+	if err := dryRunCmd.Execute(); err != nil {
+		t.Fatalf("restore dry-run error = %v", err)
+	}
+	restoreCmd, _, errOut := switchTestCommand(home)
+	restoreCmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--yes"})
+	restoreCmd.SetIn(strings.NewReader("no\n"))
+	if err := restoreCmd.Execute(); err == nil || !strings.Contains(err.Error(), "full restore consent not confirmed") {
+		t.Fatalf("restore wrong consent error = %v", err)
+	}
+	if !strings.Contains(errOut.String(), "Full snapshot restore") || !strings.Contains(errOut.String(), "RESTORE "+snapshotID) {
+		t.Fatalf("restore consent prompt missing: %s", errOut.String())
+	}
+	if content := string(mustRead(t, target)); content != "hello" {
+		t.Fatalf("target changed to %q", content)
+	}
+}
+
+func TestSnapshotsRestoreTargetYesDoesNotRequireFullConsent(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "restore-target-yes.txt", "hello")
+	registerSwitchTestMachine(t, home, storePath)
+	switchCmd, switchOut, _ := switchTestCommand(home)
+	switchCmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := switchCmd.Execute(); err != nil {
+		t.Fatalf("switch error = %v", err)
+	}
+	snapshotID := snapshotIDFromSwitchOutput(t, switchOut.String())
+	target := filepath.ToSlash(filepath.Join(home, "restore-target-yes.txt"))
+
+	dryRunCmd, _, _ := switchTestCommand(home)
+	dryRunCmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--target", target, "--dry-run"})
+	if err := dryRunCmd.Execute(); err != nil {
+		t.Fatalf("restore target dry-run error = %v", err)
+	}
+	restoreCmd, out, errOut := switchTestCommand(home)
+	restoreCmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--target", target, "--yes"})
+	if err := restoreCmd.Execute(); err != nil {
+		t.Fatalf("restore target --yes error = %v", err)
+	}
+	if strings.Contains(errOut.String(), "Full snapshot restore") {
+		t.Fatalf("targeted restore printed full restore prompt: %s", errOut.String())
+	}
+	if !strings.Contains(out.String(), "Loki snapshot restore complete") || !strings.Contains(out.String(), "Target filter:") {
+		t.Fatalf("restore target output = %s", out.String())
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("target exists after targeted restore or stat err = %v", err)
 	}
 }
 
@@ -207,6 +272,7 @@ func TestSnapshotsRestoreYesRequiresGuard(t *testing.T) {
 
 	cmd, _, _ := switchTestCommand(home)
 	cmd.SetArgs([]string{"snapshots", "restore", snapshotID, "--yes"})
+	cmd.SetIn(strings.NewReader("RESTORE " + snapshotID + "\n"))
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "dry-run guard") {
 		t.Fatalf("restore --yes error = %v", err)
 	}
