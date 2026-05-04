@@ -104,7 +104,11 @@ func putManagedRecord(ctx context.Context, database *sql.DB, item Item, now time
 	if err != nil {
 		return fmt.Errorf("hash migrated store copy %s: %w", item.StorePath, err)
 	}
-	if hash != storeHash {
+	if item.AdoptedTargetHash != "" {
+		if hash != item.AdoptedTargetHash {
+			return fmt.Errorf("adopted target %s changed before managed-state write; rerun migration/adoption", item.TargetPath)
+		}
+	} else if hash != storeHash {
 		return fmt.Errorf("adopted target %s changed before managed-state write; rerun migration/adoption", item.TargetPath)
 	}
 	metadata := map[string]any{

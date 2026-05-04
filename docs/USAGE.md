@@ -239,7 +239,8 @@ Behavior:
 - Ensures a local machine ID exists for operation-lock metadata.
 - Acquires the store operation lock before planning or writing.
 - Requires the target to exist under the configured home root.
-- Rejects unsafe source-name paths and unsupported mode/format combinations.
+- Supports valid symlink targets by importing the resolved file or directory while recording the current symlink hash for switch safety.
+- Rejects broken symlinks, unsafe source-name paths, unsupported mode/format combinations, and symlink targets with `merge` or `render` mode.
 - Copies the current target into the selected store layer.
 - Adds or updates the selected layer manifest.
 - Writes a local managed-target record so future `switch` can safely update the target when hashes still match.
@@ -315,6 +316,7 @@ Behavior:
 - Ensures a local machine ID exists for operation-lock metadata.
 - Acquires the store operation lock before scanning or writing.
 - Scans known local targets such as shell profiles, Git config, VS Code settings, PowerShell profiles, SSH config, and local skill folders.
+- Supports valid symlink targets by importing the resolved file or directory while recording the current symlink hash for switch safety.
 - Copies discovered files and skills into the selected store layer.
 - Adds or updates the selected layer manifest.
 - Writes managed-target records for imported local targets.

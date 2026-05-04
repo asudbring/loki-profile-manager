@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,6 +20,25 @@ func TestAdoptDryRunCLI(t *testing.T) {
 	cliWrite(t, target, "[user]\n\tname = CLI\n")
 	cmd, out, _ := migrationTestCommand(home)
 	cmd.SetArgs([]string{"--store", storePath, "adopt", target, "--profile", "work", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Loki adoption dry-run") || !strings.Contains(out.String(), "Items: 1") {
+		t.Fatalf("output = %s", out.String())
+	}
+}
+
+func TestAdoptSymlinkDryRunCLI(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliMigrationStore(t)
+	realTarget := filepath.Join(home, "real.gitconfig")
+	linkTarget := filepath.Join(home, ".gitconfig")
+	cliWrite(t, realTarget, "[user]\n\tname = CLI\n")
+	if err := os.Symlink(realTarget, linkTarget); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	cmd, out, _ := migrationTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "adopt", linkTarget, "--profile", "work", "--dry-run"})
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}

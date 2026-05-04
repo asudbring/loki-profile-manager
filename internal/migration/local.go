@@ -142,9 +142,18 @@ func localPathItem(layer layerInfo, resolver config.PathResolver, path string, i
 	if err != nil {
 		return Item{}, err
 	}
+	sourcePath, adoptedTargetHash, symlinkTarget, err := sourcePathForAdoptedTarget(path)
+	if err != nil {
+		return Item{}, fmt.Errorf("migrate local target %s: %w", path, err)
+	}
 	mode, format, secrets, err := classifyMode(rel, path, SourceLocal, "")
 	if err != nil {
 		return Item{}, err
+	}
+	if symlinkTarget {
+		if err := validateSymlinkAdoptionMode(path, mode); err != nil {
+			return Item{}, err
+		}
 	}
 	storeRel := joinSlash("files", rel)
 	if mode == manifest.ModeRender {
@@ -172,7 +181,7 @@ func localPathItem(layer layerInfo, resolver config.PathResolver, path string, i
 		format = manifest.FormatText
 	}
 	item, err := itemFromCandidate(SourceLocal, layer, candidate{
-		SourcePath: path,
+		SourcePath: sourcePath,
 		SourceRel:  sourceRel,
 		Target:     targetSpec,
 		TargetPath: targetPath,
@@ -185,6 +194,7 @@ func localPathItem(layer layerInfo, resolver config.PathResolver, path string, i
 	if err != nil {
 		return Item{}, err
 	}
+	item.AdoptedTargetHash = adoptedTargetHash
 	return item, nil
 }
 

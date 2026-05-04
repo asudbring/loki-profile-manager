@@ -34,10 +34,9 @@ func BuildAdoptPlan(req AdoptRequest) (Plan, error) {
 	if err != nil {
 		return plan, fmt.Errorf("adopt target %s: %w", targetPath, err)
 	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		if _, err := os.Stat(targetPath); err != nil {
-			return plan, fmt.Errorf("adopt target %s: broken symlink: %w", targetPath, err)
-		}
+	sourcePath, adoptedTargetHash, symlinkTarget, err := sourcePathForAdoptedTarget(targetPath)
+	if err != nil {
+		return plan, fmt.Errorf("adopt target %s: %w", targetPath, err)
 	}
 	targetSpec, homeRel, err := homeRelativeTargetSpec(resolver, targetPath)
 	if err != nil {
@@ -54,6 +53,11 @@ func BuildAdoptPlan(req AdoptRequest) (Plan, error) {
 	if err != nil {
 		return plan, err
 	}
+	if symlinkTarget {
+		if err := validateSymlinkAdoptionMode(targetPath, mode); err != nil {
+			return plan, err
+		}
+	}
 	if mode == manifest.ModeRender && info.IsDir() {
 		return plan, fmt.Errorf("adopt target %s: render mode requires a file", targetPath)
 	}
@@ -62,7 +66,7 @@ func BuildAdoptPlan(req AdoptRequest) (Plan, error) {
 		storeRelRoot = "templates"
 	}
 	item, err := itemFromCandidate(SourceAdopt, layer, candidate{
-		SourcePath: targetPath,
+		SourcePath: sourcePath,
 		SourceRel:  sourceRel,
 		Target:     targetSpec,
 		TargetPath: targetPath,
@@ -74,6 +78,7 @@ func BuildAdoptPlan(req AdoptRequest) (Plan, error) {
 	if err != nil {
 		return plan, err
 	}
+	item.AdoptedTargetHash = adoptedTargetHash
 	item.WillAdoptRecord = true
 	plan.Items = uniquifyIDs([]Item{item})
 	plan.GeneratedAt = generatedAt(req.Now)

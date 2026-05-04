@@ -39,6 +39,37 @@ func TestMigrateLocalWritesAdoptionRecords(t *testing.T) {
 	}
 }
 
+func TestMigrateLocalAdoptsSymlinkDotfile(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := adoptStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	realTarget := filepath.Join(home, "real.gitconfig")
+	linkTarget := filepath.Join(home, ".gitconfig")
+	writeAppFile(t, realTarget, "[user]\n")
+	if err := os.Symlink(realTarget, linkTarget); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	result, err := svc.MigrateLocal(ctx, MigrateLocalRequest{StorePath: storePath, Profile: "work", Yes: true})
+	if err != nil {
+		t.Fatalf("MigrateLocal() error = %v", err)
+	}
+	if len(result.Plan.Items) != 1 || result.Plan.Items[0].AdoptedTargetHash == "" {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", DryRun: true}); err != nil {
+		t.Fatalf("Switch(dry-run after migrate local symlink) error = %v", err)
+	}
+}
+
 func TestMigrateLocalFailsWhenStoreOperationLockHeld(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()

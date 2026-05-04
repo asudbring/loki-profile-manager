@@ -8,11 +8,11 @@ You are Copilot CLI running inside the Windows 11 ARM64 VM. Validate the first r
 - Do not print secrets, GitHub tokens, credential helper output, environment dumps, or full dotfile contents.
 - Do not modify source code.
 - Do not commit or push.
-- Do not run against `.gitconfig`, `.ssh`, `.env`, credentials, tokens, or private keys.
-- Use only profile `work` and target `%USERPROFILE%\.config\git\ignore`.
+- Do not run against `.ssh`, `.env`, credentials, tokens, or private keys.
+- Use only profile `work` and targets `%USERPROFILE%\.config\git\ignore` and `%USERPROFILE%\.gitconfig`.
 - Always run `switch --dry-run` before `switch --yes`.
-- Run `switch --yes` only if dry-run succeeds and mentions exactly the expected target.
-- If dry-run blocks with `unsafe target overwrite blocked` for the expected target, treat that as a safety pass and do not run `switch --yes`.
+- Run `switch --yes` only if dry-run succeeds and mentions only expected targets.
+- If dry-run blocks with `unsafe target overwrite blocked` for expected targets, treat that as a safety pass and do not run `switch --yes`.
 - Stop on first unexpected failure and report the failing command plus last 40 lines of output.
 - Do not remove `.loki-operation.lock` unless no `loki` process is active and the lock is clearly stale.
 
@@ -24,13 +24,13 @@ The dogfood pass is valid when all are true:
 - Go is available as `windows/arm64` with version `1.23` or newer.
 - OneDrive store exists at `%OneDrive%\LokiProfileManager`.
 - Store contains `profiles\work\core\manifest.yaml`.
-- The work manifest includes target `~/.config/git/ignore`.
+- The work manifest includes targets `~/.config/git/ignore` and `~/.gitconfig`.
 - The work manifest does not include stale disposable targets such as `loki-vm-test`.
 - `loki machine register --allow-profile work` passes.
 - `loki verify work` passes without `machine.record_missing`.
 - `loki switch work --dry-run` either:
-  - succeeds and shows only `%USERPROFILE%\.config\git\ignore`, then `switch --yes` passes; or
-  - blocks only because that expected target already exists unmanaged, proving unsafe overwrite protection.
+  - succeeds and shows only `%USERPROFILE%\.config\git\ignore` and `%USERPROFILE%\.gitconfig`, then `switch --yes` passes; or
+  - blocks only because an expected target already exists unmanaged, proving unsafe overwrite protection.
 
 ## Task
 
@@ -43,9 +43,12 @@ $ProgressPreference = "SilentlyContinue"
 $RepoDir = Join-Path $env:USERPROFILE "github\loki-profile-manager"
 $Store = Join-Path $env:OneDrive "LokiProfileManager"
 $Profile = "work"
-$ExpectedTarget = Join-Path $env:USERPROFILE ".config\git\ignore"
+$ExpectedTargets = @(
+  (Join-Path $env:USERPROFILE ".config\git\ignore"),
+  (Join-Path $env:USERPROFILE ".gitconfig")
+)
 $SwitchState = "skipped"
-$TargetHash = "missing"
+$TargetHashes = @{}
 
 Write-Host "== preflight =="
 if ($env:PROCESSOR_ARCHITECTURE -ne "ARM64") { throw "Expected ARM64 VM, got $env:PROCESSOR_ARCHITECTURE" }
@@ -55,6 +58,7 @@ $Manifest = Join-Path $Store "profiles\work\core\manifest.yaml"
 if (-not (Test-Path $Manifest)) { throw "work manifest missing. Wait for OneDrive sync, then rerun." }
 $manifestText = Get-Content $Manifest -Raw
 if ($manifestText -notmatch [regex]::Escape("~/.config/git/ignore")) { throw "work manifest does not contain ~/.config/git/ignore. Wait for OneDrive sync, then rerun." }
+if ($manifestText -notmatch [regex]::Escape("~/.gitconfig")) { throw "work manifest does not contain ~/.gitconfig. Wait for OneDrive sync, then rerun." }
 if ($manifestText -match "loki-vm-test") { throw "work manifest still contains stale loki-vm-test targets. Wait for cleanup sync, then rerun." }
 
 Write-Host "== tools =="
@@ -110,31 +114,49 @@ $dryRunOutput = & .\bin\loki.exe --store $Store switch $Profile --dry-run 2>&1
 $dryRunExit = $LASTEXITCODE
 $dryRunOutput | ForEach-Object { $_ }
 $dryRunText = ($dryRunOutput | Out-String)
-$targetPattern = [regex]::Escape($ExpectedTarget)
 $operationLines = $dryRunOutput | Where-Object { $_ -match '^- ' }
-$unexpectedTargets = $operationLines | Where-Object { $_ -notmatch $targetPattern }
+$unexpectedTargets = @()
+foreach ($line in $operationLines) {
+  $matched = $false
+  foreach ($target in $ExpectedTargets) {
+    if ($line -match [regex]::Escape($target)) { $matched = $true }
+  }
+  if (-not $matched) { $unexpectedTargets += $line }
+}
 if ($unexpectedTargets) { throw "dry-run mentioned unexpected targets: $($unexpectedTargets -join '; ')" }
 
 if ($dryRunExit -ne 0) {
-  if ($dryRunText -match "unsafe target overwrite blocked" -and $dryRunText -match $targetPattern) {
+  $mentionsExpectedTarget = $false
+  foreach ($target in $ExpectedTargets) {
+    if ($dryRunText -match [regex]::Escape($target)) { $mentionsExpectedTarget = $true }
+  }
+  if ($dryRunText -match "unsafe target overwrite blocked" -and $mentionsExpectedTarget) {
     Write-Host "Safety block observed for expected target. Not applying switch."
     $SwitchState = "blocked"
   } else {
     throw "switch dry-run failed unexpectedly"
   }
 } else {
-  if ($dryRunText -notmatch $targetPattern) { throw "dry-run did not mention expected target: $ExpectedTarget" }
+  foreach ($target in $ExpectedTargets) {
+    if ($dryRunText -notmatch [regex]::Escape($target)) { throw "dry-run did not mention expected target: $target" }
+  }
   if ($dryRunText -match "unsafe target overwrite blocked") { throw "dry-run reported unsafe overwrite despite zero exit" }
 
   Write-Host "== apply switch =="
   .\bin\loki.exe --store $Store switch $Profile --yes
   if ($LASTEXITCODE -ne 0) { throw "switch apply failed" }
-  if (-not (Test-Path $ExpectedTarget)) { throw "target missing after switch: $ExpectedTarget" }
+  foreach ($target in $ExpectedTargets) {
+    if (-not (Test-Path $target)) { throw "target missing after switch: $target" }
+  }
   $SwitchState = "passed"
 }
 
-if (Test-Path $ExpectedTarget) {
-  $TargetHash = (Get-FileHash -Algorithm SHA256 $ExpectedTarget).Hash.ToLowerInvariant()
+foreach ($target in $ExpectedTargets) {
+  if (Test-Path $target) {
+    $TargetHashes[$target] = (Get-FileHash -Algorithm SHA256 $target).Hash.ToLowerInvariant()
+  } else {
+    $TargetHashes[$target] = "missing"
+  }
 }
 
 Write-Host "Real dotfile dogfood completed."
@@ -146,8 +168,9 @@ Write-Host "MACHINE_REGISTER: passed"
 Write-Host "VERIFY: passed"
 Write-Host "DRY_RUN: passed"
 Write-Host "SWITCH: $SwitchState"
-Write-Host "TARGET: $ExpectedTarget"
-Write-Host "TARGET_HASH: $TargetHash"
+Write-Host "TARGETS: $($ExpectedTargets -join '; ')"
+$TargetHashSummary = (($TargetHashes.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } | Sort-Object) -join '; ')
+Write-Host "TARGET_HASHES: $TargetHashSummary"
 Write-Host "NOTES:"
 ```
 
@@ -164,7 +187,7 @@ MACHINE_REGISTER: passed|failed
 VERIFY: passed|failed
 DRY_RUN: passed|failed
 SWITCH: passed|blocked|failed|skipped
-TARGET: <target path or missing>
-TARGET_HASH: <sha256 or missing>
+TARGETS: <target paths or missing>
+TARGET_HASHES: <path=sha256/path=missing pairs>
 NOTES: <only failures, safety block, sync wait, or lock caveats>
 ```

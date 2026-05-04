@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/allensu/loki-profile-manager/internal/activation"
 	"github.com/allensu/loki-profile-manager/internal/config"
 	"github.com/allensu/loki-profile-manager/internal/db"
 	"github.com/allensu/loki-profile-manager/internal/manifest"
@@ -40,7 +41,7 @@ func TestBuildAdoptPlanRejectsInvalidMergeMode(t *testing.T) {
 	}
 }
 
-func TestBuildAdoptPlanRejectsSymlinkSource(t *testing.T) {
+func TestBuildAdoptPlanAllowsSymlinkTarget(t *testing.T) {
 	home := t.TempDir()
 	storePath := migrationStore(t)
 	realTarget := filepath.Join(home, "real.gitconfig")
@@ -49,8 +50,43 @@ func TestBuildAdoptPlanRejectsSymlinkSource(t *testing.T) {
 	if err := os.Symlink(realTarget, linkTarget); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
+	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
+	if err != nil {
+		t.Fatalf("BuildAdoptPlan() error = %v", err)
+	}
+	if len(plan.Items) != 1 {
+		t.Fatalf("plan = %+v", plan)
+	}
+	item := plan.Items[0]
+	if !sameMigrationFile(t, item.SourcePath, realTarget) || item.TargetPath != linkTarget || item.AdoptedTargetHash == "" || !item.WillAdoptRecord {
+		t.Fatalf("item = %+v", item)
+	}
+}
+
+func TestBuildAdoptPlanRejectsBrokenSymlinkTarget(t *testing.T) {
+	home := t.TempDir()
+	storePath := migrationStore(t)
+	linkTarget := filepath.Join(home, ".gitconfig")
+	if err := os.Symlink(filepath.Join(home, "missing.gitconfig"), linkTarget); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
 	_, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
-	if err == nil || !strings.Contains(err.Error(), "is a symlink") {
+	if err == nil || !strings.Contains(err.Error(), "broken symlink") {
+		t.Fatalf("BuildAdoptPlan() error = %v", err)
+	}
+}
+
+func TestBuildAdoptPlanRejectsSymlinkRenderMode(t *testing.T) {
+	home := t.TempDir()
+	storePath := migrationStore(t)
+	realTarget := filepath.Join(home, "real.gitconfig")
+	linkTarget := filepath.Join(home, ".gitconfig")
+	writeMigrationFile(t, realTarget, "[user]\n")
+	if err := os.Symlink(realTarget, linkTarget); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	_, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget, Mode: manifest.ModeRender})
+	if err == nil || !strings.Contains(err.Error(), "requires a regular file") {
 		t.Fatalf("BuildAdoptPlan() error = %v", err)
 	}
 }
@@ -76,6 +112,28 @@ func TestBuildLocalPlanKnownPathsAndSkills(t *testing.T) {
 	}
 	if !seenSkill {
 		t.Fatalf("skill item missing: %+v", plan.Items)
+	}
+}
+
+func TestBuildLocalPlanAllowsKnownSymlinkDotfile(t *testing.T) {
+	home := t.TempDir()
+	storePath := migrationStore(t)
+	realTarget := filepath.Join(home, "real.gitconfig")
+	linkTarget := filepath.Join(home, ".gitconfig")
+	writeMigrationFile(t, realTarget, "[user]\n")
+	if err := os.Symlink(realTarget, linkTarget); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	plan, err := BuildLocalPlan(LocalRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("BuildLocalPlan() error = %v", err)
+	}
+	if len(plan.Items) != 1 {
+		t.Fatalf("items = %+v", plan.Items)
+	}
+	item := plan.Items[0]
+	if item.Target != "~/.gitconfig" || !sameMigrationFile(t, item.SourcePath, realTarget) || item.AdoptedTargetHash == "" {
+		t.Fatalf("item = %+v", item)
 	}
 }
 
@@ -261,6 +319,81 @@ targets: {}
 	}
 }
 
+func TestExecuteAdoptSymlinkCopiesResolvedSourceAndRecordsSymlinkHash(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	storePath := migrationStore(t)
+	realTarget := filepath.Join(home, "real.gitconfig")
+	linkTarget := filepath.Join(home, ".gitconfig")
+	writeMigrationFile(t, realTarget, "[user]\n")
+	if err := os.Symlink(realTarget, linkTarget); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
+	if err != nil {
+		t.Fatalf("BuildAdoptPlan() error = %v", err)
+	}
+	database, err := db.Bootstrap(ctx, filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+	defer database.Close()
+	wantHash, err := activation.HashPath(linkTarget)
+	if err != nil {
+		t.Fatalf("HashPath(link) error = %v", err)
+	}
+	if _, err := Execute(ctx, ExecuteRequest{Database: database, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Plan: plan, Yes: true}); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	storeCopy := plan.Items[0].StorePath
+	if info, err := os.Lstat(storeCopy); err != nil || info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("store copy lstat mode=%v err=%v, want regular file", info.Mode(), err)
+	}
+	if got := string(mustReadMigrationFile(t, storeCopy)); got != "[user]\n" {
+		t.Fatalf("store copy = %q", got)
+	}
+	record, found, err := activation.GetManagedTarget(ctx, database, linkTarget)
+	if err != nil || !found {
+		t.Fatalf("GetManagedTarget() found=%v err=%v", found, err)
+	}
+	if record.ContentHash != wantHash {
+		t.Fatalf("ContentHash = %q, want symlink hash %q", record.ContentHash, wantHash)
+	}
+}
+
+func TestExecuteRejectsSymlinkRetargetBeforeManagedStateWrite(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	storePath := migrationStore(t)
+	first := filepath.Join(home, "first.gitconfig")
+	second := filepath.Join(home, "second.gitconfig")
+	linkTarget := filepath.Join(home, ".gitconfig")
+	writeMigrationFile(t, first, "first")
+	writeMigrationFile(t, second, "second")
+	if err := os.Symlink(first, linkTarget); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
+	if err != nil {
+		t.Fatalf("BuildAdoptPlan() error = %v", err)
+	}
+	if err := os.Remove(linkTarget); err != nil {
+		t.Fatalf("Remove() error = %v", err)
+	}
+	if err := os.Symlink(second, linkTarget); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+	database, err := db.Bootstrap(ctx, filepath.Join(t.TempDir(), "state.sqlite"))
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v", err)
+	}
+	defer database.Close()
+	_, err = Execute(ctx, ExecuteRequest{Database: database, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Plan: plan, Yes: true})
+	if err == nil || !strings.Contains(err.Error(), "changed before managed-state write") {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
 func TestExecuteRejectsRepoAdoptionRecordWhenTargetChanged(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()
@@ -294,6 +427,28 @@ func migrationStore(t *testing.T) string {
 		t.Fatalf("EnsureLayout() error = %v", err)
 	}
 	return root
+}
+
+func sameMigrationFile(t *testing.T, left, right string) bool {
+	t.Helper()
+	leftInfo, err := os.Stat(left)
+	if err != nil {
+		t.Fatalf("Stat(%s) error = %v", left, err)
+	}
+	rightInfo, err := os.Stat(right)
+	if err != nil {
+		t.Fatalf("Stat(%s) error = %v", right, err)
+	}
+	return os.SameFile(leftInfo, rightInfo)
+}
+
+func mustReadMigrationFile(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	return content
 }
 
 func writeMigrationFile(t *testing.T, path, content string) {

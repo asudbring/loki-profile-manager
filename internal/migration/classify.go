@@ -163,6 +163,37 @@ func collisionFor(storePath, importedHash string) (CollisionStatus, string) {
 	return CollisionUpdate, existingHash
 }
 
+func sourcePathForAdoptedTarget(path string) (sourcePath string, adoptedTargetHash string, symlink bool, err error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", "", false, err
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		return path, "", false, nil
+	}
+	if _, err := os.Stat(path); err != nil {
+		return "", "", true, fmt.Errorf("broken symlink: %w", err)
+	}
+	hash, err := activation.HashPath(path)
+	if err != nil {
+		return "", "", true, err
+	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", "", true, err
+	}
+	return resolved, hash, true, nil
+}
+
+func validateSymlinkAdoptionMode(targetPath, mode string) error {
+	switch mode {
+	case manifest.ModeMerge, manifest.ModeRender:
+		return fmt.Errorf("adopt target %s: %s mode requires a regular file, not a symlink", targetPath, mode)
+	default:
+		return nil
+	}
+}
+
 func targetExistsWithHash(targetPath, sourceHash string) bool {
 	if sourceHash == "" {
 		return false
