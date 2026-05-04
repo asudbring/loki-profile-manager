@@ -12,6 +12,8 @@ You are Copilot CLI running inside the Windows 11 ARM64 VM. Validate a harmless 
 - Use only the `dogfood-crossos` profile and target `%USERPROFILE%\loki-dogfood\probe.txt`.
 - Always run `switch --dry-run` before `switch --yes`.
 - Run `switch --yes` only if the dry-run plan targets `%USERPROFILE%\loki-dogfood\probe.txt` and reports no unsafe overwrite or unexpected target.
+- Always run `snapshots restore <switch-snapshot> --dry-run --target %USERPROFILE%\loki-dogfood\probe.txt` before matching `--yes --target %USERPROFILE%\loki-dogfood\probe.txt`.
+- Never run restore `--yes` against real dotfiles.
 - Stop on first unexpected failure and report the failing command plus last 40 lines of output.
 - Do not remove `.loki-operation.lock` unless no `loki` process is active and the lock is clearly stale.
 
@@ -28,8 +30,8 @@ The dogfood pass is valid only when all are true:
 - `loki switch dogfood-crossos --dry-run` shows only the harmless dogfood target.
 - `loki switch dogfood-crossos --yes` passes.
 - `%USERPROFILE%\loki-dogfood\probe.txt` exists and contains text written by the source machine after switch.
-- `loki snapshots restore <switch-snapshot> --dry-run` records a guard and mentions only the harmless dogfood target.
-- `loki snapshots restore <switch-snapshot> --yes` passes and reports a pre-restore snapshot.
+- `loki snapshots restore <switch-snapshot> --dry-run --target %USERPROFILE%\loki-dogfood\probe.txt` records a targeted guard, prints `Target filter:`, and mentions only the harmless dogfood target.
+- `loki snapshots restore <switch-snapshot> --yes --target %USERPROFILE%\loki-dogfood\probe.txt` passes and reports a pre-restore snapshot.
 
 ## Task
 
@@ -132,25 +134,27 @@ $targetText = Get-Content $Target -Raw
 $targetText.Trim()
 if ($targetText -notmatch "mac wrote") { throw "target content did not contain source-machine marker" }
 
-Write-Host "== restore snapshot dry-run =="
-$restoreDryOutput = & .\bin\loki.exe snapshots restore $SnapshotID --dry-run 2>&1
+Write-Host "== targeted restore snapshot dry-run =="
+$restoreDryOutput = & .\bin\loki.exe --store $Store snapshots restore $SnapshotID --dry-run --target $Target 2>&1
 $restoreDryExit = $LASTEXITCODE
 $restoreDryOutput | ForEach-Object { $_ }
-if ($restoreDryExit -ne 0) { throw "snapshots restore dry-run failed" }
+if ($restoreDryExit -ne 0) { throw "targeted snapshots restore dry-run failed" }
 $restoreDryText = ($restoreDryOutput | Out-String)
-if ($restoreDryText -notmatch "Guard: recorded") { throw "restore dry-run did not record guard" }
-if ($restoreDryText -notmatch [regex]::Escape($Target)) { throw "restore dry-run did not mention expected target: $Target" }
+if ($restoreDryText -notmatch "Guard: recorded") { throw "targeted restore dry-run did not record guard" }
+if ($restoreDryText -notmatch [regex]::Escape($Target)) { throw "targeted restore dry-run did not mention expected target: $Target" }
+if ($restoreDryText -notmatch "Target filter:") { throw "targeted restore dry-run did not print target filter" }
 $restoreUnexpectedTargets = $restoreDryOutput | Where-Object { $_ -match '^- ' -and $_ -notmatch [regex]::Escape($Target) }
-if ($restoreUnexpectedTargets) { throw "restore dry-run mentioned unexpected targets: $($restoreUnexpectedTargets -join '; ')" }
+if ($restoreUnexpectedTargets) { throw "targeted restore dry-run mentioned unexpected targets: $($restoreUnexpectedTargets -join '; ')" }
 
-Write-Host "== restore snapshot yes =="
-$restoreYesOutput = & .\bin\loki.exe snapshots restore $SnapshotID --yes 2>&1
+Write-Host "== targeted restore snapshot yes =="
+$restoreYesOutput = & .\bin\loki.exe --store $Store snapshots restore $SnapshotID --yes --target $Target 2>&1
 $restoreYesExit = $LASTEXITCODE
 $restoreYesOutput | ForEach-Object { $_ }
-if ($restoreYesExit -ne 0) { throw "snapshots restore yes failed" }
+if ($restoreYesExit -ne 0) { throw "targeted snapshots restore yes failed" }
 $restoreYesText = ($restoreYesOutput | Out-String)
-if ($restoreYesText -notmatch "Loki snapshot restore complete") { throw "restore yes did not report completion" }
-if ($restoreYesText -notmatch "Pre-restore snapshot:") { throw "restore yes did not report pre-restore snapshot" }
+if ($restoreYesText -notmatch "Loki snapshot restore complete") { throw "targeted restore yes did not report completion" }
+if ($restoreYesText -notmatch "Pre-restore snapshot:") { throw "targeted restore yes did not report pre-restore snapshot" }
+if ($restoreYesText -notmatch [regex]::Escape($Target)) { throw "targeted restore yes did not mention expected target" }
 $RestoreState = "passed"
 if (Test-Path $Target) {
   $AfterRestoreHash = (Get-FileHash -Algorithm SHA256 $Target).Hash.ToLowerInvariant()
