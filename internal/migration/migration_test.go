@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -50,7 +51,7 @@ func TestBuildAdoptPlanAllowsSymlinkTarget(t *testing.T) {
 	if err := os.Symlink(realTarget, linkTarget); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
+	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: migrationTestResolver(home), Target: linkTarget})
 	if err != nil {
 		t.Fatalf("BuildAdoptPlan() error = %v", err)
 	}
@@ -58,7 +59,7 @@ func TestBuildAdoptPlanAllowsSymlinkTarget(t *testing.T) {
 		t.Fatalf("plan = %+v", plan)
 	}
 	item := plan.Items[0]
-	if !sameMigrationFile(t, item.SourcePath, realTarget) || item.TargetPath != linkTarget || item.AdoptedTargetHash == "" || !item.WillAdoptRecord {
+	if !sameMigrationFile(t, item.SourcePath, realTarget) || !sameMigrationFile(t, item.TargetPath, linkTarget) || item.AdoptedTargetHash == "" || !item.WillAdoptRecord {
 		t.Fatalf("item = %+v", item)
 	}
 }
@@ -70,7 +71,7 @@ func TestBuildAdoptPlanRejectsBrokenSymlinkTarget(t *testing.T) {
 	if err := os.Symlink(filepath.Join(home, "missing.gitconfig"), linkTarget); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	_, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
+	_, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: migrationTestResolver(home), Target: linkTarget})
 	if err == nil || !strings.Contains(err.Error(), "broken symlink") {
 		t.Fatalf("BuildAdoptPlan() error = %v", err)
 	}
@@ -85,7 +86,7 @@ func TestBuildAdoptPlanRejectsSymlinkRenderMode(t *testing.T) {
 	if err := os.Symlink(realTarget, linkTarget); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	_, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget, Mode: manifest.ModeRender})
+	_, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: migrationTestResolver(home), Target: linkTarget, Mode: manifest.ModeRender})
 	if err == nil || !strings.Contains(err.Error(), "requires a regular file") {
 		t.Fatalf("BuildAdoptPlan() error = %v", err)
 	}
@@ -124,7 +125,7 @@ func TestBuildLocalPlanAllowsKnownSymlinkDotfile(t *testing.T) {
 	if err := os.Symlink(realTarget, linkTarget); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	plan, err := BuildLocalPlan(LocalRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	plan, err := BuildLocalPlan(LocalRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: migrationTestResolver(home)})
 	if err != nil {
 		t.Fatalf("BuildLocalPlan() error = %v", err)
 	}
@@ -329,7 +330,8 @@ func TestExecuteAdoptSymlinkCopiesResolvedSourceAndRecordsSymlinkHash(t *testing
 	if err := os.Symlink(realTarget, linkTarget); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
+	resolver := migrationTestResolver(home)
+	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: resolver, Target: linkTarget})
 	if err != nil {
 		t.Fatalf("BuildAdoptPlan() error = %v", err)
 	}
@@ -342,7 +344,7 @@ func TestExecuteAdoptSymlinkCopiesResolvedSourceAndRecordsSymlinkHash(t *testing
 	if err != nil {
 		t.Fatalf("HashPath(link) error = %v", err)
 	}
-	if _, err := Execute(ctx, ExecuteRequest{Database: database, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Plan: plan, Yes: true}); err != nil {
+	if _, err := Execute(ctx, ExecuteRequest{Database: database, Resolver: resolver, Plan: plan, Yes: true}); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	storeCopy := plan.Items[0].StorePath
@@ -373,7 +375,8 @@ func TestExecuteRejectsSymlinkRetargetBeforeManagedStateWrite(t *testing.T) {
 	if err := os.Symlink(first, linkTarget); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Target: linkTarget})
+	resolver := migrationTestResolver(home)
+	plan, err := BuildAdoptPlan(AdoptRequest{BuildRequest: BuildRequest{StorePath: storePath, Profile: "work"}, Resolver: resolver, Target: linkTarget})
 	if err != nil {
 		t.Fatalf("BuildAdoptPlan() error = %v", err)
 	}
@@ -388,7 +391,7 @@ func TestExecuteRejectsSymlinkRetargetBeforeManagedStateWrite(t *testing.T) {
 		t.Fatalf("Bootstrap() error = %v", err)
 	}
 	defer database.Close()
-	_, err = Execute(ctx, ExecuteRequest{Database: database, Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, Plan: plan, Yes: true})
+	_, err = Execute(ctx, ExecuteRequest{Database: database, Resolver: resolver, Plan: plan, Yes: true})
 	if err == nil || !strings.Contains(err.Error(), "changed before managed-state write") {
 		t.Fatalf("Execute() error = %v", err)
 	}
@@ -418,6 +421,10 @@ func TestExecuteRejectsRepoAdoptionRecordWhenTargetChanged(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "changed before managed-state write") {
 		t.Fatalf("Execute() error = %v", err)
 	}
+}
+
+func migrationTestResolver(home string) config.PathResolver {
+	return config.PathResolver{GOOS: runtime.GOOS, HomeDir: home}
 }
 
 func migrationStore(t *testing.T) string {
