@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -28,11 +29,19 @@ func ReadID(machineIDPath string) (string, bool, error) {
 	return id, true, nil
 }
 
+var machineIDLocks sync.Map
+
 func EnsureID(machineIDPath string) (string, error) {
 	if strings.TrimSpace(machineIDPath) == "" {
 		return "", fmt.Errorf("ensure machine id: path is required")
 	}
+	lock := lockForMachineID(machineIDPath)
+	lock.Lock()
+	defer lock.Unlock()
 	if id, ok, err := ReadID(machineIDPath); err != nil || ok {
+		if err != nil && machineIDFileEmpty(machineIDPath) {
+			return readIDWithRetry(machineIDPath)
+		}
 		return id, err
 	}
 
@@ -55,6 +64,17 @@ func EnsureID(machineIDPath string) (string, error) {
 		return "", fmt.Errorf("close machine id %s: %w", machineIDPath, err)
 	}
 	return id, nil
+}
+
+func lockForMachineID(machineIDPath string) *sync.Mutex {
+	key := filepath.Clean(machineIDPath)
+	actual, _ := machineIDLocks.LoadOrStore(key, &sync.Mutex{})
+	return actual.(*sync.Mutex)
+}
+
+func machineIDFileEmpty(machineIDPath string) bool {
+	content, err := os.ReadFile(machineIDPath)
+	return err == nil && strings.TrimSpace(string(content)) == ""
 }
 
 func readIDWithRetry(machineIDPath string) (string, error) {
