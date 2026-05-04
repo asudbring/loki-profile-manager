@@ -23,11 +23,13 @@ The dogfood pass is valid only when all are true:
 - Go is available as `windows/arm64` with version `1.23` or newer.
 - OneDrive store exists at `%OneDrive%\LokiProfileManager`.
 - Store contains `profiles\dogfood-crossos\core\manifest.yaml`.
-- `loki machine register --allow-profile dogfood-crossos` passes.
+- `loki machine register --allow-profile dogfood-crossos --allow-profile work` passes.
 - `loki verify dogfood-crossos` passes without `machine.record_missing`.
 - `loki switch dogfood-crossos --dry-run` shows only the harmless dogfood target.
 - `loki switch dogfood-crossos --yes` passes.
-- `%USERPROFILE%\loki-dogfood\probe.txt` exists and contains text written by the source machine.
+- `%USERPROFILE%\loki-dogfood\probe.txt` exists and contains text written by the source machine after switch.
+- `loki snapshots restore <switch-snapshot> --dry-run` records a guard and mentions only the harmless dogfood target.
+- `loki snapshots restore <switch-snapshot> --yes` passes and reports a pre-restore snapshot.
 
 ## Task
 
@@ -41,6 +43,9 @@ $RepoDir = Join-Path $env:USERPROFILE "github\loki-profile-manager"
 $Store = Join-Path $env:OneDrive "LokiProfileManager"
 $Profile = "dogfood-crossos"
 $Target = Join-Path $env:USERPROFILE "loki-dogfood\probe.txt"
+$RestoreState = "skipped"
+$BeforeHash = "missing"
+$AfterRestoreHash = "missing"
 
 Write-Host "== preflight =="
 if ($env:PROCESSOR_ARCHITECTURE -ne "ARM64") { throw "Expected ARM64 VM, got $env:PROCESSOR_ARCHITECTURE" }
@@ -88,7 +93,7 @@ New-Item -ItemType Directory -Force .\bin | Out-Null
 go build -o .\bin\loki.exe .\cmd\loki
 
 Write-Host "== register machine =="
-.\bin\loki.exe --store $Store machine register --allow-profile $Profile
+.\bin\loki.exe --store $Store machine register --allow-profile $Profile --allow-profile work
 if ($LASTEXITCODE -ne 0) { throw "machine register failed" }
 
 Write-Host "== verify profile =="
@@ -110,15 +115,52 @@ if ($dryRunText -notmatch $targetPattern) { throw "dry-run did not mention expec
 $unexpectedTargets = $dryRunOutput | Where-Object { $_ -match '^- ' -and $_ -notmatch $targetPattern }
 if ($unexpectedTargets) { throw "dry-run mentioned unexpected targets: $($unexpectedTargets -join '; ')" }
 
+if (Test-Path $Target) {
+  $BeforeHash = (Get-FileHash -Algorithm SHA256 $Target).Hash.ToLowerInvariant()
+}
+
 Write-Host "== apply switch =="
-.\bin\loki.exe --store $Store switch $Profile --yes
-if ($LASTEXITCODE -ne 0) { throw "switch apply failed" }
+$switchOutput = & .\bin\loki.exe --store $Store switch $Profile --yes 2>&1
+$switchExit = $LASTEXITCODE
+$switchOutput | ForEach-Object { $_ }
+if ($switchExit -ne 0) { throw "switch apply failed" }
+$snapshotLine = $switchOutput | Where-Object { $_ -match '^Snapshot: ' } | Select-Object -First 1
+if (-not $snapshotLine) { throw "switch did not print snapshot id" }
+$SnapshotID = ($snapshotLine -replace '^Snapshot:\s*', '').Trim()
 if (-not (Test-Path $Target)) { throw "target missing after switch: $Target" }
 $targetText = Get-Content $Target -Raw
 $targetText.Trim()
 if ($targetText -notmatch "mac wrote") { throw "target content did not contain source-machine marker" }
 
+Write-Host "== restore snapshot dry-run =="
+$restoreDryOutput = & .\bin\loki.exe snapshots restore $SnapshotID --dry-run 2>&1
+$restoreDryExit = $LASTEXITCODE
+$restoreDryOutput | ForEach-Object { $_ }
+if ($restoreDryExit -ne 0) { throw "snapshots restore dry-run failed" }
+$restoreDryText = ($restoreDryOutput | Out-String)
+if ($restoreDryText -notmatch "Guard: recorded") { throw "restore dry-run did not record guard" }
+if ($restoreDryText -notmatch [regex]::Escape($Target)) { throw "restore dry-run did not mention expected target: $Target" }
+$restoreUnexpectedTargets = $restoreDryOutput | Where-Object { $_ -match '^- ' -and $_ -notmatch [regex]::Escape($Target) }
+if ($restoreUnexpectedTargets) { throw "restore dry-run mentioned unexpected targets: $($restoreUnexpectedTargets -join '; ')" }
+
+Write-Host "== restore snapshot yes =="
+$restoreYesOutput = & .\bin\loki.exe snapshots restore $SnapshotID --yes 2>&1
+$restoreYesExit = $LASTEXITCODE
+$restoreYesOutput | ForEach-Object { $_ }
+if ($restoreYesExit -ne 0) { throw "snapshots restore yes failed" }
+$restoreYesText = ($restoreYesOutput | Out-String)
+if ($restoreYesText -notmatch "Loki snapshot restore complete") { throw "restore yes did not report completion" }
+if ($restoreYesText -notmatch "Pre-restore snapshot:") { throw "restore yes did not report pre-restore snapshot" }
+$RestoreState = "passed"
+if (Test-Path $Target) {
+  $AfterRestoreHash = (Get-FileHash -Algorithm SHA256 $Target).Hash.ToLowerInvariant()
+}
+
 Write-Host "Cross-machine dogfood passed."
+Write-Host "SNAPSHOT: $SnapshotID"
+Write-Host "RESTORE: $RestoreState"
+Write-Host "BEFORE_HASH: $BeforeHash"
+Write-Host "AFTER_RESTORE_HASH: $AfterRestoreHash"
 ```
 
 ## Final report format
@@ -134,7 +176,11 @@ MACHINE_REGISTER: passed|failed
 VERIFY: passed|failed
 DRY_RUN: passed|failed
 SWITCH: passed|failed|skipped
+SNAPSHOT: <switch snapshot id or missing>
+RESTORE: passed|failed|skipped
 TARGET: <target path or missing>
-TARGET_CONTENT: <last line or missing>
+TARGET_CONTENT: <last line after switch or missing>
+BEFORE_HASH: <sha256 or missing>
+AFTER_RESTORE_HASH: <sha256 or missing>
 NOTES: <only failures, skipped items, sync wait, or lock caveats>
 ```
