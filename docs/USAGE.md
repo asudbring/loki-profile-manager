@@ -22,6 +22,8 @@ Current commands:
 | `status` | Implemented |
 | `verify` | Implemented |
 | `switch` | Implemented |
+| `snapshots list` | Implemented |
+| `snapshots show` | Implemented |
 | `machine register` | Implemented |
 | `machine status` | Implemented |
 | `adopt` | Implemented |
@@ -215,6 +217,66 @@ Activate:
 ```bash
 loki --store /path/to/loki switch work --yes
 loki --store /path/to/loki switch work content-dev azure --yes
+```
+
+## `loki snapshots list`
+
+List retained local activation snapshots.
+
+```bash
+loki snapshots list [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Reads the machine-local snapshot directory and SQLite snapshot metadata.
+- Falls back to `metadata.json` files under the snapshot directory when SQLite has no row.
+- Reports snapshot ID, creation time, previous active profile/buckets, target count, target kinds, existence, and local path.
+- Does not read or print snapshot entry contents.
+- Snapshots are local recovery artifacts; they are not synced into the store.
+- Retention currently keeps the latest 2 local snapshot directories.
+
+Examples:
+
+```bash
+loki snapshots list
+loki snapshots list --json
+```
+
+## `loki snapshots show`
+
+Show metadata for one local activation snapshot.
+
+```bash
+loki snapshots show <snapshot-id> [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Reads snapshot metadata only.
+- Shows previous active profile/buckets and target metadata: path, kind, hashes, expected mode, snapshot entry path, and symlink target when present.
+- Shortens hashes in human output.
+- Warns when target paths look sensitive, such as `.ssh`, `.env`, token, credential, private, or key paths.
+- Does not print file contents from targets or snapshot entries.
+- Does not restore files. Manual restore is not implemented yet.
+
+Examples:
+
+```bash
+loki snapshots show 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f
+loki snapshots show 20260504T024936Z-d0f298bf-860a-4c24-91df-91f26681c03f --json
 ```
 
 ## `loki adopt`

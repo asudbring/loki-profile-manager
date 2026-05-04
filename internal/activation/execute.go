@@ -71,6 +71,10 @@ func Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 			result.Snapshot = snapshot
 			return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
 		}
+		if err := PersistSnapshot(ctx, req.Database, snapshot); err != nil {
+			result.Snapshot = snapshot
+			return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
+		}
 		result.Snapshot = snapshot
 		result.Changed++
 		if req.FailAfter > 0 && i+1 >= req.FailAfter {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -223,6 +224,40 @@ func TestStatusPrefersLocalActiveOverMachineRegistry(t *testing.T) {
 	}
 	if status.ActiveProfile != "work" || status.ActiveSource != "local_state" {
 		t.Fatalf("status = %+v", status)
+	}
+}
+
+func TestListAndShowSnapshots(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	root := t.TempDir()
+	target := filepath.Join(root, "target.txt")
+	if err := os.WriteFile(target, []byte("old"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	snapshot, err := activation.CreateSnapshot(ctx, activation.CreateSnapshotRequest{
+		Database:              svc.database,
+		SnapshotRoot:          svc.paths.SnapshotDir,
+		Plan:                  activation.Plan{Profile: "work", Operations: []activation.Operation{{Type: activation.OperationCopy, TargetPath: target}}},
+		PreviousActiveProfile: "dev",
+	})
+	if err != nil {
+		t.Fatalf("CreateSnapshot() error = %v", err)
+	}
+	list, err := svc.ListSnapshots(ctx, SnapshotListRequest{})
+	if err != nil {
+		t.Fatalf("ListSnapshots() error = %v", err)
+	}
+	if list.SnapshotDir != svc.paths.SnapshotDir || len(list.Snapshots) != 1 || list.Snapshots[0].SnapshotID != snapshot.SnapshotID {
+		t.Fatalf("list = %+v", list)
+	}
+	show, err := svc.ShowSnapshot(ctx, SnapshotShowRequest{SnapshotID: snapshot.SnapshotID})
+	if err != nil {
+		t.Fatalf("ShowSnapshot() error = %v", err)
+	}
+	if show.Snapshot.SnapshotID != snapshot.SnapshotID || len(show.Snapshot.Targets) != 1 || show.Snapshot.Targets[0].TargetPath != target {
+		t.Fatalf("show = %+v", show)
 	}
 }
 

@@ -75,6 +75,22 @@ type StatusManagedTarget struct {
 	LastAppliedAt string `json:"last_applied_at,omitempty"`
 }
 
+type SnapshotListRequest struct{}
+
+type SnapshotListResult struct {
+	SnapshotDir string                       `json:"snapshot_dir"`
+	Snapshots   []activation.SnapshotSummary `json:"snapshots"`
+}
+
+type SnapshotShowRequest struct {
+	SnapshotID string
+}
+
+type SnapshotShowResult struct {
+	SnapshotDir string              `json:"snapshot_dir"`
+	Snapshot    activation.Snapshot `json:"snapshot"`
+}
+
 type DiscoverStoresRequest struct {
 	ManualPath string
 }
@@ -256,6 +272,28 @@ func (s *Service) Status(ctx context.Context, req StatusRequest) (StatusResult, 
 		status.Message = "Loki store path is configured but layout is invalid."
 	}
 	return status, nil
+}
+
+func (s *Service) ListSnapshots(ctx context.Context, req SnapshotListRequest) (SnapshotListResult, error) {
+	if s == nil {
+		return SnapshotListResult{}, fmt.Errorf("list snapshots: service is nil")
+	}
+	snapshots, err := activation.ListSnapshots(ctx, s.database, s.paths.SnapshotDir)
+	if err != nil {
+		return SnapshotListResult{}, err
+	}
+	return SnapshotListResult{SnapshotDir: s.paths.SnapshotDir, Snapshots: snapshots}, nil
+}
+
+func (s *Service) ShowSnapshot(ctx context.Context, req SnapshotShowRequest) (SnapshotShowResult, error) {
+	if s == nil {
+		return SnapshotShowResult{}, fmt.Errorf("show snapshot: service is nil")
+	}
+	snapshot, err := activation.LoadSnapshot(ctx, s.database, s.paths.SnapshotDir, req.SnapshotID)
+	if err != nil {
+		return SnapshotShowResult{}, err
+	}
+	return SnapshotShowResult{SnapshotDir: s.paths.SnapshotDir, Snapshot: snapshot}, nil
 }
 
 func (s *Service) DiscoverStores(ctx context.Context, req DiscoverStoresRequest) (DiscoverStoresResult, error) {

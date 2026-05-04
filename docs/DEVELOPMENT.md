@@ -26,6 +26,7 @@ This repo is a Go 1.23 CLI project. The code is organized around a thin Cobra CL
 Native Go:
 
 ```bash
+go test ./internal/activation ./internal/app ./internal/cli
 go test ./...
 go vet ./...
 go mod verify
@@ -124,6 +125,7 @@ go build -o loki.exe ./cmd/loki
 - Use Docker when the host does not have Go installed.
 - Test Windows path expansion and symlink behavior on a Windows VM before dogfooding.
 - Test macOS symlink and local-state paths on a macOS host before dogfooding.
+- For rollback hardening, validate `loki snapshots list` and `loki snapshots show <id>` before adding any command that writes restored files.
 
 ## Local state during tests
 
@@ -173,9 +175,9 @@ For Infisical-related tests:
 
 ## Current implementation phase
 
-Phases 1-4 are implemented. Phase 4.5 is next and must add migration/adoption before real machine dogfooding.
+Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, and read-only snapshot reporting. Manual snapshot restore remains deferred until list/show UX is proven on macOS and Windows.
 
-Relevant handoff:
+Relevant historical handoff:
 
 ```text
 docs/handoffs/multi-os-phase-4.5-handoff.md

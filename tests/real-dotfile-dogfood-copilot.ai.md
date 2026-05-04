@@ -32,6 +32,7 @@ The dogfood pass is valid when all are true:
   - succeeds and shows only `%USERPROFILE%\.config\git\ignore` and `%USERPROFILE%\.gitconfig`, then `switch --yes` passes; or
   - blocks only because an expected target already exists unmanaged, proving unsafe overwrite protection.
 - `loki --verbose status` reports active profile `work` and lists the expected managed targets.
+- If `switch --yes` runs, `loki snapshots list` and `loki snapshots show <latest>` pass and the latest snapshot mentions only expected targets.
 
 ## Task
 
@@ -49,6 +50,7 @@ $ExpectedTargets = @(
   (Join-Path $env:USERPROFILE ".gitconfig")
 )
 $SwitchState = "skipped"
+$SnapshotState = "skipped"
 $TargetHashes = @{}
 
 Write-Host "== preflight =="
@@ -172,6 +174,40 @@ foreach ($target in $ExpectedTargets) {
   if ($statusText -notmatch [regex]::Escape($target)) { throw "status did not list expected target: $target" }
 }
 
+if ($SwitchState -eq "passed") {
+  Write-Host "== snapshot audit =="
+  $snapListOutput = & .\bin\loki.exe snapshots list 2>&1
+  $snapListExit = $LASTEXITCODE
+  $snapListOutput | ForEach-Object { $_ }
+  if ($snapListExit -ne 0) { throw "snapshots list failed" }
+  $snapListText = ($snapListOutput | Out-String)
+  if ($snapListText -notmatch "Loki snapshots") { throw "snapshots list did not print expected heading" }
+  if ($snapListText -notmatch "targets=2") { throw "latest snapshot list did not report 2 targets" }
+  $snapshotMatches = [regex]::Matches($snapListText, '(?m)^-\s+(\S+)')
+  if ($snapshotMatches.Count -lt 1) { throw "snapshots list did not include a snapshot id" }
+  $SnapshotID = $snapshotMatches[0].Groups[1].Value
+
+  $snapShowOutput = & .\bin\loki.exe snapshots show $SnapshotID 2>&1
+  $snapShowExit = $LASTEXITCODE
+  $snapShowOutput | ForEach-Object { $_ }
+  if ($snapShowExit -ne 0) { throw "snapshots show failed" }
+  $snapShowText = ($snapShowOutput | Out-String)
+  foreach ($target in $ExpectedTargets) {
+    if ($snapShowText -notmatch [regex]::Escape($target)) { throw "snapshots show did not list expected target: $target" }
+  }
+  $snapshotTargetLines = $snapShowOutput | Where-Object { $_ -match '^- ' }
+  $snapshotUnexpectedTargets = @()
+  foreach ($line in $snapshotTargetLines) {
+    $matched = $false
+    foreach ($target in $ExpectedTargets) {
+      if ($line -match [regex]::Escape($target)) { $matched = $true }
+    }
+    if (-not $matched) { $snapshotUnexpectedTargets += $line }
+  }
+  if ($snapshotUnexpectedTargets) { throw "snapshots show mentioned unexpected targets: $($snapshotUnexpectedTargets -join '; ')" }
+  $SnapshotState = "passed"
+}
+
 Write-Host "Real dotfile dogfood completed."
 Write-Host "RESULT: PASS"
 Write-Host "COMMIT: $commit"
@@ -182,6 +218,7 @@ Write-Host "VERIFY: passed"
 Write-Host "DRY_RUN: passed"
 Write-Host "SWITCH: $SwitchState"
 Write-Host "STATUS: passed"
+Write-Host "SNAPSHOTS: $SnapshotState"
 Write-Host "TARGETS: $($ExpectedTargets -join '; ')"
 $TargetHashSummary = (($TargetHashes.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" } | Sort-Object) -join '; ')
 Write-Host "TARGET_HASHES: $TargetHashSummary"
@@ -202,6 +239,7 @@ VERIFY: passed|failed
 DRY_RUN: passed|failed
 SWITCH: passed|blocked|failed|skipped
 STATUS: passed|failed|skipped
+SNAPSHOTS: passed|failed|skipped
 TARGETS: <target paths or missing>
 TARGET_HASHES: <path=sha256/path=missing pairs>
 NOTES: <only failures, safety block, sync wait, or lock caveats>
