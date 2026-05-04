@@ -1,8 +1,14 @@
 # Install
 
-Loki Profile Manager currently installs from source. No release binaries or package-manager formulas exist yet.
+Loki Profile Manager can be installed from GitHub release binaries or built from source. Package-manager formulas/installers do not exist yet.
 
-Requirements for all platforms:
+Requirements for release binaries:
+
+- Access to the private GitHub repository.
+- A downloaded release archive for your OS/architecture.
+- `checksums.txt` from the same release.
+
+Requirements for source builds:
 
 - Git.
 - Go 1.23 or later.
@@ -20,7 +26,67 @@ Supported targets:
 
 OneDrive/Dropbox/iCloud/etc. are the sync transport. Loki must read and write a store path inside the synced folder; Loki does not implement cloud sync itself.
 
-## Windows
+## Release binary install
+
+Release asset names use this pattern:
+
+```text
+loki_<version>_<os>_<arch>.tar.gz
+loki_<version>_windows_<arch>.zip
+checksums.txt
+```
+
+Supported assets:
+
+| OS | Arch | Archive |
+|---|---|---|
+| Linux | amd64 | `tar.gz` |
+| Linux | arm64 | `tar.gz` |
+| macOS | amd64 | `tar.gz` |
+| macOS | arm64 | `tar.gz` |
+| Windows | amd64 | `zip` |
+| Windows | arm64 | `zip` |
+
+Verify checksums before running the binary.
+
+Linux/macOS, selected archive only:
+
+```bash
+grep " loki_<version>_<os>_<arch>.tar.gz$" checksums.txt | shasum -a 256 -c -
+# or, where available:
+grep " loki_<version>_<os>_<arch>.tar.gz$" checksums.txt | sha256sum -c -
+```
+
+If every archive is downloaded, verify all entries:
+
+```bash
+shasum -a 256 -c checksums.txt
+```
+
+Windows PowerShell, selected archive only:
+
+```powershell
+$Archive = "loki_<version>_windows_arm64.zip"
+$Expected = (Get-Content .\checksums.txt | Where-Object { $_ -like "* $Archive" }).Split()[0]
+$Actual = (Get-FileHash .\$Archive -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($Actual -ne $Expected) { throw "checksum mismatch" }
+```
+
+After extraction:
+
+```bash
+loki --version
+loki doctor
+```
+
+Windows PowerShell:
+
+```powershell
+.\loki.exe --version
+.\loki.exe doctor
+```
+
+## Windows source build
 
 Use PowerShell.
 
@@ -56,7 +122,7 @@ Windows symlink behavior depends on Developer Mode or elevated permissions. Loki
 
 `go test -race ./...` is not supported by Go on Windows ARM64. On Windows ARM64, use normal `go test ./...`, then prove release compatibility with the cross-compile matrix in `docs/DEVELOPMENT.md` and a native smoke test on the VM.
 
-## macOS
+## macOS source build
 
 Use zsh or bash.
 
@@ -84,7 +150,7 @@ go run ./cmd/loki --store /path/to/loki machine register --allow-profile work
 go run ./cmd/loki --store /path/to/loki switch work --dry-run
 ```
 
-## Linux
+## Linux source build
 
 Linux is a supported runtime target.
 
@@ -191,4 +257,4 @@ Build Loki, create or verify the store layout, then run every command with `--st
 
 ## Next install gap
 
-Release binaries and package-manager installers are not implemented yet. Install from source until a release workflow exists.
+Package-manager installers, code signing, and notarization are not implemented yet. Use release archives or source builds until installer workflows exist.

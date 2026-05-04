@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/allensu/loki-profile-manager/internal/app"
 	"github.com/allensu/loki-profile-manager/internal/config"
 )
 
@@ -38,6 +39,17 @@ func TestInvalidFlagReturnsError(t *testing.T) {
 	cmd.SetArgs([]string{"--does-not-exist"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("Execute() error = nil, want error")
+	}
+}
+
+func TestVersionFlagPrintsAppVersion(t *testing.T) {
+	cmd, out, _ := testCommand(t)
+	cmd.SetArgs([]string{"--version"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := strings.TrimSpace(out.String()); got != app.Version {
+		t.Fatalf("version output = %q, want %q", got, app.Version)
 	}
 }
 

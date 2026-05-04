@@ -4,9 +4,9 @@
 
 - `README.md` — root overview, implemented command list, install-from-source quick path, snapshot restore examples, and documentation links.
 - `docs/USAGE.md` — current CLI reference for `status`, `verify`, `doctor`, `switch`, `snapshots list/show/restore`, `machine`, `adopt`, and `migrate` commands.
-- `docs/INSTALL.md` — cross-platform install and validation for Windows, macOS, Linux, Docker fallback, and smoke testing.
+- `docs/INSTALL.md` — release archive install, checksum verification, source install, cross-platform validation, Docker fallback, and smoke testing.
 - `docs/ARCHITECTURE.md` — system overview, data ownership, store layout, local state, SQLite schema, manifest model, switch flow, safety model, rollback, and current limitations.
-- `docs/DEVELOPMENT.md` — package map, test/build commands, fixture guidance, and secret-handling rules.
+- `docs/DEVELOPMENT.md` — package map, test/build/release commands, fixture guidance, and secret-handling rules.
 - `CHANGELOG.md` — pre-release dogfood and safety milestones for snapshot reporting, guarded restore, targeted restore, real-dotfile targeted restore, and full restore consent.
 - `docs/ai-ops/install.ai.md` — AI-operator companion for cloning, validating, building, and smoke-testing the private repository.
 - `tests/cross-machine-dogfood-copilot.ai.md` — Windows ARM64 disposable target dogfood prompt, including targeted snapshot restore.
@@ -49,6 +49,6 @@
 
 ## Suggested follow-ups
 
-- Promote milestone tags to semver releases only after packaging expectations are defined.
+- Use semver tags such as `v0.1.0-doctor.1` for packaged prereleases; milestone tags remain dogfood markers only.
 - Re-run Scribe after `sync`, `import-skill`, or TUI land.
 - Consider a non-interactive full-restore override only if a future automation workflow needs it; keep default interactive consent.

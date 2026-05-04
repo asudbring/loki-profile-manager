@@ -6,9 +6,14 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 
 ## Unreleased
 
-- Added `loki doctor [--json]` for read-only environment, store, machine, snapshot, lock, SQLite, conflict-copy, and Infisical CLI diagnostics.
 - Planned: `sync`, `import-skill`, and `tui` commands remain unimplemented.
-- Planned: packaging/release workflow not yet defined.
+
+## v0.1.0-doctor.1 — 2026-05-04
+
+First packaged private dogfood prerelease.
+
+- Added `loki doctor [--json]` for read-only environment, store, machine, snapshot, lock, SQLite, conflict-copy, and Infisical CLI diagnostics.
+- Added release packaging workflow for Windows/macOS/Linux amd64/arm64 archives with checksum generation and version injection.
 
 ## full-restore-consent-dogfood — 2026-05-04
 

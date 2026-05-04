@@ -100,6 +100,32 @@ done
 
 GitHub Actions runs native tests and cross-compilation in `.github/workflows/ci.yml`.
 
+## Release packaging
+
+Release tags must be semver-shaped and start with `v`, for example:
+
+```bash
+git tag v0.1.0-doctor.1
+git push origin v0.1.0-doctor.1
+```
+
+Tag pushes matching `v*.*.*` run `.github/workflows/release.yml`. The workflow validates tests, packages Linux/macOS/Windows amd64/arm64 archives, writes `checksums.txt`, uploads artifacts, and creates a GitHub Release. Hyphenated versions are marked prerelease.
+
+Local package build:
+
+```bash
+./scripts/package-release.sh v0.1.0-doctor.1
+```
+
+Version injection uses linker flags:
+
+```bash
+go build -trimpath -ldflags "-X github.com/allensu/loki-profile-manager/internal/app.Version=test-version" -o dist/loki-test ./cmd/loki
+./dist/loki-test --version
+```
+
+Release archives include the binary, `README.md`, and `CHANGELOG.md`. Verify archives with `checksums.txt` before dogfood.
+
 ## Build commands
 
 Linux/macOS:
@@ -126,6 +152,7 @@ go build -o loki.exe ./cmd/loki
 - Use Docker when the host does not have Go installed.
 - Test Windows path expansion and symlink behavior on a Windows VM before dogfooding.
 - Test macOS symlink and local-state paths on a macOS host before dogfooding.
+- Test release packages with `loki --version` and `loki doctor` before tagging stable releases.
 - For rollback hardening, validate `loki snapshots list`, `loki snapshots show <id>`, `loki snapshots restore <id> --dry-run`, guarded `loki snapshots restore <id> --yes`, and `--target <path>` scoped restore on disposable targets before real dotfile recovery.
 
 ## Local state during tests

@@ -21,7 +21,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/store"
 )
 
-const Version = "dev"
+var Version = "dev"
 
 const kvStorePath = "store_path"
 

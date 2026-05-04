@@ -16,6 +16,16 @@ Loki creates and validates a local store layout, tracks machine identity and mac
 
 Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories. A target must be missing, already managed by Loki, or adopted by migration/adoption commands before activation can overwrite it.
 
+## Install from release binary
+
+Release assets are published from semver tags such as `v0.1.0-doctor.1`. This repository is private, so downloads require GitHub access.
+
+1. Open the GitHub release.
+2. Download the archive for your OS/architecture.
+3. Download `checksums.txt` and verify the archive.
+4. Extract `loki` or `loki.exe` onto your `PATH`.
+5. Run `loki --version` and `loki doctor`.
+
 ## Install from source
 
 Requires Go 1.23 or later.

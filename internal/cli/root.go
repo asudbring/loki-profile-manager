@@ -39,6 +39,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 		Use:           "loki",
 		Short:         "Manage local profiles, dotfiles, and AI tool skills.",
 		Long:          "Loki Profile Manager manages local dotfile/profile stores and AI tool skills. Current commands provide status, verification, and manifest-driven profile switching.",
+		Version:       app.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -51,6 +52,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	if opts.Err != nil {
 		cmd.SetErr(opts.Err)
 	}
+	cmd.SetVersionTemplate("{{.Version}}\n")
 
 	cmd.PersistentFlags().StringVar(&globals.store, "store", "", "override Loki store root path")
 	cmd.PersistentFlags().BoolVar(&globals.verbose, "verbose", false, "print verbose diagnostics to stderr")
