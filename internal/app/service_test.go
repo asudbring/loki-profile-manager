@@ -261,6 +261,42 @@ func TestListAndShowSnapshots(t *testing.T) {
 	}
 }
 
+func TestRestoreSnapshotDryRunRequiresDryRun(t *testing.T) {
+	svc := testService(t)
+	defer svc.Close()
+	_, err := svc.RestoreSnapshotDryRun(context.Background(), SnapshotRestoreDryRunRequest{SnapshotID: "missing"})
+	if err == nil || !strings.Contains(err.Error(), "--dry-run is required") {
+		t.Fatalf("RestoreSnapshotDryRun() error = %v", err)
+	}
+}
+
+func TestRestoreSnapshotDryRunReturnsPlanWithoutWriting(t *testing.T) {
+	ctx := context.Background()
+	svc := testService(t)
+	defer svc.Close()
+	root := t.TempDir()
+	target := filepath.Join(root, "created.txt")
+	source := filepath.Join(root, "source.txt")
+	if err := os.WriteFile(source, []byte("new"), 0o644); err != nil {
+		t.Fatalf("WriteFile(source) error = %v", err)
+	}
+	plan := activation.Plan{Profile: "work", Operations: []activation.Operation{{Type: activation.OperationCopy, SourcePath: source, TargetPath: target}}}
+	result, err := activation.Execute(ctx, activation.ExecuteRequest{Database: svc.database, LocalPaths: svc.paths, Plan: plan})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	dryRun, err := svc.RestoreSnapshotDryRun(ctx, SnapshotRestoreDryRunRequest{SnapshotID: result.Snapshot.SnapshotID, DryRun: true})
+	if err != nil {
+		t.Fatalf("RestoreSnapshotDryRun() error = %v", err)
+	}
+	if !dryRun.DryRun || dryRun.WouldWrite || dryRun.Summary.TargetCount != 1 || dryRun.Summary.RemoveCreatedTargetCount != 1 {
+		t.Fatalf("dryRun = %+v", dryRun)
+	}
+	if got := string(mustReadAppTest(t, target)); got != "new" {
+		t.Fatalf("target changed to %q", got)
+	}
+}
+
 func TestRegisterPolicyHeartbeatAndDeleteMachine(t *testing.T) {
 	svc := testService(t)
 	defer svc.Close()
@@ -301,6 +337,15 @@ func TestRegisterPolicyHeartbeatAndDeleteMachine(t *testing.T) {
 	if err := svc.DeleteMachine(context.Background(), storePath, record.MachineID); err == nil {
 		t.Fatal("DeleteMachine() unknown error = nil, want error")
 	}
+}
+
+func mustReadAppTest(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%s) error = %v", path, err)
+	}
+	return content
 }
 
 func testService(t *testing.T) *Service {

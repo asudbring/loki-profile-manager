@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/allensu/loki-profile-manager/internal/activation"
@@ -89,6 +90,53 @@ type SnapshotShowRequest struct {
 type SnapshotShowResult struct {
 	SnapshotDir string              `json:"snapshot_dir"`
 	Snapshot    activation.Snapshot `json:"snapshot"`
+}
+
+type SnapshotRestoreDryRunRequest struct {
+	SnapshotID string
+	DryRun     bool
+}
+
+type SnapshotRestoreDryRunResult struct {
+	SnapshotDir string                        `json:"snapshot_dir"`
+	SnapshotID  string                        `json:"snapshot_id"`
+	DryRun      bool                          `json:"dry_run"`
+	WouldWrite  bool                          `json:"would_write"`
+	Summary     SnapshotRestoreDryRunSummary  `json:"summary"`
+	Targets     []SnapshotRestoreDryRunTarget `json:"targets"`
+	Warnings    []string                      `json:"warnings,omitempty"`
+}
+
+type SnapshotRestoreDryRunSummary struct {
+	TargetCount                   int      `json:"target_count"`
+	RestoreFileCount              int      `json:"restore_file_count"`
+	RestoreDirectoryCount         int      `json:"restore_directory_count"`
+	RestoreSymlinkCount           int      `json:"restore_symlink_count"`
+	RemoveCreatedTargetCount      int      `json:"remove_created_target_count"`
+	SkipMissingTargetAbsentCount  int      `json:"skip_missing_target_already_absent_count"`
+	UnknownCount                  int      `json:"unknown_count"`
+	PreviousActiveProfile         string   `json:"previous_active_profile,omitempty"`
+	PreviousActiveBuckets         []string `json:"previous_active_buckets"`
+	WouldRestoreManagedTargetRows int      `json:"would_restore_managed_target_rows"`
+	WouldRestoreActiveState       bool     `json:"would_restore_active_state"`
+}
+
+type SnapshotRestoreDryRunTarget struct {
+	TargetPath         string   `json:"target_path,omitempty"`
+	TargetPathRedacted bool     `json:"target_path_redacted,omitempty"`
+	Kind               string   `json:"kind"`
+	Action             string   `json:"action"`
+	CurrentExists      bool     `json:"current_exists"`
+	CurrentKind        string   `json:"current_kind,omitempty"`
+	CurrentMode        string   `json:"current_mode,omitempty"`
+	CurrentHashPrefix  string   `json:"current_hash_prefix,omitempty"`
+	SnapshotHashPrefix string   `json:"snapshot_hash_prefix,omitempty"`
+	ExpectedHashPrefix string   `json:"expected_hash_prefix,omitempty"`
+	ExpectedMode       string   `json:"expected_mode,omitempty"`
+	LinkTarget         string   `json:"link_target,omitempty"`
+	LinkTargetRedacted bool     `json:"link_target_redacted,omitempty"`
+	SensitivePath      bool     `json:"sensitive_path"`
+	Warnings           []string `json:"warnings,omitempty"`
 }
 
 type DiscoverStoresRequest struct {
@@ -296,6 +344,24 @@ func (s *Service) ShowSnapshot(ctx context.Context, req SnapshotShowRequest) (Sn
 	return SnapshotShowResult{SnapshotDir: s.paths.SnapshotDir, Snapshot: snapshot}, nil
 }
 
+func (s *Service) RestoreSnapshotDryRun(ctx context.Context, req SnapshotRestoreDryRunRequest) (SnapshotRestoreDryRunResult, error) {
+	if s == nil {
+		return SnapshotRestoreDryRunResult{}, fmt.Errorf("snapshots restore: service is nil")
+	}
+	if !req.DryRun {
+		return SnapshotRestoreDryRunResult{}, fmt.Errorf("snapshots restore: --dry-run is required; real restore is not implemented")
+	}
+	snapshot, err := activation.LoadSnapshot(ctx, s.database, s.paths.SnapshotDir, req.SnapshotID)
+	if err != nil {
+		return SnapshotRestoreDryRunResult{}, err
+	}
+	plan, err := activation.BuildRestoreDryRunPlan(ctx, snapshot)
+	if err != nil {
+		return SnapshotRestoreDryRunResult{}, err
+	}
+	return snapshotRestoreDryRunResult(s.paths.SnapshotDir, plan), nil
+}
+
 func (s *Service) DiscoverStores(ctx context.Context, req DiscoverStoresRequest) (DiscoverStoresResult, error) {
 	if s == nil {
 		return DiscoverStoresResult{}, fmt.Errorf("discover stores: service is nil")
@@ -355,6 +421,101 @@ func (s *Service) currentLocalActiveState(ctx context.Context) (string, []string
 		_ = json.Unmarshal([]byte(raw), &buckets)
 	}
 	return profile, buckets, true, nil
+}
+
+func snapshotRestoreDryRunResult(snapshotDir string, plan activation.RestoreDryRunPlan) SnapshotRestoreDryRunResult {
+	result := SnapshotRestoreDryRunResult{
+		SnapshotDir: snapshotDir,
+		SnapshotID:  plan.Snapshot.SnapshotID,
+		DryRun:      true,
+		WouldWrite:  false,
+		Summary: SnapshotRestoreDryRunSummary{
+			TargetCount:                   len(plan.Targets),
+			PreviousActiveProfile:         plan.Snapshot.PreviousActiveProfile,
+			PreviousActiveBuckets:         cloneStrings(plan.Snapshot.PreviousActiveBuckets),
+			WouldRestoreManagedTargetRows: len(plan.Snapshot.ManagedTargets),
+			WouldRestoreActiveState:       plan.Snapshot.PreviousActiveProfile != "" || len(plan.Snapshot.PreviousActiveBuckets) > 0,
+		},
+	}
+	for _, target := range plan.Targets {
+		result.Targets = append(result.Targets, snapshotRestoreDryRunTarget(target))
+		switch target.Action {
+		case activation.RestoreActionRestoreFile:
+			result.Summary.RestoreFileCount++
+		case activation.RestoreActionRestoreDirectory:
+			result.Summary.RestoreDirectoryCount++
+		case activation.RestoreActionRestoreSymlink:
+			result.Summary.RestoreSymlinkCount++
+		case activation.RestoreActionRemoveCreatedTarget:
+			result.Summary.RemoveCreatedTargetCount++
+		case activation.RestoreActionSkipMissingTargetAbsent:
+			result.Summary.SkipMissingTargetAbsentCount++
+		default:
+			result.Summary.UnknownCount++
+		}
+	}
+	return result
+}
+
+func snapshotRestoreDryRunTarget(target activation.RestoreDryRunTarget) SnapshotRestoreDryRunTarget {
+	out := SnapshotRestoreDryRunTarget{
+		Kind:               target.Entry.Kind,
+		Action:             target.Action,
+		CurrentExists:      target.CurrentExists,
+		CurrentKind:        target.CurrentKind,
+		CurrentMode:        target.CurrentMode,
+		CurrentHashPrefix:  shortHash(target.CurrentHash),
+		SnapshotHashPrefix: shortHash(target.Entry.Hash),
+		ExpectedHashPrefix: shortHash(target.Entry.ExpectedHash),
+		ExpectedMode:       target.Entry.ExpectedMode,
+		SensitivePath:      target.SensitivePath,
+		Warnings:           sanitizeRestoreWarnings(target.Warnings, target.SensitivePath || target.SensitiveLinkTarget),
+	}
+	if target.SensitivePath {
+		out.TargetPathRedacted = true
+	} else {
+		out.TargetPath = target.Entry.TargetPath
+	}
+	if target.Entry.LinkTarget != "" {
+		if target.SensitivePath || target.SensitiveLinkTarget {
+			out.LinkTargetRedacted = true
+		} else {
+			out.LinkTarget = target.Entry.LinkTarget
+		}
+	}
+	if target.SensitivePath && len(out.Warnings) == 0 {
+		out.Warnings = append(out.Warnings, "sensitive-looking target path redacted")
+	}
+	return out
+}
+
+func sanitizeRestoreWarnings(warnings []string, sensitive bool) []string {
+	if len(warnings) == 0 {
+		return nil
+	}
+	if !sensitive {
+		return cloneStrings(warnings)
+	}
+	sanitized := []string{}
+	for _, warning := range warnings {
+		if strings.Contains(strings.ToLower(warning), "sensitive") {
+			sanitized = append(sanitized, warning)
+		}
+	}
+	if len(sanitized) == 0 {
+		sanitized = append(sanitized, "sensitive-looking path redacted; some restore checks were omitted")
+	}
+	return sanitized
+}
+
+func shortHash(value string) string {
+	if value == "" {
+		return ""
+	}
+	if len(value) <= 12 {
+		return value
+	}
+	return value[:12]
 }
 
 func statusManagedTargets(records []activation.ManagedTarget) []StatusManagedTarget {

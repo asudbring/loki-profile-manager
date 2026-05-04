@@ -32,7 +32,7 @@ The dogfood pass is valid when all are true:
   - succeeds and shows only `%USERPROFILE%\.config\git\ignore` and `%USERPROFILE%\.gitconfig`, then `switch --yes` passes; or
   - blocks only because an expected target already exists unmanaged, proving unsafe overwrite protection.
 - `loki --verbose status` reports active profile `work` and lists the expected managed targets.
-- If `switch --yes` runs, `loki snapshots list` and `loki snapshots show <latest>` pass and the latest snapshot mentions only expected targets.
+- If `switch --yes` runs, `loki snapshots list`, `loki snapshots show <latest>`, and `loki snapshots restore <latest> --dry-run` pass and mention only expected targets.
 
 ## Task
 
@@ -205,6 +205,25 @@ if ($SwitchState -eq "passed") {
     if (-not $matched) { $snapshotUnexpectedTargets += $line }
   }
   if ($snapshotUnexpectedTargets) { throw "snapshots show mentioned unexpected targets: $($snapshotUnexpectedTargets -join '; ')" }
+  $restorePreviewOutput = & .\bin\loki.exe snapshots restore $SnapshotID --dry-run 2>&1
+  $restorePreviewExit = $LASTEXITCODE
+  $restorePreviewOutput | ForEach-Object { $_ }
+  if ($restorePreviewExit -ne 0) { throw "snapshots restore --dry-run failed" }
+  $restorePreviewText = ($restorePreviewOutput | Out-String)
+  if ($restorePreviewText -notmatch "no files or local state were changed") { throw "snapshots restore dry-run did not report read-only mode" }
+  foreach ($target in $ExpectedTargets) {
+    if ($restorePreviewText -notmatch [regex]::Escape($target)) { throw "snapshots restore dry-run did not list expected target: $target" }
+  }
+  $restorePreviewTargetLines = $restorePreviewOutput | Where-Object { $_ -match '^- ' }
+  $restorePreviewUnexpectedTargets = @()
+  foreach ($line in $restorePreviewTargetLines) {
+    $matched = $false
+    foreach ($target in $ExpectedTargets) {
+      if ($line -match [regex]::Escape($target)) { $matched = $true }
+    }
+    if (-not $matched) { $restorePreviewUnexpectedTargets += $line }
+  }
+  if ($restorePreviewUnexpectedTargets) { throw "snapshots restore dry-run mentioned unexpected targets: $($restorePreviewUnexpectedTargets -join '; ')" }
   $SnapshotState = "passed"
 }
 

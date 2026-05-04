@@ -23,6 +23,7 @@ func newSnapshotsCommand(resolver config.PathResolver, globals *globalOptions, f
 	}
 	cmd.AddCommand(newSnapshotsListCommand(resolver, globals, factory))
 	cmd.AddCommand(newSnapshotsShowCommand(resolver, globals, factory))
+	cmd.AddCommand(newSnapshotsRestoreCommand(resolver, globals, factory))
 	return cmd
 }
 
@@ -94,6 +95,44 @@ func newSnapshotsShowCommand(resolver config.PathResolver, globals *globalOption
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
+	return cmd
+}
+
+func newSnapshotsRestoreCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
+	var dryRun bool
+	var jsonOutput bool
+	cmd := &cobra.Command{
+		Use:   "restore <snapshot-id>",
+		Short: "Preview a local activation snapshot restore without writing files.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			svc, err := factory(ctx, app.Options{
+				Resolver:      resolver,
+				StoreOverride: globals.store,
+				Verbose:       globals.verbose,
+				Stderr:        cmd.ErrOrStderr(),
+			})
+			if err != nil {
+				return err
+			}
+			defer svc.Close()
+
+			result, err := svc.RestoreSnapshotDryRun(ctx, app.SnapshotRestoreDryRunRequest{SnapshotID: args[0], DryRun: dryRun})
+			if err != nil {
+				return err
+			}
+			if jsonOutput {
+				encoder := json.NewEncoder(cmd.OutOrStdout())
+				encoder.SetIndent("", "  ")
+				return encoder.Encode(result)
+			}
+			printSnapshotRestoreDryRun(cmd, result)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview restore actions without writing files; required")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
 	return cmd
 }
@@ -178,6 +217,62 @@ func printSnapshotTarget(out interface{ Write([]byte) (int, error) }, snapshot a
 	}
 }
 
+func printSnapshotRestoreDryRun(cmd *cobra.Command, result app.SnapshotRestoreDryRunResult) {
+	out := cmd.OutOrStdout()
+	fmt.Fprintln(out, "Loki snapshot restore dry-run")
+	fmt.Fprintf(out, "ID: %s\n", result.SnapshotID)
+	fmt.Fprintln(out, "Mode: dry-run only; no files or local state were changed")
+	previousProfile := result.Summary.PreviousActiveProfile
+	if previousProfile == "" {
+		previousProfile = "not set"
+	}
+	fmt.Fprintf(out, "Would restore active profile: %s\n", previousProfile)
+	fmt.Fprintf(out, "Would restore active buckets: %s\n", formatSnapshotList(result.Summary.PreviousActiveBuckets))
+	fmt.Fprintf(out, "Would restore managed target rows: %d\n", result.Summary.WouldRestoreManagedTargetRows)
+	fmt.Fprintf(out, "Targets: %d\n", result.Summary.TargetCount)
+	for _, target := range result.Targets {
+		printSnapshotRestoreTarget(out, target)
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(out, "Warning: %s\n", warning)
+	}
+}
+
+func printSnapshotRestoreTarget(out interface{ Write([]byte) (int, error) }, target app.SnapshotRestoreDryRunTarget) {
+	path := target.TargetPath
+	if target.TargetPathRedacted || path == "" {
+		path = "(redacted-sensitive-path)"
+	}
+	fmt.Fprintf(out, "- %s %s", target.Action, path)
+	if target.CurrentKind != "" {
+		fmt.Fprintf(out, " current=%s", target.CurrentKind)
+	}
+	if target.CurrentHashPrefix != "" {
+		fmt.Fprintf(out, " hash=%s", target.CurrentHashPrefix)
+	}
+	if target.SnapshotHashPrefix != "" {
+		fmt.Fprintf(out, " snapshot_hash=%s", target.SnapshotHashPrefix)
+	}
+	if target.ExpectedHashPrefix != "" {
+		fmt.Fprintf(out, " expected_hash=%s", target.ExpectedHashPrefix)
+	}
+	if target.ExpectedMode != "" {
+		fmt.Fprintf(out, " expected_mode=%s", target.ExpectedMode)
+	}
+	if target.LinkTarget != "" {
+		fmt.Fprintf(out, " link_target=%s", target.LinkTarget)
+	} else if target.LinkTargetRedacted {
+		fmt.Fprint(out, " link_target=(redacted)")
+	}
+	fmt.Fprintln(out)
+	if target.TargetPathRedacted {
+		fmt.Fprintln(out, "  warning: sensitive-looking target path redacted")
+	}
+	for _, warning := range target.Warnings {
+		fmt.Fprintf(out, "  warning: %s\n", warning)
+	}
+}
+
 func formatSnapshotList(values []string) string {
 	if len(values) == 0 {
 		return "(none)"
@@ -206,11 +301,5 @@ func formatSnapshotEntryPath(snapshotPath, entryPath string) string {
 }
 
 func snapshotPathLooksSensitive(path string) bool {
-	lower := strings.ToLower(filepath.ToSlash(path))
-	for _, term := range []string{"/.ssh", ".env", "token", "credential", "private", "key"} {
-		if strings.Contains(lower, term) {
-			return true
-		}
-	}
-	return false
+	return activation.PathLooksSensitive(path)
 }

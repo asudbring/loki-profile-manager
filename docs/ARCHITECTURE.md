@@ -254,7 +254,9 @@ This is why migration/adoption is required before using Loki on a machine with e
 
 Activation rollback restores target files from the local snapshot. Targets that did not exist before activation are removed only if they still match the Loki-created hash and mode. Prior `managed_targets` rows and active profile/bucket key-value state are restored from snapshot metadata after filesystem rollback succeeds. If filesystem rollback fails, DB state is left unchanged and the snapshot path is reported for manual recovery.
 
-Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with local `metadata.json` files and marks stale/missing directories as degraded instead of panicking. `loki snapshots show` reads metadata only: target paths, kinds, hashes, modes, and snapshot entry paths. It never reads or prints snapshot entry contents. Manual restore is intentionally separate and not implemented yet.
+Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with local `metadata.json` files and marks stale/missing directories as degraded instead of panicking. `loki snapshots show` reads metadata only: target paths, kinds, hashes, modes, and snapshot entry paths. It never reads or prints snapshot entry contents.
+
+`loki snapshots restore <id> --dry-run` previews restore actions without calling rollback, writing files, mutating SQLite, creating symlinks, or acquiring write locks. It hashes only current non-sensitive targets for conflict context and redacts sensitive-looking paths. Real manual restore is intentionally separate and not implemented yet.
 
 ## Infisical integration
 
@@ -278,7 +280,7 @@ This must be verified with the real Infisical CLI before live secret use.
 ## Current limitations
 
 - No setup CLI.
-- No manual snapshot restore CLI.
+- No real manual snapshot restore CLI; only restore dry-run preview exists.
 - No skill import or mirroring.
 - No sync/conflict-copy workflow.
 - No doctor command.
