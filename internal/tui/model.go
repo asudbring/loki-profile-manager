@@ -57,6 +57,19 @@ type Model struct {
 	secretsErr   error
 	snapshotsErr error
 
+	switchInitialized       bool
+	switchProfileIndex      int
+	switchBucketIndex       int
+	switchSelectedBuckets   map[string]bool
+	switchDryRun            app.SwitchResult
+	switchDryRunErr         error
+	switchDryRunFingerprint string
+	switchExecResult        app.SwitchResult
+	switchExecErr           error
+	switchBusy              bool
+	confirmInput            string
+	confirmErr              string
+
 	spinner spinner.Model
 }
 
@@ -113,12 +126,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.screen = ScreenDashboard
+		m.ensureSwitchSelection()
+		return m, nil
+	case switchDryRunMsg:
+		m.switchBusy = false
+		m.switchDryRun = msg.result
+		m.switchDryRunErr = msg.err
+		m.switchDryRunFingerprint = msg.fingerprint
+		m.switchExecResult = app.SwitchResult{}
+		m.switchExecErr = nil
+		m.screen = ScreenSwitch
+		return m, nil
+	case switchExecuteMsg:
+		m.switchBusy = false
+		m.switchExecResult = msg.result
+		m.switchExecErr = msg.err
+		m.confirmInput = ""
+		m.confirmErr = ""
+		m.screen = ScreenSwitch
 		return m, nil
 	}
 	return m, nil
 }
 
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.screen == ScreenConfirm {
+		return m.updateConfirmKey(msg)
+	}
+	if m.screen == ScreenSwitch {
+		return m.updateSwitchKey(msg)
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -160,6 +197,10 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "p":
 		m.screen = ScreenProfiles
 		return m, nil
+	case "w":
+		m.screen = ScreenSwitch
+		m.ensureSwitchSelection()
+		return m, nil
 	}
 	return m, nil
 }
@@ -182,10 +223,14 @@ func (m *Model) openSelected() {
 		m.selected = 0
 	}
 	m.screen = items[m.selected].Screen
+	if m.screen == ScreenSwitch {
+		m.ensureSwitchSelection()
+	}
 }
 
 func (m Model) dashboardItems() []dashboardItem {
 	return []dashboardItem{
+		{Screen: ScreenSwitch, Key: "w", Label: "Switch", Description: "dry-run profile activation"},
 		{Screen: ScreenDoctor, Key: "d", Label: "Doctor", Description: formatSectionStatus(m.doctorErr, formatDoctorSummary(m.doctor))},
 		{Screen: ScreenMachine, Key: "m", Label: "Machine", Description: formatSectionStatus(m.machineErr, formatMachineFromStatus(m.status, m.machine))},
 		{Screen: ScreenSecrets, Key: "s", Label: "Secrets", Description: formatSectionStatus(m.secretsErr, formatSecretsReady(m.secrets))},
@@ -207,6 +252,10 @@ func (m Model) View() string {
 		return m.secretsView()
 	case ScreenProfiles:
 		return m.profilesView()
+	case ScreenSwitch:
+		return m.switchView()
+	case ScreenConfirm:
+		return m.confirmView()
 	case ScreenError:
 		return m.errorView()
 	default:

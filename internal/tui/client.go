@@ -14,6 +14,7 @@ type Client interface {
 	MachineStatus(context.Context) (app.MachineStatusResult, error)
 	SecretsStatus(context.Context) (app.SecretsStatusResult, error)
 	ListSnapshots(context.Context) (app.SnapshotListResult, error)
+	Switch(context.Context, app.SwitchRequest) (app.SwitchResult, error)
 }
 
 type ServiceClient struct {
@@ -65,4 +66,14 @@ func (c ServiceClient) ListSnapshots(ctx context.Context) (app.SnapshotListResul
 		return app.SnapshotListResult{}, fmt.Errorf("tui client: service is nil")
 	}
 	return c.Service.ListSnapshots(ctx, app.SnapshotListRequest{})
+}
+
+func (c ServiceClient) Switch(ctx context.Context, req app.SwitchRequest) (app.SwitchResult, error) {
+	if c.Service == nil {
+		return app.SwitchResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	if req.StorePath == "" {
+		req.StorePath = c.StorePath
+	}
+	return c.Service.Switch(ctx, req)
 }

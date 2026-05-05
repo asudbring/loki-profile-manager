@@ -3,30 +3,39 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/allensu/loki-profile-manager/internal/activation"
 	"github.com/allensu/loki-profile-manager/internal/app"
 	diagnostics "github.com/allensu/loki-profile-manager/internal/doctor"
 	"github.com/allensu/loki-profile-manager/internal/machine"
 	"github.com/allensu/loki-profile-manager/internal/secrets"
 )
 
+type fakeSwitchResult struct {
+	result app.SwitchResult
+	err    error
+}
+
 type fakeClient struct {
-	status       app.StatusResult
-	catalog      app.ProfileCatalogResult
-	doctor       app.DoctorResult
-	machine      app.MachineStatusResult
-	secrets      app.SecretsStatusResult
-	snapshots    app.SnapshotListResult
-	statusErr    error
-	catalogErr   error
-	doctorErr    error
-	machineErr   error
-	secretsErr   error
-	snapshotsErr error
+	status        app.StatusResult
+	catalog       app.ProfileCatalogResult
+	doctor        app.DoctorResult
+	machine       app.MachineStatusResult
+	secrets       app.SecretsStatusResult
+	snapshots     app.SnapshotListResult
+	statusErr     error
+	catalogErr    error
+	doctorErr     error
+	machineErr    error
+	secretsErr    error
+	snapshotsErr  error
+	switchResults []fakeSwitchResult
+	switchCalls   *[]app.SwitchRequest
 }
 
 func (f fakeClient) Status(context.Context) (app.StatusResult, error) {
@@ -51,6 +60,19 @@ func (f fakeClient) SecretsStatus(context.Context) (app.SecretsStatusResult, err
 
 func (f fakeClient) ListSnapshots(context.Context) (app.SnapshotListResult, error) {
 	return f.snapshots, f.snapshotsErr
+}
+
+func (f fakeClient) Switch(ctx context.Context, req app.SwitchRequest) (app.SwitchResult, error) {
+	_ = ctx
+	idx := 0
+	if f.switchCalls != nil {
+		idx = len(*f.switchCalls)
+		*f.switchCalls = append(*f.switchCalls, req)
+	}
+	if idx < len(f.switchResults) {
+		return f.switchResults[idx].result, f.switchResults[idx].err
+	}
+	return switchResult(req.ParentProfile, req.Buckets, req.DryRun, 1), nil
 }
 
 func TestModelLoadsDashboard(t *testing.T) {
@@ -103,7 +125,9 @@ func TestModelRefreshReturnsLoadCommand(t *testing.T) {
 
 func TestDashboardNavigationOpensDoctorAndBack(t *testing.T) {
 	model := loadedModel(populatedFakeClient())
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	opened := updated.(Model)
 	if opened.screen != ScreenDoctor {
 		t.Fatalf("screen = %s, want doctor", opened.screen)
@@ -193,10 +217,168 @@ func TestStatusErrorStillShowsErrorScreen(t *testing.T) {
 	}
 }
 
+func TestSwitchDryRunAndConfirmExecute(t *testing.T) {
+	calls := []app.SwitchRequest{}
+	client := populatedFakeClient()
+	client.switchCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	if model.screen != ScreenSwitch || !strings.Contains(model.View(), "Switch profile") {
+		t.Fatalf("switch view = %s", model.View())
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	if !model.switchBusy || cmd == nil {
+		t.Fatalf("dry-run not started: %+v cmd nil=%v", model, cmd == nil)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.switchDryRunErr != nil || model.switchDryRunFingerprint == "" || !strings.Contains(model.View(), "Ready to execute") {
+		t.Fatalf("dry-run model/view = %+v\n%s", model, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	if model.screen != ScreenConfirm || !strings.Contains(model.View(), "SWITCH work azure") {
+		t.Fatalf("confirm view = %s", model.View())
+	}
+	for _, r := range "SWITCH work azure" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.switchBusy || cmd == nil {
+		t.Fatalf("execute not started: %+v cmd nil=%v", model, cmd == nil)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.switchExecErr != nil || !strings.Contains(model.View(), "Switch complete") {
+		t.Fatalf("execute model/view = %+v\n%s", model, model.View())
+	}
+	if len(calls) != 3 || !calls[0].DryRun || !calls[1].DryRun || calls[2].DryRun || !calls[2].Yes {
+		t.Fatalf("switch calls = %+v", calls)
+	}
+}
+
+func TestSwitchDryRunBlockerDisablesExecute(t *testing.T) {
+	client := populatedFakeClient()
+	client.switchResults = []fakeSwitchResult{{result: switchResult("work", []string{"azure"}, true, 1), err: errors.New("unsafe target overwrite blocked")}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.switchDryRunErr == nil || model.canExecuteSwitch() || !strings.Contains(model.View(), "Blocker:") {
+		t.Fatalf("blocked dry-run model/view = %+v\n%s", model, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	if model.screen != ScreenSwitch || model.switchExecErr == nil {
+		t.Fatalf("execute should remain blocked: %+v", model)
+	}
+}
+
+func TestSwitchWrongConfirmationBlocksExecution(t *testing.T) {
+	calls := []app.SwitchRequest{}
+	client := populatedFakeClient()
+	client.switchCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	for _, r := range "WRONG" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if cmd != nil || model.confirmErr == "" || len(calls) != 1 {
+		t.Fatalf("wrong confirm model/calls = %+v %+v", model, calls)
+	}
+}
+
+func TestSwitchConfirmIgnoresDuplicateEnterWhileBusy(t *testing.T) {
+	client := populatedFakeClient()
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	for _, r := range "SWITCH work azure" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if cmd == nil || !model.switchBusy {
+		t.Fatalf("first execute not started: %+v", model)
+	}
+	_, duplicate := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if duplicate != nil {
+		t.Fatal("duplicate enter returned command")
+	}
+}
+
+func TestSwitchDryRunDriftAbortsExecution(t *testing.T) {
+	calls := []app.SwitchRequest{}
+	client := populatedFakeClient()
+	client.switchCalls = &calls
+	client.switchResults = []fakeSwitchResult{
+		{result: switchResult("work", []string{"azure"}, true, 1)},
+		{result: switchResult("work", []string{"azure"}, true, 2)},
+	}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	for _, r := range "SWITCH work azure" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.switchExecErr == nil || !strings.Contains(model.switchExecErr.Error(), "fingerprint changed") || len(calls) != 2 {
+		t.Fatalf("drift model/calls = %+v %+v", model, calls)
+	}
+}
+
 func loadedModel(client fakeClient) Model {
 	model := NewModel(context.Background(), client)
 	updated, _ := model.Update(dashboardLoadedMsg{status: client.status, catalog: client.catalog, doctor: client.doctor, machine: client.machine, secrets: client.secrets, snapshots: client.snapshots, catalogErr: client.catalogErr, doctorErr: client.doctorErr, machineErr: client.machineErr, secretsErr: client.secretsErr, snapshotsErr: client.snapshotsErr})
 	return updated.(Model)
+}
+
+func switchResult(profile string, buckets []string, dryRun bool, operations int) app.SwitchResult {
+	ops := make([]activation.Operation, 0, operations)
+	for i := 0; i < operations; i++ {
+		ops = append(ops, activation.Operation{
+			ID:         fmt.Sprintf("op-%d", i+1),
+			Type:       activation.OperationCopy,
+			TargetPath: fmt.Sprintf("/tmp/target-%d", i+1),
+			SourcePath: fmt.Sprintf("/tmp/source-%d", i+1),
+			Safety:     activation.SafetyStatus{Class: activation.SafetyMissing, Safe: true, Message: "target is missing"},
+		})
+	}
+	return app.SwitchResult{Plan: activation.Plan{StorePath: "/tmp/loki", Profile: profile, Buckets: buckets, Operations: ops}, DryRun: dryRun, Changed: operations}
 }
 
 func populatedFakeClient() fakeClient {
