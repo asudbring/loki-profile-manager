@@ -54,7 +54,7 @@ func (f *fakeRunner) Run(ctx context.Context, name string, args []string, env []
 		}
 		value, ok := f.values[key]
 		if !ok {
-			return nil, errors.New("missing")
+			return nil, errors.New("secret not found")
 		}
 		return []byte(value + "\n"), nil
 	}
@@ -114,6 +114,36 @@ func TestClientGetSecretsUsesRunnerAndHidesValuesOnMissing(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "MISSING") || strings.Contains(err.Error(), "secret-value") {
 		t.Fatalf("missing error leaked value or hid name: %v", err)
+	}
+}
+
+func TestClientGetSecretsAllowsEmptyValues(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"EMPTY": ""}}
+	client := testClient(runner)
+	values, err := client.GetSecrets(context.Background(), []string{"EMPTY"})
+	if err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	value, ok := values["EMPTY"]
+	if !ok || value != "" {
+		t.Fatalf("values = %+v, want EMPTY present with empty value", values)
+	}
+}
+
+func TestClientGetSecretsReadErrorDoesNotLeakValues(t *testing.T) {
+	runner := &fakeRunner{runErr: errors.New("permission denied token-value secret-value"), runOutput: "secret-value"}
+	client := testClient(runner)
+	_, err := client.GetSecrets(context.Background(), []string{"TOKEN"})
+	if err == nil {
+		t.Fatal("GetSecrets() error = nil, want read error")
+	}
+	if IsMissingSecret(err) {
+		t.Fatalf("GetSecrets() error = %v, want access error", err)
+	}
+	for _, leaked := range []string{"token-value", "secret-value"} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Fatalf("error leaked %q: %v", leaked, err)
+		}
 	}
 }
 

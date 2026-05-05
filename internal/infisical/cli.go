@@ -96,6 +96,12 @@ func (e MissingSecretError) Error() string {
 	return fmt.Sprintf("missing Infisical secret(s): %s", strings.Join(e.Names, ", "))
 }
 
+type SecretAccessError struct{}
+
+func (e SecretAccessError) Error() string {
+	return "Infisical secret read failed"
+}
+
 func NewClient(runner Runner) Client {
 	return Client{Binary: "infisical", Runner: runner}
 }
@@ -251,8 +257,8 @@ func (c Client) CheckAuthenticated(ctx context.Context) error {
 	if err != nil {
 		return AuthUnavailableError{}
 	}
-	_, err = c.Runner.Run(ctx, c.Binary, c.secretGetArgs(readinessProbeSecret, cfg), env)
-	if err == nil || readinessProbeMissing(err) {
+	out, err := c.Runner.Run(ctx, c.Binary, c.secretGetArgs(readinessProbeSecret, cfg), env)
+	if err == nil || secretGetMissing(readinessProbeSecret, err, out) {
 		return nil
 	}
 	return AuthUnavailableError{}
@@ -276,20 +282,20 @@ func (c Client) CheckStatus(ctx context.Context) secrets.Status {
 	return status
 }
 
-func readinessProbeMissing(err error) bool {
+func secretGetMissing(name string, err error, output []byte) bool {
 	if err == nil {
 		return false
 	}
-	message := strings.ToLower(err.Error())
+	message := strings.ToLower(err.Error()) + "\n" + strings.ToLower(string(output))
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		message += "\n" + strings.ToLower(string(exitErr.Stderr))
 	}
-	secretContext := strings.Contains(message, "secret") || strings.Contains(message, strings.ToLower(readinessProbeSecret))
+	secretContext := strings.Contains(message, "secret") || strings.Contains(message, strings.ToLower(name))
 	if !secretContext {
 		return false
 	}
-	for _, needle := range []string{"not found", "not exist", "notfound", "could not find", "unable to find"} {
+	for _, needle := range []string{"not found", "not exist", "notfound", "could not find", "unable to find", "missing"} {
 		if strings.Contains(message, needle) {
 			return true
 		}
@@ -334,12 +340,14 @@ func (c Client) GetSecrets(ctx context.Context, names []string) (map[string]stri
 	var missing []string
 	for _, name := range unique {
 		out, err := c.Runner.Run(ctx, c.Binary, c.secretGetArgs(name, cfg), env)
-		value := strings.TrimRight(string(out), "\r\n")
-		if err != nil || value == "" {
-			missing = append(missing, name)
-			continue
+		if err != nil {
+			if secretGetMissing(name, err, out) {
+				missing = append(missing, name)
+				continue
+			}
+			return values, SecretAccessError{}
 		}
-		values[name] = value
+		values[name] = strings.TrimRight(string(out), "\r\n")
 	}
 	if len(missing) > 0 {
 		sort.Strings(missing)
