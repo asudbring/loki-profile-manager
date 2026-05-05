@@ -327,6 +327,8 @@ Behavior:
 - `check` fetches only the named secrets and reports available or missing names. It never prints values.
 - Loki does not store Infisical tokens or secret values in the synced store or local SQLite.
 - Render mode reads secret values only during real `switch` execution for files that use `render` mode.
+- Machine identity auth is supported through environment variables. If `INFISICAL_TOKEN` is set, Loki passes it only to Infisical child processes. If `INFISICAL_AUTH_METHOD=universal-auth` plus `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` are set, Loki mints a short-lived token with `infisical login --method=universal-auth --plain --silent` and uses it only for the current operation.
+- When machine auth is active and `INFISICAL_PROJECT_ID` is set, Loki passes `--projectId <id>` to Infisical secret reads and `infisical run` calls. This avoids relying on ambient project detection for machine identities.
 
 Examples:
 
@@ -336,6 +338,13 @@ loki secrets login --domain https://eu.infisical.com
 loki secrets status
 loki secrets status --json
 loki secrets check OPENAI_API_KEY GITHUB_TOKEN
+
+# Machine identity shell setup; keep client secret out of committed files.
+$env:INFISICAL_AUTH_METHOD = "universal-auth"
+$env:INFISICAL_CLIENT_ID = "<client-id>"
+$env:INFISICAL_CLIENT_SECRET = "<client-secret>"
+$env:INFISICAL_PROJECT_ID = "<project-id>"
+loki secrets status
 ```
 
 ## `loki doctor`

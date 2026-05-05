@@ -15,8 +15,10 @@ type fakeRunner struct {
 	values              map[string]string
 	runErr              error
 	runOutput           string
+	machineToken        string
 	interactiveErr      error
 	commands            [][]string
+	envs                [][]string
 	interactiveCommands [][]string
 }
 
@@ -29,8 +31,15 @@ func (f *fakeRunner) LookPath(file string) (string, error) {
 
 func (f *fakeRunner) Run(ctx context.Context, name string, args []string, env []string) ([]byte, error) {
 	f.commands = append(f.commands, append([]string{name}, args...))
+	f.envs = append(f.envs, append([]string{}, env...))
 	if f.runErr != nil {
 		return []byte(f.runOutput), f.runErr
+	}
+	if len(args) > 0 && args[0] == "login" {
+		if f.machineToken != "" {
+			return []byte(f.machineToken), nil
+		}
+		return []byte("machine-token\n"), nil
 	}
 	if len(args) > 0 && args[0] == "run" {
 		if f.runOutput != "" {
@@ -57,9 +66,29 @@ func (f *fakeRunner) RunInteractive(ctx context.Context, name string, args []str
 	return f.interactiveErr
 }
 
+func testClient(runner *fakeRunner) Client {
+	return Client{Runner: runner, LookupEnv: func(string) (string, bool) { return "", false }}
+}
+
+func mapLookup(values map[string]string) EnvLookup {
+	return func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}
+}
+
+func hasEnv(env []string, want string) bool {
+	for _, entry := range env {
+		if entry == want {
+			return true
+		}
+	}
+	return false
+}
+
 func TestClientGetSecretsUsesRunnerAndHidesValuesOnMissing(t *testing.T) {
 	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value", "PROJECT": "demo"}}
-	client := Client{Runner: runner}
+	client := testClient(runner)
 	values, err := client.GetSecrets(context.Background(), []string{"TOKEN", "PROJECT", "TOKEN"})
 	if err != nil {
 		t.Fatalf("GetSecrets() error = %v", err)
@@ -89,7 +118,7 @@ func TestClientGetSecretsUsesRunnerAndHidesValuesOnMissing(t *testing.T) {
 }
 
 func TestClientCheckInstalledMissingCLI(t *testing.T) {
-	client := Client{Runner: &fakeRunner{missingBinary: true}}
+	client := testClient(&fakeRunner{missingBinary: true})
 	if err := client.CheckInstalled(context.Background()); err == nil {
 		t.Fatal("CheckInstalled() error = nil, want error")
 	}
@@ -97,7 +126,7 @@ func TestClientCheckInstalledMissingCLI(t *testing.T) {
 
 func TestClientCheckAuthenticatedUsesReadinessProbeWithoutLeakingOutput(t *testing.T) {
 	runner := &fakeRunner{runErr: errors.New("auth failed"), runOutput: "dummy-sensitive-output"}
-	client := Client{Runner: runner}
+	client := testClient(runner)
 	err := client.CheckAuthenticated(context.Background())
 	if err == nil {
 		t.Fatal("CheckAuthenticated() error = nil, want error")
@@ -112,13 +141,13 @@ func TestClientCheckAuthenticatedUsesReadinessProbeWithoutLeakingOutput(t *testi
 }
 
 func TestClientCheckStatusReadyAndNotReady(t *testing.T) {
-	ready := Client{Runner: &fakeRunner{}}
+	ready := testClient(&fakeRunner{})
 	status := ready.CheckStatus(context.Background())
 	if !status.CLIInstalled || !status.Authenticated || !status.Ready {
 		t.Fatalf("ready status = %+v", status)
 	}
 
-	missing := Client{Runner: &fakeRunner{missingBinary: true}}
+	missing := testClient(&fakeRunner{missingBinary: true})
 	status = missing.CheckStatus(context.Background())
 	if status.CLIInstalled || status.Ready || len(status.Checks) == 0 || status.Checks[0].Severity != secrets.SeverityWarning {
 		t.Fatalf("missing status = %+v", status)
@@ -127,13 +156,127 @@ func TestClientCheckStatusReadyAndNotReady(t *testing.T) {
 
 func TestClientLoginUsesInteractiveRunner(t *testing.T) {
 	runner := &fakeRunner{}
-	client := Client{Runner: runner}
+	client := testClient(runner)
 	if err := client.Login(context.Background(), secrets.LoginRequest{Domain: "https://example.test"}); err != nil {
 		t.Fatalf("Login() error = %v", err)
 	}
 	want := []string{"infisical", "login", "--domain", "https://example.test"}
 	if len(runner.interactiveCommands) != 1 || !reflect.DeepEqual(runner.interactiveCommands[0], want) {
 		t.Fatalf("interactive commands = %+v, want %+v", runner.interactiveCommands, want)
+	}
+}
+
+func TestClientGetSecretsWithTokenPassesProjectIDAndTokenEnv(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}}
+	client := testClient(runner)
+	client.Config = Config{Token: "test-token", ProjectID: "project-id"}
+	values, err := client.GetSecrets(context.Background(), []string{"TOKEN"})
+	if err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	if values["TOKEN"] != "secret-value" {
+		t.Fatalf("values = %+v", values)
+	}
+	want := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], want) {
+		t.Fatalf("commands = %+v, want %+v", runner.commands, want)
+	}
+	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=test-token") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientMintsUniversalAuthTokenAndPassesProjectID(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}, machineToken: "minted-token\n"}
+	client := testClient(runner)
+	client.Config = Config{AuthMethod: "universal-auth", ClientID: "client-id", ClientSecret: "client-secret", ProjectID: "project-id", APIURL: "https://app.infisical.com/api"}
+	values, err := client.GetSecrets(context.Background(), []string{"TOKEN"})
+	if err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	if values["TOKEN"] != "secret-value" {
+		t.Fatalf("values = %+v", values)
+	}
+	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "client-id", "--client-secret", "client-secret", "--domain", "https://app.infisical.com/api", "--plain", "--silent"}
+	wantGet := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}
+	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) || !reflect.DeepEqual(runner.commands[1], wantGet) {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+	if len(runner.envs) != 2 || hasEnv(runner.envs[0], "INFISICAL_TOKEN=minted-token") || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=minted-token") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientReadsMachineIdentityFromEnv(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}, machineToken: "env-token\n"}
+	client := Client{Runner: runner, LookupEnv: mapLookup(map[string]string{
+		"INFISICAL_AUTH_METHOD":   "universal-auth",
+		"INFISICAL_CLIENT_ID":     "env-client-id",
+		"INFISICAL_CLIENT_SECRET": "env-client-secret",
+		"INFISICAL_PROJECT_ID":    "env-project-id",
+		"INFISICAL_API_URL":       "https://app.infisical.com/api",
+	})}
+	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[1], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "env-project-id"}) {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[1], "INFISICAL_API_URL=https://app.infisical.com/api") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientMachineAuthErrorDoesNotLeakSecrets(t *testing.T) {
+	runner := &fakeRunner{runErr: errors.New("client-secret minted-token secret-value")}
+	client := testClient(runner)
+	client.Config = Config{AuthMethod: "universal-auth", ClientID: "client-id", ClientSecret: "client-secret", ProjectID: "project-id"}
+	_, err := client.GetSecrets(context.Background(), []string{"TOKEN"})
+	if err == nil {
+		t.Fatal("GetSecrets() error = nil, want auth error")
+	}
+	for _, leaked := range []string{"client-secret", "minted-token", "secret-value"} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Fatalf("error leaked %q: %v", leaked, err)
+		}
+	}
+}
+
+func TestClientRunWithSecretsPassesProjectID(t *testing.T) {
+	runner := &fakeRunner{runOutput: "ok\n"}
+	client := testClient(runner)
+	client.Config = Config{Token: "test-token", ProjectID: "project-id"}
+	out, err := client.RunWithSecrets(context.Background(), []string{"printenv", "TOKEN"}, []string{"EXTRA=value"})
+	if err != nil {
+		t.Fatalf("RunWithSecrets() error = %v", err)
+	}
+	if string(out) != "ok\n" {
+		t.Fatalf("out = %q", out)
+	}
+	want := []string{"infisical", "run", "--projectId", "project-id", "--", "printenv", "TOKEN"}
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], want) {
+		t.Fatalf("commands = %+v, want %+v", runner.commands, want)
+	}
+	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=test-token") || !hasEnv(runner.envs[0], "EXTRA=value") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientRunWithSecretsErrorDoesNotLeakSecrets(t *testing.T) {
+	runner := &fakeRunner{runErr: errors.New("test-token secret-value")}
+	client := testClient(runner)
+	client.Config = Config{Token: "test-token", ProjectID: "project-id"}
+	out, err := client.RunWithSecrets(context.Background(), []string{"printenv", "TOKEN"}, nil)
+	if err == nil {
+		t.Fatal("RunWithSecrets() error = nil, want failure")
+	}
+	if out != nil {
+		t.Fatalf("out = %q, want nil", out)
+	}
+	for _, leaked := range []string{"test-token", "secret-value"} {
+		if strings.Contains(err.Error(), leaked) {
+			t.Fatalf("error leaked %q: %v", leaked, err)
+		}
 	}
 }
 

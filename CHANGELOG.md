@@ -10,6 +10,7 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 - Added `loki sync --dry-run|--yes` MVP for provider conflict-copy detection and deletion with current-machine-wins semantics; TUI/app execution guards now use stable conflict fingerprints and dry-run writes nothing.
 - Added `loki import-skill <folder>` folder-import MVP for validated skill folders into common, profile core, or profile bucket store layers.
 - Added `loki secrets login|status|check` Infisical V1 UX for render-template readiness without storing or printing secret values.
+- Added Infisical machine identity support via `INFISICAL_TOKEN` or Universal Auth environment variables with explicit `--projectId` routing for machine-auth secret reads.
 - Planned: `import-skill` zip/markdown import and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.0-doctor.1 — 2026-05-04
