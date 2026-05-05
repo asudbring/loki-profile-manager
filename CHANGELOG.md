@@ -6,10 +6,11 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 
 ## Unreleased
 
-- Added `loki sync --dry-run|--yes` MVP for provider conflict-copy detection and deletion with current-machine-wins semantics.
+- Added `loki tui` Bubble Tea MVP with dashboard, doctor/machine/secrets/profile views, guarded switch flow, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff.
+- Added `loki sync --dry-run|--yes` MVP for provider conflict-copy detection and deletion with current-machine-wins semantics; TUI/app execution guards now use stable conflict fingerprints and dry-run writes nothing.
 - Added `loki import-skill <folder>` folder-import MVP for validated skill folders into common, profile core, or profile bucket store layers.
 - Added `loki secrets login|status|check` Infisical V1 UX for render-template readiness without storing or printing secret values.
-- Planned: `import-skill` zip/markdown import, Azure Key Vault/other secret providers, and `tui` commands remain unimplemented.
+- Planned: `import-skill` zip/markdown import and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.0-doctor.1 — 2026-05-04
 

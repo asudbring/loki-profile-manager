@@ -8,6 +8,7 @@ Loki Profile Manager is a local CLI. It uses a synced filesystem folder as the d
 flowchart TB
     User([User])
     CLI{loki CLI}
+    TUI[Bubble Tea TUI]
     App[App service]
 
     subgraph LocalState[Machine-local state]
@@ -40,6 +41,8 @@ flowchart TB
 
     User -->|invokes| CLI
     CLI --> App
+    CLI --> TUI
+    TUI --> App
     App --> StorePkg
     App --> MachinePkg
     App --> VerifyPkg
@@ -62,7 +65,7 @@ flowchart TB
     App --> Logs
 ```
 
-The CLI is thin. It parses commands and calls the app service. The app service owns local path resolution, logging, database bootstrap, and orchestration. `doctor` uses a diagnostic path that resolves local paths and opens existing SQLite state read-only instead of bootstrapping it. Store data and manifests remain in a user-selected synced folder. Local runtime state remains outside the synced store.
+The CLI is thin. It parses commands and calls the app service. `loki tui` is also thin: it runs a Bubble Tea model over a narrow fakeable `internal/tui.Client` adapter and delegates business logic to app services. The app service owns local path resolution, logging, database bootstrap, operation locks, safety checks, snapshots, restore guards, and orchestration. `doctor` uses a diagnostic path that resolves local paths and opens existing SQLite state read-only instead of bootstrapping it. Store data and manifests remain in a user-selected synced folder. Local runtime state remains outside the synced store.
 
 ## Data ownership
 
@@ -255,12 +258,15 @@ sequenceDiagram
     User->>CLI: loki sync --dry-run or --yes
     CLI->>App: Sync(request)
     App->>Store: Validate layout
-    App->>Lock: Acquire cooperative operation lock
-    App->>Scanner: Scan conflict-copy filenames
-    Scanner->>Store: Walk store paths, no file contents
     alt dry-run
-        App-->>CLI: planned deletions
+        App->>Scanner: Scan conflict-copy filenames
+        Scanner->>Store: Walk store paths, no file contents
+        App-->>CLI: planned deletions + conflict fingerprint
     else yes
+        App->>Lock: Acquire cooperative operation lock
+        App->>Scanner: Rescan conflict-copy filenames under lock
+        Scanner->>Store: Walk store paths, no file contents
+        App->>App: Check expected fingerprint when provided
         App->>Machine: Require registered current machine
         App->>Store: Delete file/symlink conflict copies
         App->>Machine: Update heartbeat
@@ -268,7 +274,47 @@ sequenceDiagram
     end
 ```
 
-The current-machine-wins policy means detected provider conflict-copy files are treated as losing provider artifacts. Loki deletes regular-file and symlink conflict copies only after `--yes` when the filename has a strong provider conflict-copy signal. Broad `case conflict` names, directory conflict copies, and non-regular entries are skipped and reported. No losing-content backup is created.
+The current-machine-wins policy means detected provider conflict-copy files are treated as losing provider artifacts. Loki deletes regular-file and symlink conflict copies only after `--yes` when the filename has a strong provider conflict-copy signal. Broad `case conflict` names, directory conflict copies, and non-regular entries are skipped and reported. Dry-run does not write a lock, machine ID, heartbeat, or conflict deletion. Callers that execute from a prior dry-run can pass an expected conflict fingerprint; app code rescans under the write lock and aborts before deletion if the conflict list changed. No losing-content backup is created.
+
+## TUI MVP flow
+
+`loki tui` uses Bubble Tea under `internal/tui`. The TUI is presentation/orchestration only; app services remain write authority.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant TUI as Bubble Tea model
+    participant Client as tui.Client adapter
+    participant App as app.Service
+
+    User->>TUI: open dashboard
+    TUI->>Client: Status / Doctor / MachineStatus / SecretsStatus / ProfileCatalog / ListSnapshots
+    Client->>App: read-only service calls
+    App-->>Client: typed results
+    Client-->>TUI: tea.Msg values
+    TUI-->>User: dashboard + detail screens
+
+    User->>TUI: guarded action
+    TUI->>Client: Dry-run service call
+    Client->>App: Switch / Sync / RestoreSnapshotDryRun
+    App-->>TUI: plan, blockers, warnings, fingerprint/guard
+    alt switch or sync execute
+        User->>TUI: exact typed confirmation
+        TUI->>Client: dry-run recheck
+        TUI->>TUI: compare fingerprint
+        TUI->>Client: app-owned Yes:true call
+        App-->>TUI: result or safety error
+    else snapshot restore
+        TUI-->>User: guarded CLI restore command only
+    end
+```
+
+TUI write-capable flows are intentionally narrow:
+
+- Switch requires successful dry-run, exact `SWITCH <profile> [bucket...]` phrase, and dry-run fingerprint recheck before `Switch(Yes:true)`.
+- Sync requires successful dry-run, exact `DELETE <n> CONFLICTS` phrase, dry-run recheck, and app-side expected conflict fingerprint before `Sync(Yes:true)` deletes conflict copies.
+- Snapshot restore writes are not exposed. TUI can record a restore dry-run guard and displays the existing guarded CLI restore command.
+- Secrets views render names/status only. Snapshot views render metadata only and do not read or print file contents.
 
 ## Skill import MVP flow
 
@@ -360,6 +406,6 @@ Doctor reports Infisical readiness as a warning when missing or not ready, not a
 - Skill folder import exists, but zip import, markdown conversion, runtime mirroring, and target-adapter sync are not implemented.
 - Secrets V1 supports Infisical only; Azure Key Vault and other providers are deferred.
 - Sync is conflict-copy cleanup only; watcher capture and full provider-state reconciliation are not implemented.
-- No Bubble Tea TUI.
+- TUI MVP exists, but no manifest editor, setup wizard, `adopt`/`migrate`/`import-skill` execution forms, daemon control, or inline snapshot restore execution.
 - `OperationMirror` is currently a no-op.
 - Verify does not reuse activation safety classification because it has no SQLite dependency in its current shape.

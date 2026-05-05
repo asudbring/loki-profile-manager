@@ -1,6 +1,6 @@
 # Development
 
-This repo is a Go 1.23 CLI project. The code is organized around a thin Cobra CLI, an app service layer, and internal packages for store layout, manifests, machine registry, verification, activation, and Infisical rendering.
+This repo is a Go 1.23 CLI project. The code is organized around a thin Cobra CLI, a Bubble Tea TUI, an app service layer, and internal packages for store layout, manifests, machine registry, verification, activation, and Infisical rendering.
 
 ## Package map
 
@@ -8,6 +8,7 @@ This repo is a Go 1.23 CLI project. The code is organized around a thin Cobra CL
 |---|---|
 | `cmd/loki` | Binary entry point. |
 | `internal/cli` | Cobra commands and terminal output. |
+| `internal/tui` | Bubble Tea terminal UI models, views, guarded action orchestration, and fakeable client adapter. |
 | `internal/app` | Service orchestration, local paths, database, logging, and command workflows. |
 | `internal/config` | OS-specific local path resolution and injectable test paths. |
 | `internal/db` | SQLite bootstrap, migrations, and key-value helpers. |
@@ -155,6 +156,7 @@ go build -o loki.exe ./cmd/loki
 - Test macOS symlink and local-state paths on a macOS host before dogfooding.
 - Test release packages with `loki --version` and `loki doctor` before tagging stable releases.
 - For rollback hardening, validate `loki snapshots list`, `loki snapshots show <id>`, `loki snapshots restore <id> --dry-run`, guarded `loki snapshots restore <id> --yes`, and `--target <path>` scoped restore on disposable targets before real dotfile recovery.
+- For TUI hardening, validate `loki tui --help` in automation and `loki tui` manually in an interactive terminal. Smoke the dashboard, `q` quit, switch dry-run/confirmation, sync dry-run/confirmation, and snapshot dry-run command handoff against a disposable store before dogfood.
 
 ## Local state during tests
 
@@ -207,7 +209,7 @@ For Infisical-related tests:
 
 ## Current implementation phase
 
-Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, skill folder import, and Infisical-backed secrets readiness. Sensitive-looking restore targets remain blocked by default.
+Phases 1-7 are implemented through the TUI MVP. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, skill folder import, Infisical-backed secrets readiness, and guarded Bubble Tea TUI flows. Sensitive-looking restore targets remain blocked/redacted by default, and TUI snapshot restore writes remain deferred to the existing CLI flow.
 
 Relevant historical handoff:
 
@@ -222,6 +224,9 @@ Run:
 ```bash
 go test ./...
 go vet ./...
+go mod verify
+go build ./cmd/loki
+go run ./cmd/loki tui --help
 ```
 
 If Go is unavailable on the host, run the Docker equivalents.

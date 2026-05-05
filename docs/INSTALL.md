@@ -77,6 +77,7 @@ After extraction:
 ```bash
 loki --version
 loki doctor
+loki tui --help
 ```
 
 Windows PowerShell:
@@ -84,6 +85,7 @@ Windows PowerShell:
 ```powershell
 .\loki.exe --version
 .\loki.exe doctor
+.\loki.exe tui --help
 ```
 
 ## Windows source build
@@ -219,6 +221,7 @@ done
 go run ./cmd/loki --store "$STORE" machine register --allow-profile work
 go run ./cmd/loki --store "$STORE" verify work
 go run ./cmd/loki --store "$STORE" switch work --dry-run
+go run ./cmd/loki --store "$STORE" tui --help
 ```
 
 Expected switch output includes:
@@ -229,7 +232,7 @@ Profile: work
 Operations: 0
 ```
 
-No `machine.record_missing` warning should appear after `machine register` succeeds.
+No `machine.record_missing` warning should appear after `machine register` succeeds. For an interactive TUI smoke, run `go run ./cmd/loki --store "$STORE" tui` in a real terminal and verify the dashboard opens, `r` refreshes, and `q` exits.
 
 ## OneDrive Windows VM smoke
 

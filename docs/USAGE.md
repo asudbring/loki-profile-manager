@@ -23,6 +23,7 @@ Current commands:
 | `verify` | Implemented |
 | `switch` | Implemented |
 | `sync` | Implemented |
+| `tui` | Implemented Bubble Tea MVP |
 | `import-skill` | Implemented folder-import MVP |
 | `secrets login` | Implemented Infisical CLI wrapper |
 | `secrets status` | Implemented Infisical readiness check |
@@ -43,7 +44,46 @@ Planned but not implemented:
 | Command | Planned purpose |
 |---|---|
 | `import-skill` zip/markdown import | Import skills from zip archives or markdown conversion. |
-| `tui` | Bubble Tea interactive UI. |
+| Azure Key Vault/other secret providers | Additional render-secret backends beyond Infisical V1. |
+
+## `loki tui`
+
+Launch the interactive terminal UI.
+
+```bash
+loki tui
+loki --store /path/to/loki tui
+```
+
+Behavior:
+
+- Requires an interactive terminal. Non-TTY execution returns a clear error.
+- Loads status, doctor, machine, secrets, profile catalog, and snapshot summary data through `internal/app` service APIs.
+- Dashboard quick actions: `w` switch, `y` sync conflicts, `n` snapshots, `d` doctor, `m` machine, `s` secrets, `p` profiles.
+- Switch screen runs `Switch(DryRun:true)`, requires exact `SWITCH <profile> [bucket...]` confirmation, rechecks the dry-run fingerprint, then calls app-owned `Switch(Yes:true)`.
+- Sync screen runs `Sync(DryRun:true)`, requires exact `DELETE <n> CONFLICTS` confirmation, rechecks the conflict fingerprint, then calls app-owned `Sync(Yes:true)`.
+- Snapshot screen lists and shows metadata only, runs restore dry-runs, and displays the guarded CLI restore command. It does not execute restore writes in the TUI MVP.
+- Secrets screen renders provider/readiness/check names and status only. It never renders secret values.
+- Snapshot views do not read or print snapshot entry file contents; sensitive paths are redacted where app APIs mark them redacted.
+
+Keys:
+
+| Key | Behavior |
+|---|---|
+| `q`, `ctrl+c` | Quit. |
+| `esc` | Back/cancel. |
+| `r` | Refresh dashboard. |
+| `enter` | Open selected dashboard item or show selected snapshot. |
+| `d` | Dry-run switch/sync/snapshot restore on action screens. |
+| `x` | Switch execute confirmation or sync confirmation reset. Snapshot restore has no execute key. |
+| Arrow keys / `hjkl` | Navigate lists, profile/bucket selection, and snapshot targets. |
+
+Example smoke:
+
+```bash
+loki tui --help
+loki tui
+```
 
 ## `loki status`
 
@@ -202,8 +242,8 @@ Behavior:
 - Requires a configured store path or `--store`.
 - Requires exactly one of `--dry-run` or `--yes`.
 - Scans only filenames under the Loki store for known OneDrive/Dropbox conflict-copy patterns.
-- `--dry-run` acquires the cooperative store operation lock, reports planned deletions, and does not create a machine ID or delete files.
-- `--yes` acquires the cooperative store operation lock, ensures a local machine ID, requires that machine to be registered, deletes conflict-copy files, and updates heartbeat.
+- `--dry-run` validates the store, scans conflict-copy names, reports planned deletions/skips, emits a stable conflict fingerprint, and does not acquire a lock, create a machine ID, update heartbeat, or delete files.
+- `--yes` acquires the cooperative store operation lock, rescans conflict-copy names, optionally checks an expected conflict fingerprint for callers such as TUI, ensures a local machine ID, requires that machine to be registered, deletes conflict-copy files, and updates heartbeat.
 - Regular files and symlinks with strong provider conflict-copy names are deletable. Broad `case conflict` names, conflict-copy directories, and non-regular filesystem entries are skipped and reported for manual review.
 - No provider APIs are called; OneDrive/Dropbox desktop clients still perform actual cloud replication.
 - This MVP does not implement watcher capture, pending captured changes, or full bidirectional sync.
@@ -603,7 +643,7 @@ loki --store /path/to/loki migrate local --profile work --bucket dev-tools --yes
 
 ## Store operation lock
 
-`switch`, `sync`, `import-skill`, `adopt`, `migrate repo`, and `migrate local` acquire a cooperative store-level lock before planning or writing:
+`switch`, `sync --yes`, `import-skill`, `adopt`, `migrate repo`, and `migrate local` acquire a cooperative store-level lock before writes or write-authoritative planning. `sync --dry-run` intentionally scans without writing a lock:
 
 ```text
 <store>/.loki-operation.lock

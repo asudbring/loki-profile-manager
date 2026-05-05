@@ -5,9 +5,9 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: private.
-- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented; guarded snapshot inspection/restore, sync conflict cleanup, skill folder import MVP, and Infisical secrets readiness UX implemented.
-- Current commands: `status`, `verify`, `switch`, `sync`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
-- Not implemented yet: `import-skill` zip/markdown import and `tui`.
+- Current implementation: Phases 1-7 complete through the TUI MVP; Phase 4.5 migration/adoption bootstrap, guarded snapshot inspection/restore, sync conflict cleanup, skill folder import MVP, Infisical secrets readiness UX, and Bubble Tea terminal UI are implemented.
+- Current commands: `status`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Not implemented yet: `import-skill` zip/markdown import and Azure Key Vault/other secret providers.
 - License: not selected yet.
 
 ## What it does today
@@ -125,6 +125,15 @@ go run ./cmd/loki snapshots restore <snapshot-id> --target ~/.config/git/ignore 
 ```
 
 Full snapshot restore without `--target` requires a matching prior dry-run guard and an interactive confirmation phrase: `RESTORE <snapshot-id>`. Targeted restore still requires the dry-run guard but does not prompt for full active-state restore consent.
+
+Launch the terminal UI:
+
+```bash
+go run ./cmd/loki tui
+go run ./cmd/loki --store /path/to/loki tui
+```
+
+TUI MVP screens cover dashboard diagnostics, machine/secrets/profile views, guarded profile switching, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff. Restore writes still happen only through the existing `loki snapshots restore ... --yes` CLI flow shown by the TUI after dry-run.
 
 ## Documentation
 
