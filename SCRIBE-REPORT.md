@@ -39,16 +39,17 @@
 - 1 system architecture flowchart in `docs/ARCHITECTURE.md`.
 - 1 data ownership flowchart in `docs/ARCHITECTURE.md`.
 - 1 switch flow sequence diagram in `docs/ARCHITECTURE.md`.
+- 1 sync flow sequence diagram and 1 skill import flow sequence diagram in `docs/ARCHITECTURE.md`.
 
 ## Deferred / out of scope
 
 - `LICENSE` — not created because no license choice exists. README states all rights reserved until a license file is added.
 - `docs/DEPLOY.md` — not applicable; this is a local CLI with no deploy target.
-- `import-skill` and `tui` — documented as planned but not implemented. `sync` is implemented only for provider conflict-copy cleanup, not watcher capture/full reconciliation.
+- `import-skill` zip/markdown import and `tui` — documented as planned but not implemented. Skill folder import is implemented. `sync` is implemented only for provider conflict-copy cleanup, not watcher capture/full reconciliation.
 - Full real-dotfile snapshot restore dogfood — deferred until there is explicit need beyond targeted restore validation.
 
 ## Suggested follow-ups
 
 - Use semver tags such as `v0.1.0-doctor.1` for packaged prereleases; milestone tags remain dogfood markers only.
-- Re-run Scribe after `import-skill`, watcher/full sync, or TUI land.
+- Re-run Scribe after `import-skill` zip/markdown import, watcher/full sync, or TUI land.
 - Consider a non-interactive full-restore override only if a future automation workflow needs it; keep default interactive consent.

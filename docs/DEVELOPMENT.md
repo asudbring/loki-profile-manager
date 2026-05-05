@@ -14,7 +14,7 @@ This repo is a Go 1.23 CLI project. The code is organized around a thin Cobra CL
 | `internal/log` | Structured logging and redaction. |
 | `internal/store` | Store discovery, layout creation, and validation. |
 | `internal/machine` | Machine ID, registry, heartbeat, and policy validation. |
-| `internal/manifest` | YAML schema, parsing, validation, path expansion, and merge dry-run. |
+| `internal/manifest` | YAML schema, parsing, writing, validation, path expansion, and merge dry-run. |
 | `internal/profile` | Profile layer resolution. |
 | `internal/skills` | Skill folder validation. |
 | `internal/verify` | Store, manifest, skill, and policy verification reports. |
@@ -203,7 +203,7 @@ For Infisical-related tests:
 
 ## Current implementation phase
 
-Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, and sync conflict-copy cleanup. Sensitive-looking restore targets remain blocked by default.
+Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, and skill folder import. Sensitive-looking restore targets remain blocked by default.
 
 Relevant historical handoff:
 

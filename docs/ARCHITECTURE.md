@@ -130,7 +130,7 @@ loki/
 └── logs/
 ```
 
-The store directories `conflicts/`, `snapshots/`, and `logs/` exist in the store layout for future sync/provider workflows. Phase 4 activation snapshots are stored in local app state to avoid syncing machine-local recovery data.
+The store directories `conflicts/`, `snapshots/`, and `logs/` exist in the store layout for future sync/provider workflows. Phase 4 activation snapshots are stored in local app state to avoid syncing machine-local recovery data. `loki import-skill` can create profile bucket layer directories (`files/`, `skills/`, `templates/`, and `manifest.yaml`) under an existing parent profile.
 
 ## Local state
 
@@ -270,6 +270,38 @@ sequenceDiagram
 
 The current-machine-wins policy means detected provider conflict-copy files are treated as losing provider artifacts. Loki deletes regular-file and symlink conflict copies only after `--yes` when the filename has a strong provider conflict-copy signal. Broad `case conflict` names, directory conflict copies, and non-regular entries are skipped and reported. No losing-content backup is created.
 
+## Skill import MVP flow
+
+`loki import-skill` imports one existing folder into store source-of-truth only. It does not mirror to runtime skill directories.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant App
+    participant Validator as skills validator
+    participant Lock as store lock
+    participant Store as Loki store
+    participant Manifest as manifest writer
+
+    User->>CLI: loki import-skill <folder> --profile work --yes
+    CLI->>App: ImportSkill(request)
+    App->>Store: Validate layout and destination layer
+    App->>Validator: Validate SKILL.md and local references
+    App->>App: Reject source symlinks
+    App->>Lock: Acquire cooperative operation lock
+    App->>Store: Check skills/<name> conflict
+    alt dry-run
+        App-->>CLI: planned copy and manifest update
+    else yes
+        App->>Store: Copy folder to selected layer skills/<name>
+        App->>Manifest: Add/update skills source entry
+        App-->>CLI: changed count
+    end
+```
+
+Existing destinations require `--overwrite`. Source symlinks are rejected for the MVP so imported skill content is regular directories/files only.
+
 ## Unsafe overwrite protection
 
 The overwrite detector uses `os.Lstat`, symlink inspection, target hashes, and `managed_targets` records.
@@ -320,7 +352,7 @@ This must be verified with the real Infisical CLI before live secret use.
 
 - No setup CLI.
 - Manual snapshot restore exists; sensitive-looking paths are blocked/redacted by default, and per-target restore is available with `--target`.
-- No skill import or mirroring.
+- Skill folder import exists, but zip import, markdown conversion, runtime mirroring, and target-adapter sync are not implemented.
 - Sync is conflict-copy cleanup only; watcher capture and full provider-state reconciliation are not implemented.
 - No Bubble Tea TUI.
 - `OperationMirror` is currently a no-op.

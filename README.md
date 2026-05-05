@@ -5,9 +5,9 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: private.
-- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented; guarded snapshot inspection and restore implemented.
-- Current commands: `status`, `verify`, `switch`, `sync`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
-- Not implemented yet: `import-skill` and `tui`.
+- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented; guarded snapshot inspection/restore, sync conflict cleanup, and skill folder import MVP implemented.
+- Current commands: `status`, `verify`, `switch`, `sync`, `import-skill`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Not implemented yet: `import-skill` zip/markdown import and `tui`.
 - License: not selected yet.
 
 ## What it does today
@@ -77,6 +77,13 @@ Scan and resolve provider conflict-copy files:
 ```bash
 go run ./cmd/loki --store /path/to/loki sync --dry-run
 go run ./cmd/loki --store /path/to/loki sync --yes
+```
+
+Import a skill folder into the store:
+
+```bash
+go run ./cmd/loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --dry-run
+go run ./cmd/loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --yes
 ```
 
 Register this machine for a profile and bucket policy:

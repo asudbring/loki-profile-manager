@@ -7,7 +7,8 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 ## Unreleased
 
 - Added `loki sync --dry-run|--yes` MVP for provider conflict-copy detection and deletion with current-machine-wins semantics.
-- Planned: `import-skill` and `tui` commands remain unimplemented.
+- Added `loki import-skill <folder>` folder-import MVP for validated skill folders into common, profile core, or profile bucket store layers.
+- Planned: `import-skill` zip/markdown import and `tui` commands remain unimplemented.
 
 ## v0.1.0-doctor.1 — 2026-05-04
 

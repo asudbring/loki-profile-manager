@@ -23,6 +23,7 @@ Current commands:
 | `verify` | Implemented |
 | `switch` | Implemented |
 | `sync` | Implemented |
+| `import-skill` | Implemented folder-import MVP |
 | `doctor` | Implemented |
 | `snapshots list` | Implemented |
 | `snapshots show` | Implemented |
@@ -38,7 +39,7 @@ Planned but not implemented:
 
 | Command | Planned purpose |
 |---|---|
-| `import-skill` | Import skills from folder, zip, or markdown. |
+| `import-skill` zip/markdown import | Import skills from zip archives or markdown conversion. |
 | `tui` | Bubble Tea interactive UI. |
 
 ## `loki status`
@@ -211,6 +212,50 @@ Examples:
 loki --store /path/to/loki sync --dry-run
 loki --store /path/to/loki sync --dry-run --json
 loki --store /path/to/loki sync --yes
+```
+
+## `loki import-skill`
+
+Import one valid skill folder into a Loki store layer.
+
+```bash
+loki import-skill <folder> (--common | --profile <profile> [--bucket <bucket>]) [--name <store-name>] (--dry-run | --yes) [--overwrite] [--json]
+```
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--common` | Import into `profiles/common`. |
+| `--profile <profile>` | Import into `profiles/<profile>/core`, unless `--bucket` is also set. |
+| `--bucket <bucket>` | Import into `profiles/<profile>/buckets/<bucket>`. The parent profile core manifest must already exist. |
+| `--name <store-name>` | Folder name under the layer `skills/` directory. Defaults to the source folder name. |
+| `--dry-run` | Validate and show the planned import without writing files. Creates and removes a transient operation lock. |
+| `--yes` | Confirm store writes. Required for real import. |
+| `--overwrite` | Replace an existing `skills/<store-name>` folder. Without this flag, an existing destination is a blocking conflict. |
+| `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- Requires a configured store path or `--store`.
+- Requires exactly one of `--dry-run` or `--yes`.
+- Requires exactly one destination family: `--common` or `--profile <profile>` with optional `--bucket <bucket>`.
+- Validates the source folder with Loki skill validation (`SKILL.md` frontmatter and local references).
+- Rejects symlinks anywhere inside the source skill folder for this MVP.
+- Acquires the store operation lock before checking destination conflicts or writing.
+- Copies the folder to the selected layer at `skills/<store-name>`.
+- Adds or updates the selected layer manifest with `skills: [{source: skills/<store-name>}]`.
+- Creates bucket layer folders and manifest when importing into a new bucket under an existing parent profile.
+- Does not mirror the skill into Pi, Claude, or other runtime skill directories.
+- Does not import zip archives or convert markdown files in this MVP.
+
+Examples:
+
+```bash
+loki --store /path/to/loki import-skill ~/skills/my-skill --common --dry-run
+loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --yes
+loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --bucket azure --name cloud-skill --yes
+loki --store /path/to/loki import-skill ~/skills/my-skill --common --overwrite --yes --json
 ```
 
 ## `loki doctor`
