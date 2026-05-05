@@ -25,6 +25,13 @@ const (
 	ScreenError     ScreenID = "error"
 )
 
+type dashboardItem struct {
+	Screen      ScreenID
+	Key         string
+	Label       string
+	Description string
+}
+
 type Model struct {
 	ctx     context.Context
 	client  Client
@@ -35,11 +42,20 @@ type Model struct {
 	loading bool
 	err     error
 
+	selected int
+
 	status    app.StatusResult
 	catalog   app.ProfileCatalogResult
+	doctor    app.DoctorResult
 	machine   app.MachineStatusResult
 	secrets   app.SecretsStatusResult
 	snapshots app.SnapshotListResult
+
+	catalogErr   error
+	doctorErr    error
+	machineErr   error
+	secretsErr   error
+	snapshotsErr error
 
 	spinner spinner.Model
 }
@@ -70,15 +86,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		return m, nil
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "ctrl+c":
-			return m, tea.Quit
-		case "r":
-			m.loading = true
-			m.err = nil
-			m.screen = ScreenLoading
-			return m, tea.Batch(m.spinner.Tick, loadDashboardCmd(m.ctx, m.client))
-		}
+		return m.updateKey(msg)
 	case spinner.TickMsg:
 		if m.loading {
 			var cmd tea.Cmd
@@ -89,6 +97,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.loading = false
 		m.status = msg.status
 		m.catalog = msg.catalog
+		m.doctor = msg.doctor
+		m.machine = msg.machine
+		m.secrets = msg.secrets
+		m.snapshots = msg.snapshots
+		m.catalogErr = msg.catalogErr
+		m.doctorErr = msg.doctorErr
+		m.machineErr = msg.machineErr
+		m.secretsErr = msg.secretsErr
+		m.snapshotsErr = msg.snapshotsErr
 		if msg.err != nil {
 			m.err = msg.err
 			m.screen = ScreenError
@@ -101,12 +118,95 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "r":
+		m.loading = true
+		m.err = nil
+		m.screen = ScreenLoading
+		return m, tea.Batch(m.spinner.Tick, loadDashboardCmd(m.ctx, m.client))
+	case "esc", "backspace":
+		if m.screen != ScreenDashboard && m.screen != ScreenLoading {
+			m.screen = ScreenDashboard
+			m.err = nil
+		}
+		return m, nil
+	case "up", "k":
+		if m.screen == ScreenDashboard {
+			m.moveSelection(-1)
+		}
+		return m, nil
+	case "down", "j":
+		if m.screen == ScreenDashboard {
+			m.moveSelection(1)
+		}
+		return m, nil
+	case "enter":
+		if m.screen == ScreenDashboard {
+			m.openSelected()
+		}
+		return m, nil
+	case "d":
+		m.screen = ScreenDoctor
+		return m, nil
+	case "m":
+		m.screen = ScreenMachine
+		return m, nil
+	case "s":
+		m.screen = ScreenSecrets
+		return m, nil
+	case "p":
+		m.screen = ScreenProfiles
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m *Model) moveSelection(delta int) {
+	items := m.dashboardItems()
+	if len(items) == 0 {
+		m.selected = 0
+		return
+	}
+	m.selected = (m.selected + delta + len(items)) % len(items)
+}
+
+func (m *Model) openSelected() {
+	items := m.dashboardItems()
+	if len(items) == 0 {
+		return
+	}
+	if m.selected < 0 || m.selected >= len(items) {
+		m.selected = 0
+	}
+	m.screen = items[m.selected].Screen
+}
+
+func (m Model) dashboardItems() []dashboardItem {
+	return []dashboardItem{
+		{Screen: ScreenDoctor, Key: "d", Label: "Doctor", Description: formatSectionStatus(m.doctorErr, formatDoctorSummary(m.doctor))},
+		{Screen: ScreenMachine, Key: "m", Label: "Machine", Description: formatSectionStatus(m.machineErr, formatMachineFromStatus(m.status, m.machine))},
+		{Screen: ScreenSecrets, Key: "s", Label: "Secrets", Description: formatSectionStatus(m.secretsErr, formatSecretsReady(m.secrets))},
+		{Screen: ScreenProfiles, Key: "p", Label: "Profiles", Description: formatSectionStatus(m.catalogErr, formatCatalogSummary(m.catalog))},
+	}
+}
+
 func (m Model) View() string {
 	switch m.screen {
 	case ScreenLoading:
 		return m.loadingView()
 	case ScreenDashboard:
 		return m.dashboardView()
+	case ScreenDoctor:
+		return m.doctorView()
+	case ScreenMachine:
+		return m.machineView()
+	case ScreenSecrets:
+		return m.secretsView()
+	case ScreenProfiles:
+		return m.profilesView()
 	case ScreenError:
 		return m.errorView()
 	default:
