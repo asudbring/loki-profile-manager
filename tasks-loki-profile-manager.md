@@ -601,73 +601,95 @@
 
 ## Phase 7 — TUI
 
+Detailed design and work split: `docs/TUI_PLAN.md`.
+
 ### 7.1 Create Bubble Tea app shell
 
 **Work:**
-- Add TUI model, views, keybindings, styles.
-- Wire `loki tui` and default no-arg launch.
+- Add Bubble Tea, Bubbles, and Lip Gloss dependencies after a compile spike.
+- Add `internal/tui` model/run/messages/styles skeleton.
+- Wire `loki tui` through Cobra.
+- Add fakeable TUI client interface.
 
 **Acceptance:**
-- TUI starts without panic.
-- First paint displays not-configured or configured dashboard.
+- `loki tui --help` works.
+- TUI starts without panic and exits with `q`/`ctrl+c`.
+- First paint displays configured or not-configured dashboard placeholder.
+- Non-TTY execution returns clear error or safe fallback.
 
-### 7.2 Implement dashboard view
+### 7.2 Add profile catalog API
 
 **Work:**
-- Show active profile/buckets, machine, store path, sync status, pending changes, skill counts, recent errors/conflicts, quick actions.
+- Add read-only `app.ProfileCatalog` for profiles and buckets.
+- Reuse `profile.DiscoverParents`, `profile.DiscoverBuckets`, and store layout validation.
 
 **Acceptance:**
-- Model test renders all required fields from fake status.
-- Manual first paint under 1 second on normal store.
+- Tests cover default profiles, bucket manifests, invalid layout, and missing/unconfigured store behavior.
+- No writes occur.
 
-### 7.3 Implement switcher view
+### 7.3 Implement read-only dashboard views
 
 **Work:**
-- Choose allowed parent profile.
-- Choose allowed buckets.
-- Show dry-run plan.
-- Confirm and execute switch.
+- Dashboard: status, active profile/buckets, machine, store path, managed target count, doctor summary, secret readiness, quick actions.
+- Detail screens: doctor checks, machine state, secrets status/check.
 
 **Acceptance:**
-- Disallowed profile hidden or blocked.
-- Dry-run summary shown before execution.
+- Model tests render required fields from fake service data.
+- Doctor checks group blocking/warning/info.
+- Secrets views show names/status only; dummy secret values never appear in `View()` output.
+
+### 7.4 Implement switcher view
+
+**Work:**
+- Choose parent profile and buckets.
+- Run `Switch(DryRun:true)`.
+- Show activation summary, warnings, blockers, and snapshot implications.
+- Confirm and execute `Switch(Yes:true)` only after typed phrase and dry-run fingerprint recheck.
+
+**Acceptance:**
+- Execute disabled before successful dry-run.
+- Unsafe overwrite/blocker cannot be bypassed.
+- Wrong confirmation phrase blocks execution.
+- Dry-run drift aborts execution and shows updated plan.
 - Success and rollback errors render clearly.
 
-### 7.4 Implement import skill view
+### 7.5 Implement sync conflict view
 
 **Work:**
-- Enter path.
-- Validate.
-- Choose explicit target.
-- Confirm duplicate overwrite.
-- Import.
+- Run `Sync(DryRun:true)`.
+- Show deletable/skipped provider conflict-copy files.
+- Execute `Sync(Yes:true)` only after typed `DELETE <n> CONFLICTS` phrase and dry-run recheck.
 
 **Acceptance:**
-- Valid import succeeds in model/integration path.
-- Invalid import shows advice.
-- Duplicate asks before overwrite.
+- Dry-run writes nothing.
+- Execute disabled before dry-run.
+- Conflict list/count drift aborts execution.
+- Lock and sync errors render without crashing TUI.
 
-### 7.5 Implement verify/doctor views
+### 7.6 Implement snapshot views
 
 **Work:**
-- Run checks.
-- Group blocking/warning/info issues.
-- Show remediation text.
+- List/show snapshot metadata.
+- Run restore dry-run.
+- Show blockers/warnings and exact guarded CLI command for restore.
+- Defer restore writes to existing CLI flow for MVP.
 
 **Acceptance:**
-- Fake report renders grouped issues.
-- User can return to dashboard.
+- Snapshot views never show file contents.
+- Sensitive-looking paths use existing redaction fields where available.
+- TUI does not execute restore writes in MVP.
 
-### 7.6 Implement sync action view
+### 7.7 Docs and validation
 
 **Work:**
-- Show dry-run conflict summary.
-- Execute sync.
-- Show deleted conflict-copy files and heartbeat update.
+- Update README, USAGE, ARCHITECTURE, DEVELOPMENT, CHANGELOG after implementation.
+- Add TUI tests and manual smoke notes.
 
 **Acceptance:**
-- Conflict summary visible.
-- Sync errors render without crashing TUI.
+- `go test ./...` passes.
+- `go vet ./...` passes.
+- `go build ./cmd/loki` passes.
+- `loki tui` opens and shows dashboard.
 
 ## Phase 8 — Packaging, docs, migration
 
