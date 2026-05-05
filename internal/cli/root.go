@@ -13,10 +13,11 @@ import (
 type ServiceFactory func(context.Context, app.Options) (*app.Service, error)
 
 type Options struct {
-	Resolver config.PathResolver
-	Out      io.Writer
-	Err      io.Writer
-	Factory  ServiceFactory
+	Resolver  config.PathResolver
+	Out       io.Writer
+	Err       io.Writer
+	Factory   ServiceFactory
+	TUIRunner TUIRunner
 }
 
 type globalOptions struct {
@@ -68,5 +69,6 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newAdoptCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newMachineCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newDoctorCommand(opts.Resolver, globals, factory))
+	cmd.AddCommand(newTUICommand(opts.Resolver, globals, factory, opts.TUIRunner))
 	return cmd
 }
