@@ -329,9 +329,13 @@ Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with
 
 `loki snapshots restore <id> --yes` requires the guard fingerprint from a matching prior dry-run. Before any restore write, it creates a pre-restore snapshot of current target files, managed-target rows, and active profile/buckets with retention disabled. It then restores target files/symlinks from the selected snapshot, restores managed-target rows and active state, and clears the guard. If a restore write fails, Loki rolls back with the pre-restore snapshot and preserves that snapshot for emergency recovery. `--target <path>` scopes both guard and restore to one exact snapshot target; targeted restore updates only that target and its managed-target row, not global active profile/buckets.
 
-## Infisical integration
+## Secrets integration
 
-Render mode uses an injectable secret provider. The default provider shells out through the Infisical CLI. Secret values are written only to the intended rendered target file. Missing secrets report names only.
+Render mode uses an injectable secret provider. The V1 provider is Infisical through the Infisical CLI. Secret values are written only to the intended rendered target file. Missing secrets report names only. Loki never stores Infisical tokens or secret values in the synced store or local SQLite.
+
+`loki secrets login` delegates to `infisical login` with inherited terminal I/O, so Loki does not capture login tokens or passwords. `loki secrets status` checks CLI/readiness without printing values. `loki secrets check <NAME...>` fetches only named secrets and reports available/missing names only.
+
+The provider seam is intentionally small (`GetSecrets(ctx, names)` plus status/login helpers) so Azure Key Vault and other backends can be added later without changing activation planning or render operations.
 
 Supported placeholders:
 
@@ -340,19 +344,21 @@ Supported placeholders:
 ${SECRET_NAME}
 ```
 
-Current CLI strategy:
+Current CLI strategies:
 
 ```text
-infisical run -- printenv SECRET_NAME
+infisical secrets get SECRET_NAME --plain --silent
+infisical login
 ```
 
-This must be verified with the real Infisical CLI before live secret use.
+Doctor reports Infisical readiness as a warning when missing or not ready, not a blocking issue unless a render operation later needs secrets.
 
 ## Current limitations
 
 - No setup CLI.
 - Manual snapshot restore exists; sensitive-looking paths are blocked/redacted by default, and per-target restore is available with `--target`.
 - Skill folder import exists, but zip import, markdown conversion, runtime mirroring, and target-adapter sync are not implemented.
+- Secrets V1 supports Infisical only; Azure Key Vault and other providers are deferred.
 - Sync is conflict-copy cleanup only; watcher capture and full provider-state reconciliation are not implemented.
 - No Bubble Tea TUI.
 - `OperationMirror` is currently a no-op.

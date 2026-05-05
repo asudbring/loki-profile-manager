@@ -24,6 +24,9 @@ Current commands:
 | `switch` | Implemented |
 | `sync` | Implemented |
 | `import-skill` | Implemented folder-import MVP |
+| `secrets login` | Implemented Infisical CLI wrapper |
+| `secrets status` | Implemented Infisical readiness check |
+| `secrets check` | Implemented named-secret presence check |
 | `doctor` | Implemented |
 | `snapshots list` | Implemented |
 | `snapshots show` | Implemented |
@@ -258,6 +261,43 @@ loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --bucke
 loki --store /path/to/loki import-skill ~/skills/my-skill --common --overwrite --yes --json
 ```
 
+## `loki secrets`
+
+Manage Infisical-backed secret readiness for render templates.
+
+```bash
+loki secrets login [--domain <url>]
+loki secrets status [--json]
+loki secrets check <SECRET_NAME...> [--json]
+```
+
+Flags:
+
+| Command | Flag | Description |
+|---|---|---|
+| `login` | `--domain <url>` | Optional Infisical domain URL for EU Cloud or self-hosted instances. |
+| `status` | `--json` | Emit machine-readable JSON. |
+| `check` | `--json` | Emit machine-readable JSON. |
+
+Behavior:
+
+- V1 supports Infisical only. Azure Key Vault and other providers are deferred.
+- `login` delegates to `infisical login` using inherited terminal I/O. Loki does not capture tokens, passwords, or login output.
+- `status` checks that the Infisical CLI is installed and ready for render templates. It does not list or print secret values.
+- `check` fetches only the named secrets and reports available or missing names. It never prints values.
+- Loki does not store Infisical tokens or secret values in the synced store or local SQLite.
+- Render mode reads secret values only during real `switch` execution for files that use `render` mode.
+
+Examples:
+
+```bash
+loki secrets login
+loki secrets login --domain https://eu.infisical.com
+loki secrets status
+loki secrets status --json
+loki secrets check OPENAI_API_KEY GITHUB_TOKEN
+```
+
 ## `loki doctor`
 
 Inspect local environment, store layout, machine registry, snapshots, operation locks, provider conflict-copy filenames, SQLite state, and Infisical CLI readiness.
@@ -280,7 +320,7 @@ Behavior:
 - Opens existing local SQLite state read-only; a missing database is reported as a warning.
 - Reports warning-only diagnostics with exit code 0.
 - Returns a nonzero exit code when blocking issues exist, such as an invalid configured store layout or SQLite integrity failure.
-- Checks local state paths, SQLite integrity and tables, provider discovery, store layout, operation locks, machine registration and stale heartbeats, snapshot metadata, conflict-copy filenames, and Infisical CLI presence.
+- Checks local state paths, SQLite integrity and tables, provider discovery, store layout, operation locks, machine registration and stale heartbeats, snapshot metadata, conflict-copy filenames, and Infisical CLI readiness.
 - Does not fetch or print secret values and does not read target or snapshot file contents.
 
 Examples:
@@ -563,7 +603,7 @@ loki --store /path/to/loki migrate local --profile work --bucket dev-tools --yes
 
 ## Store operation lock
 
-`switch`, `adopt`, `migrate repo`, and `migrate local` acquire a cooperative store-level lock before planning or writing:
+`switch`, `sync`, `import-skill`, `adopt`, `migrate repo`, and `migrate local` acquire a cooperative store-level lock before planning or writing:
 
 ```text
 <store>/.loki-operation.lock
@@ -628,7 +668,7 @@ Render mode supports these placeholders:
 ${SECRET_NAME}
 ```
 
-Secret values come from the Infisical CLI through an injectable provider. Missing secrets fail activation and list only secret names. Secret values must not appear in logs or errors.
+Secret values come from the Infisical CLI through an injectable provider. Missing secrets fail activation and list only secret names. Secret values must not appear in logs or errors. Use `loki secrets login`, `loki secrets status`, and `loki secrets check <NAME...>` to prepare and validate Infisical readiness without printing values.
 
 ## Exit behavior
 

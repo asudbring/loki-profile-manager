@@ -5,14 +5,14 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: private.
-- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented; guarded snapshot inspection/restore, sync conflict cleanup, and skill folder import MVP implemented.
-- Current commands: `status`, `verify`, `switch`, `sync`, `import-skill`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Current implementation: Phases 1-4 complete; Phase 4.5 migration/adoption bootstrap implemented; guarded snapshot inspection/restore, sync conflict cleanup, skill folder import MVP, and Infisical secrets readiness UX implemented.
+- Current commands: `status`, `verify`, `switch`, `sync`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `import-skill` zip/markdown import and `tui`.
 - License: not selected yet.
 
 ## What it does today
 
-Loki creates and validates a local store layout, tracks machine identity and machine policy, parses YAML profile manifests, verifies skill folders and mergeability, and activates a selected profile with symlink, copy, structured merge, and template-render operations.
+Loki creates and validates a local store layout, tracks machine identity and machine policy, parses YAML profile manifests, verifies skill folders and mergeability, checks Infisical-backed secret readiness, and activates a selected profile with symlink, copy, structured merge, and template-render operations.
 
 Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories. A target must be missing, already managed by Loki, or adopted by migration/adoption commands before activation can overwrite it.
 
@@ -84,6 +84,14 @@ Import a skill folder into the store:
 ```bash
 go run ./cmd/loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --dry-run
 go run ./cmd/loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --yes
+```
+
+Prepare Infisical-backed render secrets without printing values:
+
+```bash
+go run ./cmd/loki secrets login
+go run ./cmd/loki secrets status
+go run ./cmd/loki secrets check OPENAI_API_KEY
 ```
 
 Register this machine for a profile and bucket policy:

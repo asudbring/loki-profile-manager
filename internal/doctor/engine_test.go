@@ -12,6 +12,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/config"
 	"github.com/allensu/loki-profile-manager/internal/db"
 	"github.com/allensu/loki-profile-manager/internal/machine"
+	"github.com/allensu/loki-profile-manager/internal/secrets"
 	"github.com/allensu/loki-profile-manager/internal/store"
 )
 
@@ -66,6 +67,35 @@ func TestRunDetectsStaleLockStaleMachineAndConflictCopy(t *testing.T) {
 			t.Fatalf("report missing %s: %+v", code, report.Checks)
 		}
 	}
+}
+
+func TestRunReportsInfisicalReadiness(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		name   string
+		status secrets.Status
+		code   string
+	}{
+		{name: "missing", status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: false}, code: "dependency.infisical_missing"},
+		{name: "not ready", status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Ready: false, Checks: []secrets.Check{{Severity: secrets.SeverityWarning, Message: "not ready"}}}, code: "dependency.infisical_not_ready"},
+		{name: "ready", status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}, code: "dependency.infisical_ready"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			report := Run(ctx, Request{SecretStatusChecker: fakeDoctorSecretStatusChecker{status: tc.status}})
+			if !hasCheck(report, tc.code) {
+				t.Fatalf("report missing %s: %+v", tc.code, report.Checks)
+			}
+		})
+	}
+}
+
+type fakeDoctorSecretStatusChecker struct {
+	status secrets.Status
+}
+
+func (f fakeDoctorSecretStatusChecker) CheckStatus(ctx context.Context) secrets.Status {
+	return f.status
 }
 
 func openDoctorTestDB(t *testing.T, ctx context.Context, path string) *sql.DB {

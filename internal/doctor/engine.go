@@ -17,6 +17,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/config"
 	"github.com/allensu/loki-profile-manager/internal/infisical"
 	"github.com/allensu/loki-profile-manager/internal/machine"
+	"github.com/allensu/loki-profile-manager/internal/secrets"
 	"github.com/allensu/loki-profile-manager/internal/store"
 	"github.com/allensu/loki-profile-manager/internal/storesync"
 )
@@ -27,15 +28,16 @@ const (
 )
 
 type Request struct {
-	Version         string
-	StorePath       string
-	StoreOverride   string
-	LocalPaths      config.LocalPaths
-	Resolver        config.PathResolver
-	Database        *sql.DB
-	DatabaseMissing bool
-	DatabaseError   string
-	Now             func() time.Time
+	Version             string
+	StorePath           string
+	StoreOverride       string
+	LocalPaths          config.LocalPaths
+	Resolver            config.PathResolver
+	Database            *sql.DB
+	DatabaseMissing     bool
+	DatabaseError       string
+	SecretStatusChecker secrets.StatusChecker
+	Now                 func() time.Time
 }
 
 func Run(ctx context.Context, req Request) Report {
@@ -62,7 +64,7 @@ func Run(ctx context.Context, req Request) Report {
 
 	storeUsable := addStoreChecks(&report, report.StorePath)
 	addSnapshotChecks(ctx, &report, req.Database, req.LocalPaths.SnapshotDir)
-	addDependencyChecks(ctx, &report)
+	addDependencyChecks(ctx, &report, req.SecretStatusChecker)
 	if report.StorePath != "" {
 		addLockChecks(&report, report.StorePath, now())
 		addConflictChecks(&report, report.StorePath)
@@ -397,13 +399,37 @@ func addSnapshotChecks(ctx context.Context, report *Report, database *sql.DB, sn
 	}
 }
 
-func addDependencyChecks(ctx context.Context, report *Report) {
-	client := infisical.NewClient(nil)
-	if err := client.CheckInstalled(ctx); err != nil {
-		report.add(Check{Severity: SeverityWarning, Code: "dependency.infisical_missing", Category: "dependency", Message: err.Error(), Remediation: "Install and authenticate Infisical before activating render templates."})
+func addDependencyChecks(ctx context.Context, report *Report, checker secrets.StatusChecker) {
+	if checker == nil {
+		client := infisical.NewClient(nil)
+		checker = client
+	}
+	status := checker.CheckStatus(ctx)
+	if !status.CLIInstalled {
+		report.add(Check{Severity: SeverityWarning, Code: "dependency.infisical_missing", Category: "dependency", Message: firstSecretStatusMessage(status, "Infisical CLI is not installed"), Remediation: "Install Infisical CLI, then run `loki secrets login`."})
 		return
 	}
-	report.add(Check{Severity: SeverityInfo, Code: "dependency.infisical_found", Category: "dependency", Message: "Infisical CLI is installed"})
+	if !status.Ready {
+		report.add(Check{Severity: SeverityWarning, Code: "dependency.infisical_not_ready", Category: "dependency", Message: firstSecretStatusWarning(status, "Infisical CLI is installed but not ready"), Remediation: "Run `loki secrets login`, then run `infisical init` or configure an Infisical project if needed."})
+		return
+	}
+	report.add(Check{Severity: SeverityInfo, Code: "dependency.infisical_ready", Category: "dependency", Message: "Infisical CLI is ready for render templates"})
+}
+
+func firstSecretStatusMessage(status secrets.Status, fallback string) string {
+	if len(status.Checks) > 0 && status.Checks[0].Message != "" {
+		return status.Checks[0].Message
+	}
+	return fallback
+}
+
+func firstSecretStatusWarning(status secrets.Status, fallback string) string {
+	for _, check := range status.Checks {
+		if check.Severity == secrets.SeverityWarning && check.Message != "" {
+			return check.Message
+		}
+	}
+	return fallback
 }
 
 func addConflictChecks(report *Report, storePath string) {

@@ -18,6 +18,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/db"
 	lokilog "github.com/allensu/loki-profile-manager/internal/log"
 	"github.com/allensu/loki-profile-manager/internal/machine"
+	"github.com/allensu/loki-profile-manager/internal/secrets"
 	"github.com/allensu/loki-profile-manager/internal/store"
 )
 
@@ -41,20 +42,24 @@ type restoreGuard struct {
 }
 
 type Options struct {
-	Resolver       config.PathResolver
-	StoreOverride  string
-	Verbose        bool
-	Stderr         io.Writer
-	SecretProvider activation.SecretProvider
+	Resolver            config.PathResolver
+	StoreOverride       string
+	Verbose             bool
+	Stderr              io.Writer
+	SecretProvider      activation.SecretProvider
+	SecretStatusChecker secrets.StatusChecker
+	SecretLoginRunner   secrets.LoginRunner
 }
 
 type Service struct {
-	resolver       config.PathResolver
-	paths          config.LocalPaths
-	storeOverride  string
-	logger         *lokilog.Logger
-	database       *sql.DB
-	secretProvider activation.SecretProvider
+	resolver            config.PathResolver
+	paths               config.LocalPaths
+	storeOverride       string
+	logger              *lokilog.Logger
+	database            *sql.DB
+	secretProvider      activation.SecretProvider
+	secretStatusChecker secrets.StatusChecker
+	secretLoginRunner   secrets.LoginRunner
 }
 
 type StatusRequest struct{}
@@ -261,13 +266,23 @@ func NewService(ctx context.Context, opts Options) (*Service, error) {
 	if secretProvider == nil {
 		secretProvider = defaultSecretProvider()
 	}
+	secretStatusChecker := opts.SecretStatusChecker
+	if secretStatusChecker == nil {
+		secretStatusChecker = defaultSecretStatusChecker()
+	}
+	secretLoginRunner := opts.SecretLoginRunner
+	if secretLoginRunner == nil {
+		secretLoginRunner = defaultSecretLoginRunner()
+	}
 	return &Service{
-		resolver:       resolver,
-		paths:          paths,
-		storeOverride:  storeOverride,
-		logger:         logger,
-		database:       database,
-		secretProvider: secretProvider,
+		resolver:            resolver,
+		paths:               paths,
+		storeOverride:       storeOverride,
+		logger:              logger,
+		database:            database,
+		secretProvider:      secretProvider,
+		secretStatusChecker: secretStatusChecker,
+		secretLoginRunner:   secretLoginRunner,
 	}, nil
 }
 

@@ -6,12 +6,18 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/allensu/loki-profile-manager/internal/secrets"
 )
 
 type fakeRunner struct {
-	missingBinary bool
-	values        map[string]string
-	commands      [][]string
+	missingBinary       bool
+	values              map[string]string
+	runErr              error
+	runOutput           string
+	interactiveErr      error
+	commands            [][]string
+	interactiveCommands [][]string
 }
 
 func (f *fakeRunner) LookPath(file string) (string, error) {
@@ -23,12 +29,32 @@ func (f *fakeRunner) LookPath(file string) (string, error) {
 
 func (f *fakeRunner) Run(ctx context.Context, name string, args []string, env []string) ([]byte, error) {
 	f.commands = append(f.commands, append([]string{name}, args...))
-	key := args[len(args)-1]
-	value, ok := f.values[key]
-	if !ok {
-		return nil, errors.New("missing")
+	if f.runErr != nil {
+		return []byte(f.runOutput), f.runErr
 	}
-	return []byte(value + "\n"), nil
+	if len(args) > 0 && args[0] == "run" {
+		if f.runOutput != "" {
+			return []byte(f.runOutput), nil
+		}
+		return []byte("infisical version test\n"), nil
+	}
+	if len(args) >= 3 && args[0] == "secrets" && args[1] == "get" {
+		key := args[2]
+		if key == readinessProbeSecret {
+			return nil, errors.New("secret not found")
+		}
+		value, ok := f.values[key]
+		if !ok {
+			return nil, errors.New("missing")
+		}
+		return []byte(value + "\n"), nil
+	}
+	return nil, errors.New("unexpected command")
+}
+
+func (f *fakeRunner) RunInteractive(ctx context.Context, name string, args []string, env []string) error {
+	f.interactiveCommands = append(f.interactiveCommands, append([]string{name}, args...))
+	return f.interactiveErr
 }
 
 func TestClientGetSecretsUsesRunnerAndHidesValuesOnMissing(t *testing.T) {
@@ -44,10 +70,18 @@ func TestClientGetSecretsUsesRunnerAndHidesValuesOnMissing(t *testing.T) {
 	if len(runner.commands) != 2 {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
+	for _, command := range runner.commands {
+		if len(command) < 6 || command[1] != "secrets" || command[2] != "get" || command[4] != "--plain" || command[5] != "--silent" {
+			t.Fatalf("unexpected command = %+v", command)
+		}
+	}
 
-	_, err = client.GetSecrets(context.Background(), []string{"MISSING"})
+	partial, err := client.GetSecrets(context.Background(), []string{"TOKEN", "MISSING"})
 	if err == nil {
 		t.Fatal("GetSecrets() error = nil, want missing")
+	}
+	if partial["TOKEN"] != "secret-value" {
+		t.Fatalf("partial values = %+v", partial)
 	}
 	if !strings.Contains(err.Error(), "MISSING") || strings.Contains(err.Error(), "secret-value") {
 		t.Fatalf("missing error leaked value or hid name: %v", err)
@@ -58,6 +92,48 @@ func TestClientCheckInstalledMissingCLI(t *testing.T) {
 	client := Client{Runner: &fakeRunner{missingBinary: true}}
 	if err := client.CheckInstalled(context.Background()); err == nil {
 		t.Fatal("CheckInstalled() error = nil, want error")
+	}
+}
+
+func TestClientCheckAuthenticatedUsesReadinessProbeWithoutLeakingOutput(t *testing.T) {
+	runner := &fakeRunner{runErr: errors.New("auth failed"), runOutput: "dummy-sensitive-output"}
+	client := Client{Runner: runner}
+	err := client.CheckAuthenticated(context.Background())
+	if err == nil {
+		t.Fatal("CheckAuthenticated() error = nil, want error")
+	}
+	if strings.Contains(err.Error(), "dummy-sensitive-output") {
+		t.Fatalf("auth error leaked command output: %v", err)
+	}
+	want := []string{"infisical", "secrets", "get", readinessProbeSecret, "--plain", "--silent"}
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], want) {
+		t.Fatalf("commands = %+v, want %+v", runner.commands, want)
+	}
+}
+
+func TestClientCheckStatusReadyAndNotReady(t *testing.T) {
+	ready := Client{Runner: &fakeRunner{}}
+	status := ready.CheckStatus(context.Background())
+	if !status.CLIInstalled || !status.Authenticated || !status.Ready {
+		t.Fatalf("ready status = %+v", status)
+	}
+
+	missing := Client{Runner: &fakeRunner{missingBinary: true}}
+	status = missing.CheckStatus(context.Background())
+	if status.CLIInstalled || status.Ready || len(status.Checks) == 0 || status.Checks[0].Severity != secrets.SeverityWarning {
+		t.Fatalf("missing status = %+v", status)
+	}
+}
+
+func TestClientLoginUsesInteractiveRunner(t *testing.T) {
+	runner := &fakeRunner{}
+	client := Client{Runner: runner}
+	if err := client.Login(context.Background(), secrets.LoginRequest{Domain: "https://example.test"}); err != nil {
+		t.Fatalf("Login() error = %v", err)
+	}
+	want := []string{"infisical", "login", "--domain", "https://example.test"}
+	if len(runner.interactiveCommands) != 1 || !reflect.DeepEqual(runner.interactiveCommands[0], want) {
+		t.Fatalf("interactive commands = %+v, want %+v", runner.interactiveCommands, want)
 	}
 }
 

@@ -32,12 +32,13 @@ func (s *Service) Doctor(ctx context.Context, req DoctorRequest) (DoctorResult, 
 		}
 	}
 	return diagnostics.Run(ctx, diagnostics.Request{
-		Version:       Version,
-		StorePath:     storePath,
-		StoreOverride: s.storeOverride,
-		LocalPaths:    s.paths,
-		Resolver:      s.resolver,
-		Database:      s.database,
+		Version:             Version,
+		StorePath:           storePath,
+		StoreOverride:       s.storeOverride,
+		LocalPaths:          s.paths,
+		Resolver:            s.resolver,
+		Database:            s.database,
+		SecretStatusChecker: s.secretStatusChecker,
 	}), nil
 }
 
@@ -73,13 +74,14 @@ func RunDoctor(ctx context.Context, opts Options) (DoctorResult, error) {
 		databaseError = openErr.Error()
 	}
 	return diagnostics.Run(ctx, diagnostics.Request{
-		Version:         Version,
-		StorePath:       storePath,
-		StoreOverride:   storeOverride,
-		LocalPaths:      paths,
-		Resolver:        resolver,
-		Database:        database,
-		DatabaseMissing: !exists && openErr == nil,
-		DatabaseError:   databaseError,
+		Version:             Version,
+		StorePath:           storePath,
+		StoreOverride:       storeOverride,
+		LocalPaths:          paths,
+		Resolver:            resolver,
+		Database:            database,
+		DatabaseMissing:     !exists && openErr == nil,
+		DatabaseError:       databaseError,
+		SecretStatusChecker: opts.SecretStatusChecker,
 	}), nil
 }

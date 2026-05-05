@@ -21,6 +21,7 @@ This repo is a Go 1.23 CLI project. The code is organized around a thin Cobra CL
 | `internal/doctor` | Read-only environment, store, machine, snapshot, lock, SQLite, dependency, and conflict-copy diagnostics. |
 | `internal/activation` | Activation planning, safety, symlink/copy/merge/render, snapshots, rollback, and managed target state. |
 | `internal/infisical` | Infisical CLI wrapper and template renderer. |
+| `internal/secrets` | Provider-neutral secret status/login/check types for Infisical V1 and future backends. |
 
 ## Test commands
 
@@ -148,7 +149,7 @@ go build -o loki.exe ./cmd/loki
 - Use `config.PathResolver` with temp directories for OS-specific path tests.
 - Use temp Loki stores for integration tests.
 - Do not put secrets in fixtures, logs, or expected output.
-- Do not call real Infisical in unit tests; use an injectable fake runner or fake secret provider.
+- Do not call real Infisical in unit tests; use an injectable fake runner, fake status checker, login runner, or fake secret provider.
 - Use Docker when the host does not have Go installed.
 - Test Windows path expansion and symlink behavior on a Windows VM before dogfooding.
 - Test macOS symlink and local-state paths on a macOS host before dogfooding.
@@ -198,12 +199,15 @@ For Infisical-related tests:
 
 - Use `internal/infisical.Runner` fakes.
 - Use `activation.SecretProvider` fakes.
+- Use fake `secrets.StatusChecker` and `secrets.LoginRunner` implementations.
 - Assert missing-secret errors contain secret names only.
+- Assert command output and JSON never contain dummy secret values.
+- `loki secrets login` wrapper must use inherited stdio and must not capture login output.
 - Use dummy values that are never real credentials.
 
 ## Current implementation phase
 
-Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, and skill folder import. Sensitive-looking restore targets remain blocked by default.
+Phases 1-4.5 are implemented. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, skill folder import, and Infisical-backed secrets readiness. Sensitive-looking restore targets remain blocked by default.
 
 Relevant historical handoff:
 

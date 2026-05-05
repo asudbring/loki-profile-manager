@@ -10,6 +10,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/db"
 	"github.com/allensu/loki-profile-manager/internal/infisical"
 	"github.com/allensu/loki-profile-manager/internal/machine"
+	"github.com/allensu/loki-profile-manager/internal/secrets"
 	"github.com/allensu/loki-profile-manager/internal/store"
 )
 
@@ -134,6 +135,16 @@ func (s *Service) previousActiveState(ctx context.Context, record machine.Record
 }
 
 func defaultSecretProvider() activation.SecretProvider {
+	client := infisical.NewClient(nil)
+	return client
+}
+
+func defaultSecretStatusChecker() secrets.StatusChecker {
+	client := infisical.NewClient(nil)
+	return client
+}
+
+func defaultSecretLoginRunner() secrets.LoginRunner {
 	client := infisical.NewClient(nil)
 	return client
 }
