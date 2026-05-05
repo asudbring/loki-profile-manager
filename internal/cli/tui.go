@@ -19,7 +19,7 @@ func newTUICommand(resolver config.PathResolver, globals *globalOptions, factory
 	cmd := &cobra.Command{
 		Use:   "tui",
 		Short: "Launch the interactive Loki terminal UI.",
-		Long:  "Launch the interactive Loki terminal UI. The MVP dashboard is read-only and requires an interactive terminal.",
+		Long:  "Launch the interactive Loki terminal UI. The MVP provides guarded profile switch, sync cleanup, snapshots dry-runs, and read-only diagnostics. Requires an interactive terminal.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

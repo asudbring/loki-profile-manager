@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
@@ -78,6 +79,15 @@ type Model struct {
 	syncBusy              bool
 	syncConfirmInput      string
 	syncConfirmErr        string
+
+	snapshotIndex               int
+	snapshotTargetIndex         int
+	snapshotShow                app.SnapshotShowResult
+	snapshotShowErr             error
+	snapshotRestoreDryRun       app.SnapshotRestoreDryRunResult
+	snapshotRestoreDryRunErr    error
+	snapshotRestoreDryRunTarget string
+	snapshotBusy                bool
 
 	spinner spinner.Model
 }
@@ -177,6 +187,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen = ScreenSync
 		return m, nil
+	case snapshotShowMsg:
+		m.snapshotBusy = false
+		m.snapshotShow = msg.result
+		m.snapshotShowErr = msg.err
+		m.snapshotRestoreDryRun = app.SnapshotRestoreDryRunResult{}
+		m.snapshotRestoreDryRunErr = nil
+		m.snapshotRestoreDryRunTarget = ""
+		m.ensureSnapshotTargetSelection()
+		m.screen = ScreenSnapshots
+		return m, nil
+	case snapshotRestoreDryRunMsg:
+		m.snapshotBusy = false
+		m.snapshotRestoreDryRun = msg.result
+		m.snapshotRestoreDryRunErr = msg.err
+		m.snapshotRestoreDryRunTarget = msg.target
+		m.screen = ScreenSnapshots
+		return m, nil
 	}
 	return m, nil
 }
@@ -190,6 +217,9 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.screen == ScreenSync {
 		return m.updateSyncKey(msg)
+	}
+	if m.screen == ScreenSnapshots {
+		return m.updateSnapshotsKey(msg)
 	}
 	switch msg.String() {
 	case "q", "ctrl+c":
@@ -239,6 +269,10 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "y":
 		m.screen = ScreenSync
 		return m, nil
+	case "n":
+		m.screen = ScreenSnapshots
+		m.ensureSnapshotSelection()
+		return m, nil
 	}
 	return m, nil
 }
@@ -264,12 +298,16 @@ func (m *Model) openSelected() {
 	if m.screen == ScreenSwitch {
 		m.ensureSwitchSelection()
 	}
+	if m.screen == ScreenSnapshots {
+		m.ensureSnapshotSelection()
+	}
 }
 
 func (m Model) dashboardItems() []dashboardItem {
 	return []dashboardItem{
 		{Screen: ScreenSwitch, Key: "w", Label: "Switch", Description: "dry-run profile activation"},
 		{Screen: ScreenSync, Key: "y", Label: "Sync", Description: "dry-run provider conflict cleanup"},
+		{Screen: ScreenSnapshots, Key: "n", Label: "Snapshots", Description: formatSectionStatus(m.snapshotsErr, fmt.Sprintf("%d retained", len(m.snapshots.Snapshots)))},
 		{Screen: ScreenDoctor, Key: "d", Label: "Doctor", Description: formatSectionStatus(m.doctorErr, formatDoctorSummary(m.doctor))},
 		{Screen: ScreenMachine, Key: "m", Label: "Machine", Description: formatSectionStatus(m.machineErr, formatMachineFromStatus(m.status, m.machine))},
 		{Screen: ScreenSecrets, Key: "s", Label: "Secrets", Description: formatSectionStatus(m.secretsErr, formatSecretsReady(m.secrets))},
@@ -295,6 +333,8 @@ func (m Model) View() string {
 		return m.switchView()
 	case ScreenSync:
 		return m.syncView()
+	case ScreenSnapshots:
+		return m.snapshotsView()
 	case ScreenConfirm:
 		return m.confirmView()
 	case ScreenError:

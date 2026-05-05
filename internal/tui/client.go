@@ -14,6 +14,8 @@ type Client interface {
 	MachineStatus(context.Context) (app.MachineStatusResult, error)
 	SecretsStatus(context.Context) (app.SecretsStatusResult, error)
 	ListSnapshots(context.Context) (app.SnapshotListResult, error)
+	ShowSnapshot(context.Context, app.SnapshotShowRequest) (app.SnapshotShowResult, error)
+	RestoreSnapshotDryRun(context.Context, app.SnapshotRestoreDryRunRequest) (app.SnapshotRestoreDryRunResult, error)
 	Switch(context.Context, app.SwitchRequest) (app.SwitchResult, error)
 	Sync(context.Context, app.SyncRequest) (app.SyncResult, error)
 }
@@ -67,6 +69,21 @@ func (c ServiceClient) ListSnapshots(ctx context.Context) (app.SnapshotListResul
 		return app.SnapshotListResult{}, fmt.Errorf("tui client: service is nil")
 	}
 	return c.Service.ListSnapshots(ctx, app.SnapshotListRequest{})
+}
+
+func (c ServiceClient) ShowSnapshot(ctx context.Context, req app.SnapshotShowRequest) (app.SnapshotShowResult, error) {
+	if c.Service == nil {
+		return app.SnapshotShowResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	return c.Service.ShowSnapshot(ctx, req)
+}
+
+func (c ServiceClient) RestoreSnapshotDryRun(ctx context.Context, req app.SnapshotRestoreDryRunRequest) (app.SnapshotRestoreDryRunResult, error) {
+	if c.Service == nil {
+		return app.SnapshotRestoreDryRunResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	req.DryRun = true
+	return c.Service.RestoreSnapshotDryRun(ctx, req)
 }
 
 func (c ServiceClient) Switch(ctx context.Context, req app.SwitchRequest) (app.SwitchResult, error) {

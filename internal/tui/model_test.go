@@ -27,23 +27,37 @@ type fakeSyncResult struct {
 	err    error
 }
 
+type fakeSnapshotShowResult struct {
+	result app.SnapshotShowResult
+	err    error
+}
+
+type fakeSnapshotRestoreResult struct {
+	result app.SnapshotRestoreDryRunResult
+	err    error
+}
+
 type fakeClient struct {
-	status        app.StatusResult
-	catalog       app.ProfileCatalogResult
-	doctor        app.DoctorResult
-	machine       app.MachineStatusResult
-	secrets       app.SecretsStatusResult
-	snapshots     app.SnapshotListResult
-	statusErr     error
-	catalogErr    error
-	doctorErr     error
-	machineErr    error
-	secretsErr    error
-	snapshotsErr  error
-	switchResults []fakeSwitchResult
-	switchCalls   *[]app.SwitchRequest
-	syncResults   []fakeSyncResult
-	syncCalls     *[]app.SyncRequest
+	status                 app.StatusResult
+	catalog                app.ProfileCatalogResult
+	doctor                 app.DoctorResult
+	machine                app.MachineStatusResult
+	secrets                app.SecretsStatusResult
+	snapshots              app.SnapshotListResult
+	statusErr              error
+	catalogErr             error
+	doctorErr              error
+	machineErr             error
+	secretsErr             error
+	snapshotsErr           error
+	switchResults          []fakeSwitchResult
+	switchCalls            *[]app.SwitchRequest
+	syncResults            []fakeSyncResult
+	syncCalls              *[]app.SyncRequest
+	snapshotShowResults    []fakeSnapshotShowResult
+	snapshotShowCalls      *[]app.SnapshotShowRequest
+	snapshotRestoreResults []fakeSnapshotRestoreResult
+	snapshotRestoreCalls   *[]app.SnapshotRestoreDryRunRequest
 }
 
 func (f fakeClient) Status(context.Context) (app.StatusResult, error) {
@@ -68,6 +82,32 @@ func (f fakeClient) SecretsStatus(context.Context) (app.SecretsStatusResult, err
 
 func (f fakeClient) ListSnapshots(context.Context) (app.SnapshotListResult, error) {
 	return f.snapshots, f.snapshotsErr
+}
+
+func (f fakeClient) ShowSnapshot(ctx context.Context, req app.SnapshotShowRequest) (app.SnapshotShowResult, error) {
+	_ = ctx
+	idx := 0
+	if f.snapshotShowCalls != nil {
+		idx = len(*f.snapshotShowCalls)
+		*f.snapshotShowCalls = append(*f.snapshotShowCalls, req)
+	}
+	if idx < len(f.snapshotShowResults) {
+		return f.snapshotShowResults[idx].result, f.snapshotShowResults[idx].err
+	}
+	return snapshotShowResult(req.SnapshotID, "/tmp/loki/target.txt"), nil
+}
+
+func (f fakeClient) RestoreSnapshotDryRun(ctx context.Context, req app.SnapshotRestoreDryRunRequest) (app.SnapshotRestoreDryRunResult, error) {
+	_ = ctx
+	idx := 0
+	if f.snapshotRestoreCalls != nil {
+		idx = len(*f.snapshotRestoreCalls)
+		*f.snapshotRestoreCalls = append(*f.snapshotRestoreCalls, req)
+	}
+	if idx < len(f.snapshotRestoreResults) {
+		return f.snapshotRestoreResults[idx].result, f.snapshotRestoreResults[idx].err
+	}
+	return snapshotRestoreDryRunResult(req.SnapshotID, req.Target, false, true), nil
 }
 
 func (f fakeClient) Switch(ctx context.Context, req app.SwitchRequest) (app.SwitchResult, error) {
@@ -150,6 +190,8 @@ func TestModelRefreshReturnsLoadCommand(t *testing.T) {
 func TestDashboardNavigationOpensDoctorAndBack(t *testing.T) {
 	model := loadedModel(populatedFakeClient())
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model = updated.(Model)
@@ -569,6 +611,199 @@ func TestSyncDryRunErrorRendersWithoutCrash(t *testing.T) {
 	}
 }
 
+func TestDashboardOpensSnapshots(t *testing.T) {
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	model := loadedModel(client)
+	view := model.View()
+	if !strings.Contains(view, "Snapshots") || !strings.Contains(view, "1 retained") {
+		t.Fatalf("dashboard view missing snapshots action:\n%s", view)
+	}
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	if model.screen != ScreenSnapshots || !strings.Contains(model.View(), "snap-1") {
+		t.Fatalf("snapshots view = %s\n%s", model.screen, model.View())
+	}
+}
+
+func TestSnapshotsShowRendersMetadataOnly(t *testing.T) {
+	showCalls := []app.SnapshotShowRequest{}
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	client.snapshotShowCalls = &showCalls
+	client.snapshotShowResults = []fakeSnapshotShowResult{{result: snapshotShowResult("snap-1", "/tmp/loki/target.txt")}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.snapshotBusy || cmd == nil {
+		t.Fatalf("show not started: %+v cmd nil=%v", model, cmd == nil)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	for _, want := range []string{"Snapshot metadata", "snap-1", "target.txt", "hash=abcdef123456"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "dummy file content") || len(showCalls) != 1 || showCalls[0].SnapshotID != "snap-1" {
+		t.Fatalf("show view/calls unsafe:\n%s\n%+v", view, showCalls)
+	}
+}
+
+func TestSnapshotsShowRedactsSensitivePaths(t *testing.T) {
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	sensitive := "/Users/me/.ssh/id_rsa"
+	client.snapshotShowResults = []fakeSnapshotShowResult{{result: snapshotShowResult("snap-1", sensitive)}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	if strings.Contains(view, sensitive) || !strings.Contains(view, "(redacted-sensitive-path)") {
+		t.Fatalf("sensitive path not redacted:\n%s", view)
+	}
+}
+
+func TestSnapshotRestoreDryRunFullShowsGuardedCommand(t *testing.T) {
+	restoreCalls := []app.SnapshotRestoreDryRunRequest{}
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	client.snapshotRestoreCalls = &restoreCalls
+	client.snapshotRestoreResults = []fakeSnapshotRestoreResult{{result: snapshotRestoreDryRunResult("snap-1", "", false, true)}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	if !model.snapshotBusy || cmd == nil {
+		t.Fatalf("dry-run not started: %+v cmd nil=%v", model, cmd == nil)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	for _, want := range []string{"Mode: dry-run only", "Run:", "loki snapshots restore snap-1 --yes", "RESTORE snap-1"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+	if len(restoreCalls) != 1 || !restoreCalls[0].DryRun || restoreCalls[0].Target != "" {
+		t.Fatalf("restore calls = %+v", restoreCalls)
+	}
+}
+
+func TestSnapshotRestoreDryRunTargetShowsGuardedCommand(t *testing.T) {
+	restoreCalls := []app.SnapshotRestoreDryRunRequest{}
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	client.snapshotRestoreCalls = &restoreCalls
+	client.snapshotShowResults = []fakeSnapshotShowResult{{result: snapshotShowResult("snap-1", "/tmp/loki/target.txt")}}
+	client.snapshotRestoreResults = []fakeSnapshotRestoreResult{{result: snapshotRestoreDryRunResult("snap-1", "/tmp/loki/target.txt", false, true)}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	if !strings.Contains(view, "loki snapshots restore snap-1 --target /tmp/loki/target.txt --yes") || len(restoreCalls) != 1 || restoreCalls[0].Target != "/tmp/loki/target.txt" {
+		t.Fatalf("target dry-run view/calls = %+v\n%s", restoreCalls, view)
+	}
+}
+
+func TestSnapshotRestoreDryRunQuotesShellSensitiveTarget(t *testing.T) {
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	target := "/tmp/$(touch pwn) target.txt"
+	client.snapshotShowResults = []fakeSnapshotShowResult{{result: snapshotShowResult("snap-1", target)}}
+	client.snapshotRestoreResults = []fakeSnapshotRestoreResult{{result: snapshotRestoreDryRunResult("snap-1", target, false, true)}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	want := "--target '/tmp/$(touch pwn) target.txt' --yes"
+	if !strings.Contains(view, want) || strings.Contains(view, "--target \"") {
+		t.Fatalf("target command not shell-safe, want %q:\n%s", want, view)
+	}
+}
+
+func TestSnapshotRestoreDryRunRendersBlockersWarnings(t *testing.T) {
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	result := snapshotRestoreDryRunResult("snap-1", "", false, false)
+	result.Blockers = []string{"target changed"}
+	result.Warnings = []string{"restore needs review"}
+	client.snapshotRestoreResults = []fakeSnapshotRestoreResult{{result: result}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	if !strings.Contains(view, "Guard: not recorded") || !strings.Contains(view, "Blocker: target changed") || !strings.Contains(view, "Warning: restore needs review") || strings.Contains(view, "Run: loki snapshots restore") {
+		t.Fatalf("blocker/warning view =\n%s", view)
+	}
+}
+
+func TestSnapshotRestoreDryRunRespectsRedactionFields(t *testing.T) {
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	sensitive := "/Users/me/.ssh/id_rsa"
+	result := snapshotRestoreDryRunResult("snap-1", sensitive, true, true)
+	client.snapshotRestoreResults = []fakeSnapshotRestoreResult{{result: result}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	if strings.Contains(view, sensitive) || !strings.Contains(view, "Target filter: (redacted-sensitive-path)") || !strings.Contains(view, "Command hidden because target path is redacted") {
+		t.Fatalf("restore redaction view =\n%s", view)
+	}
+}
+
+func TestSnapshotRestoreNoExecuteKey(t *testing.T) {
+	restoreCalls := []app.SnapshotRestoreDryRunRequest{}
+	client := populatedFakeClient()
+	client.snapshots = snapshotListResult()
+	client.snapshotRestoreCalls = &restoreCalls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	if cmd != nil || len(restoreCalls) != 1 {
+		t.Fatalf("x should not execute restore: calls=%+v cmd nil=%v", restoreCalls, cmd == nil)
+	}
+}
+
 func loadedModel(client fakeClient) Model {
 	model := NewModel(context.Background(), client)
 	updated, _ := model.Update(dashboardLoadedMsg{status: client.status, catalog: client.catalog, doctor: client.doctor, machine: client.machine, secrets: client.secrets, snapshots: client.snapshots, catalogErr: client.catalogErr, doctorErr: client.doctorErr, machineErr: client.machineErr, secretsErr: client.secretsErr, snapshotsErr: client.snapshotsErr})
@@ -622,6 +857,86 @@ func syncResult(deleteCount, skippedCount int, fingerprint string, dryRun bool) 
 	if !dryRun {
 		result.DeletedCount = deleteCount
 		result.HeartbeatUpdated = deleteCount > 0
+	}
+	return result
+}
+
+func snapshotListResult() app.SnapshotListResult {
+	return app.SnapshotListResult{
+		SnapshotDir: "/tmp/state/snapshots",
+		Snapshots: []activation.SnapshotSummary{{
+			SnapshotID:            "snap-1",
+			MachineID:             "machine-1",
+			CreatedAt:             "2026-05-05T00:00:00Z",
+			PreviousActiveProfile: "work",
+			PreviousActiveBuckets: []string{"azure"},
+			TargetCount:           1,
+			TargetKinds:           []string{"file"},
+			Exists:                true,
+		}},
+	}
+}
+
+func snapshotShowResult(id string, targetPath string) app.SnapshotShowResult {
+	return app.SnapshotShowResult{
+		SnapshotDir: "/tmp/state/snapshots",
+		Snapshot: activation.Snapshot{
+			SnapshotID:            id,
+			MachineID:             "machine-1",
+			Path:                  "/tmp/state/snapshots/" + id,
+			CreatedAt:             "2026-05-05T00:00:00Z",
+			Reason:                "switch",
+			PreviousActiveProfile: "work",
+			PreviousActiveBuckets: []string{"azure"},
+			Targets: []activation.SnapshotEntry{{
+				TargetPath:   targetPath,
+				Kind:         "file",
+				Hash:         "abcdef1234567890",
+				ExpectedHash: "123456abcdef7890",
+				ExpectedMode: "0644",
+			}},
+			ManagedTargets: []activation.ManagedTargetSnapshot{{TargetPath: targetPath, Found: true}},
+		},
+	}
+}
+
+func snapshotRestoreDryRunResult(id, target string, redacted bool, guardRecorded bool) app.SnapshotRestoreDryRunResult {
+	path := firstNonEmpty(target, "/tmp/loki/target.txt")
+	result := app.SnapshotRestoreDryRunResult{
+		SnapshotDir:          "/tmp/state/snapshots",
+		SnapshotID:           id,
+		DryRun:               true,
+		GuardRecorded:        guardRecorded,
+		GuardExpiresAt:       "2026-05-05T00:15:00Z",
+		TargetFilter:         target,
+		TargetFilterRedacted: redacted,
+		Summary: app.SnapshotRestoreDryRunSummary{
+			TargetCount:                   1,
+			RestoreFileCount:              1,
+			PreviousActiveProfile:         "work",
+			PreviousActiveBuckets:         []string{"azure"},
+			WouldRestoreManagedTargetRows: 1,
+			WouldRestoreActiveState:       target == "",
+		},
+		Targets: []app.SnapshotRestoreDryRunTarget{{
+			TargetPath:         path,
+			TargetPathRedacted: redacted,
+			Kind:               "file",
+			Action:             activation.RestoreActionRestoreFile,
+			CurrentExists:      true,
+			CurrentKind:        "file",
+			CurrentMode:        "0644",
+			CurrentHashPrefix:  "abcdef123456",
+			SnapshotHashPrefix: "123456abcdef",
+			ExpectedHashPrefix: "7890abcdef12",
+			ExpectedMode:       "0644",
+			LinkTargetRedacted: redacted,
+			SensitivePath:      redacted,
+		}},
+	}
+	if redacted {
+		result.TargetFilter = ""
+		result.Targets[0].TargetPath = ""
 	}
 	return result
 }
