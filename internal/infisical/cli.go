@@ -204,15 +204,24 @@ func (c Client) commandEnv(ctx context.Context, cfg Config) ([]string, Config, e
 	if strings.TrimSpace(cfg.Token) != "" {
 		return cfg.commandEnv(), cfg, nil
 	}
+	return c.commandEnvWithMachineToken(ctx, cfg)
+}
+
+func (c Client) commandEnvWithMachineToken(ctx context.Context, cfg Config) ([]string, Config, error) {
 	if !cfg.universalAuthConfigured() {
 		return cfg.commandEnv(), cfg, nil
 	}
+	cfg.Token = ""
 	token, err := c.mintMachineToken(ctx, cfg)
 	if err != nil {
 		return nil, cfg, err
 	}
 	cfg.Token = token
 	return cfg.commandEnv(), cfg, nil
+}
+
+func (c Client) shouldRetryWithMachineToken(cfg Config) bool {
+	return strings.TrimSpace(cfg.Token) != "" && cfg.universalAuthConfigured()
 }
 
 func (c Client) mintMachineToken(ctx context.Context, cfg Config) (string, error) {
@@ -260,6 +269,16 @@ func (c Client) CheckAuthenticated(ctx context.Context) error {
 	out, err := c.Runner.Run(ctx, c.Binary, c.secretGetArgs(readinessProbeSecret, cfg), env)
 	if err == nil || secretGetMissing(readinessProbeSecret, err, out) {
 		return nil
+	}
+	if c.shouldRetryWithMachineToken(cfg) {
+		env, cfg, err = c.commandEnvWithMachineToken(ctx, cfg)
+		if err != nil {
+			return AuthUnavailableError{}
+		}
+		out, err = c.Runner.Run(ctx, c.Binary, c.secretGetArgs(readinessProbeSecret, cfg), env)
+		if err == nil || secretGetMissing(readinessProbeSecret, err, out) {
+			return nil
+		}
 	}
 	return AuthUnavailableError{}
 }
@@ -338,12 +357,29 @@ func (c Client) GetSecrets(ctx context.Context, names []string) (map[string]stri
 	}
 	values := map[string]string{}
 	var missing []string
+	retriedMachineToken := false
 	for _, name := range unique {
 		out, err := c.Runner.Run(ctx, c.Binary, c.secretGetArgs(name, cfg), env)
 		if err != nil {
 			if secretGetMissing(name, err, out) {
 				missing = append(missing, name)
 				continue
+			}
+			if !retriedMachineToken && c.shouldRetryWithMachineToken(cfg) {
+				retriedMachineToken = true
+				env, cfg, err = c.commandEnvWithMachineToken(ctx, cfg)
+				if err != nil {
+					return values, err
+				}
+				out, err = c.Runner.Run(ctx, c.Binary, c.secretGetArgs(name, cfg), env)
+				if err == nil {
+					values[name] = strings.TrimRight(string(out), "\r\n")
+					continue
+				}
+				if secretGetMissing(name, err, out) {
+					missing = append(missing, name)
+					continue
+				}
 			}
 			return values, SecretAccessError{}
 		}
@@ -375,10 +411,25 @@ func (c Client) RunWithSecrets(ctx context.Context, command []string, extraEnv [
 	args = append(args, "--")
 	args = append(args, command...)
 	out, err := c.Runner.Run(ctx, c.Binary, args, env)
-	if err != nil {
-		return nil, fmt.Errorf("infisical run failed")
+	if err == nil {
+		return out, nil
 	}
-	return out, nil
+	if c.shouldRetryWithMachineToken(cfg) {
+		env, cfg, err = c.commandEnvWithMachineToken(ctx, cfg)
+		if err != nil {
+			return nil, err
+		}
+		env = append(env, extraEnv...)
+		args = []string{"run"}
+		args = append(args, cfg.projectArgs()...)
+		args = append(args, "--")
+		args = append(args, command...)
+		out, err = c.Runner.Run(ctx, c.Binary, args, env)
+		if err == nil {
+			return out, nil
+		}
+	}
+	return nil, fmt.Errorf("infisical run failed")
 }
 
 var secretNameRE = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

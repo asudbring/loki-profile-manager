@@ -16,6 +16,7 @@ type fakeRunner struct {
 	runErr              error
 	runOutput           string
 	machineToken        string
+	failStaleToken      bool
 	interactiveErr      error
 	commands            [][]string
 	envs                [][]string
@@ -32,6 +33,9 @@ func (f *fakeRunner) LookPath(file string) (string, error) {
 func (f *fakeRunner) Run(ctx context.Context, name string, args []string, env []string) ([]byte, error) {
 	f.commands = append(f.commands, append([]string{name}, args...))
 	f.envs = append(f.envs, append([]string{}, env...))
+	if f.failStaleToken && hasEnv(env, "INFISICAL_TOKEN=stale-token") {
+		return []byte("token-value secret-value"), errors.New("unauthorized token-value secret-value")
+	}
 	if f.runErr != nil {
 		return []byte(f.runOutput), f.runErr
 	}
@@ -257,6 +261,40 @@ func TestClientReadsMachineIdentityFromEnv(t *testing.T) {
 	}
 }
 
+func TestClientRetriesStaleTokenWithUniversalAuth(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}, machineToken: "fresh-token\n", failStaleToken: true}
+	client := testClient(runner)
+	client.Config = Config{Token: "stale-token", AuthMethod: "universal-auth", ClientID: "client-id", ClientSecret: "client-secret", ProjectID: "project-id"}
+	values, err := client.GetSecrets(context.Background(), []string{"TOKEN"})
+	if err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	if values["TOKEN"] != "secret-value" {
+		t.Fatalf("values = %+v", values)
+	}
+	if len(runner.commands) != 3 {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+	if !reflect.DeepEqual(runner.commands[0], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}) || runner.commands[1][1] != "login" || !reflect.DeepEqual(runner.commands[2], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}) {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+	if !hasEnv(runner.envs[0], "INFISICAL_TOKEN=stale-token") || hasEnv(runner.envs[1], "INFISICAL_TOKEN=fresh-token") || !hasEnv(runner.envs[2], "INFISICAL_TOKEN=fresh-token") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientCheckAuthenticatedRetriesStaleTokenWithUniversalAuth(t *testing.T) {
+	runner := &fakeRunner{machineToken: "fresh-token\n", failStaleToken: true}
+	client := testClient(runner)
+	client.Config = Config{Token: "stale-token", AuthMethod: "universal-auth", ClientID: "client-id", ClientSecret: "client-secret", ProjectID: "project-id"}
+	if err := client.CheckAuthenticated(context.Background()); err != nil {
+		t.Fatalf("CheckAuthenticated() error = %v", err)
+	}
+	if len(runner.commands) != 3 || runner.commands[0][1] != "secrets" || runner.commands[1][1] != "login" || runner.commands[2][1] != "secrets" {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+}
+
 func TestClientMachineAuthErrorDoesNotLeakSecrets(t *testing.T) {
 	runner := &fakeRunner{runErr: errors.New("client-secret minted-token secret-value")}
 	client := testClient(runner)
@@ -288,6 +326,25 @@ func TestClientRunWithSecretsPassesProjectID(t *testing.T) {
 		t.Fatalf("commands = %+v, want %+v", runner.commands, want)
 	}
 	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=test-token") || !hasEnv(runner.envs[0], "EXTRA=value") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientRunWithSecretsRetriesStaleToken(t *testing.T) {
+	runner := &fakeRunner{runOutput: "ok\n", machineToken: "fresh-token\n", failStaleToken: true}
+	client := testClient(runner)
+	client.Config = Config{Token: "stale-token", AuthMethod: "universal-auth", ClientID: "client-id", ClientSecret: "client-secret", ProjectID: "project-id"}
+	out, err := client.RunWithSecrets(context.Background(), []string{"printenv", "TOKEN"}, nil)
+	if err != nil {
+		t.Fatalf("RunWithSecrets() error = %v", err)
+	}
+	if string(out) != "ok\n" {
+		t.Fatalf("out = %q", out)
+	}
+	if len(runner.commands) != 3 || runner.commands[0][1] != "run" || runner.commands[1][1] != "login" || runner.commands[2][1] != "run" {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+	if !hasEnv(runner.envs[0], "INFISICAL_TOKEN=stale-token") || !hasEnv(runner.envs[2], "INFISICAL_TOKEN=fresh-token") {
 		t.Fatalf("envs = %+v", runner.envs)
 	}
 }
