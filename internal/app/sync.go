@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,24 +15,26 @@ import (
 )
 
 type SyncRequest struct {
-	StorePath string
-	DryRun    bool
-	Yes       bool
+	StorePath                   string
+	DryRun                      bool
+	Yes                         bool
+	ExpectedConflictFingerprint string
 }
 
 type SyncResult struct {
-	StorePath        string                   `json:"store_path"`
-	DryRun           bool                     `json:"dry_run"`
-	WouldDeleteCount int                      `json:"would_delete_count"`
-	DeletedCount     int                      `json:"deleted_count"`
-	SkippedCount     int                      `json:"skipped_count"`
-	Conflicts        []storesync.ConflictCopy `json:"conflicts"`
-	Truncated        bool                     `json:"truncated,omitempty"`
-	HeartbeatUpdated bool                     `json:"heartbeat_updated"`
-	MachineID        string                   `json:"machine_id,omitempty"`
-	ActiveProfile    string                   `json:"active_profile,omitempty"`
-	ActiveBuckets    []string                 `json:"active_buckets,omitempty"`
-	Warnings         []string                 `json:"warnings,omitempty"`
+	StorePath           string                   `json:"store_path"`
+	DryRun              bool                     `json:"dry_run"`
+	WouldDeleteCount    int                      `json:"would_delete_count"`
+	DeletedCount        int                      `json:"deleted_count"`
+	SkippedCount        int                      `json:"skipped_count"`
+	Conflicts           []storesync.ConflictCopy `json:"conflicts"`
+	Truncated           bool                     `json:"truncated,omitempty"`
+	ConflictFingerprint string                   `json:"conflict_fingerprint,omitempty"`
+	HeartbeatUpdated    bool                     `json:"heartbeat_updated"`
+	MachineID           string                   `json:"machine_id,omitempty"`
+	ActiveProfile       string                   `json:"active_profile,omitempty"`
+	ActiveBuckets       []string                 `json:"active_buckets,omitempty"`
+	Warnings            []string                 `json:"warnings,omitempty"`
 }
 
 func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error) {
@@ -48,17 +53,26 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 	}
 
 	result := SyncResult{StorePath: storePath, DryRun: req.DryRun, ActiveBuckets: []string{}}
-	err = s.withStoreOperationLock(ctx, storePath, "sync", req.Yes, func(machineID string) error {
-		result.MachineID = machineID
-		scan, err := storesync.ScanConflicts(storesync.ConflictScanOptions{Root: storePath, Limit: storesync.DefaultConflictScanLimit})
-		if err != nil {
-			return err
-		}
+	scanConflicts := func() error {
+		scan, scanErr := storesync.ScanConflicts(storesync.ConflictScanOptions{Root: storePath, Limit: storesync.DefaultConflictScanLimit})
 		result.Conflicts = scan.Conflicts
 		result.Truncated = scan.Truncated
 		result.WouldDeleteCount, result.SkippedCount = countSyncActions(scan.Conflicts)
-		if req.DryRun {
-			return nil
+		result.ConflictFingerprint = fingerprintSyncConflicts(result)
+		return scanErr
+	}
+	if req.DryRun {
+		err = scanConflicts()
+		return result, err
+	}
+
+	err = s.withStoreOperationLock(ctx, storePath, "sync", req.Yes, func(machineID string) error {
+		result.MachineID = machineID
+		if err := scanConflicts(); err != nil {
+			return err
+		}
+		if req.ExpectedConflictFingerprint != "" && result.ConflictFingerprint != req.ExpectedConflictFingerprint {
+			return fmt.Errorf("sync: conflict list changed; rerun dry-run before deleting")
 		}
 
 		record, registered, err := machine.GetMachine(storePath, machineID)
@@ -72,7 +86,7 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		result.ActiveProfile = profile
 		result.ActiveBuckets = cloneStrings(buckets)
 
-		for _, conflict := range scan.Conflicts {
+		for _, conflict := range result.Conflicts {
 			if conflict.Action != storesync.ConflictActionDelete {
 				continue
 			}
@@ -89,6 +103,42 @@ func (s *Service) Sync(ctx context.Context, req SyncRequest) (SyncResult, error)
 		return nil
 	})
 	return result, err
+}
+
+type syncFingerprint struct {
+	WouldDeleteCount int                       `json:"would_delete_count"`
+	SkippedCount     int                       `json:"skipped_count"`
+	Truncated        bool                      `json:"truncated"`
+	Conflicts        []syncConflictFingerprint `json:"conflicts"`
+}
+
+type syncConflictFingerprint struct {
+	RelativePath string `json:"relative_path"`
+	Name         string `json:"name"`
+	Kind         string `json:"kind"`
+	Action       string `json:"action"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+func fingerprintSyncConflicts(result SyncResult) string {
+	fp := syncFingerprint{
+		WouldDeleteCount: result.WouldDeleteCount,
+		SkippedCount:     result.SkippedCount,
+		Truncated:        result.Truncated,
+		Conflicts:        []syncConflictFingerprint{},
+	}
+	for _, conflict := range result.Conflicts {
+		fp.Conflicts = append(fp.Conflicts, syncConflictFingerprint{
+			RelativePath: conflict.RelativePath,
+			Name:         conflict.Name,
+			Kind:         conflict.Kind,
+			Action:       conflict.Action,
+			Reason:       conflict.Reason,
+		})
+	}
+	content, _ := json.Marshal(fp)
+	sum := sha256.Sum256(content)
+	return hex.EncodeToString(sum[:])
 }
 
 func countSyncActions(conflicts []storesync.ConflictCopy) (deleteCount, skipCount int) {

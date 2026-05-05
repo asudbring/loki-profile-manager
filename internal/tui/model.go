@@ -70,6 +70,15 @@ type Model struct {
 	confirmInput            string
 	confirmErr              string
 
+	syncDryRun            app.SyncResult
+	syncDryRunErr         error
+	syncDryRunFingerprint string
+	syncExecResult        app.SyncResult
+	syncExecErr           error
+	syncBusy              bool
+	syncConfirmInput      string
+	syncConfirmErr        string
+
 	spinner spinner.Model
 }
 
@@ -145,6 +154,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.confirmErr = ""
 		m.screen = ScreenSwitch
 		return m, nil
+	case syncDryRunMsg:
+		m.syncBusy = false
+		m.syncDryRun = msg.result
+		m.syncDryRunErr = msg.err
+		m.syncDryRunFingerprint = msg.fingerprint
+		m.syncExecResult = app.SyncResult{}
+		m.syncExecErr = nil
+		m.syncConfirmInput = ""
+		m.syncConfirmErr = ""
+		m.screen = ScreenSync
+		return m, nil
+	case syncExecuteMsg:
+		m.syncBusy = false
+		m.syncExecResult = msg.result
+		m.syncExecErr = msg.err
+		m.syncConfirmInput = ""
+		m.syncConfirmErr = ""
+		if msg.err != nil && msg.fingerprint != "" {
+			m.syncDryRun = msg.result
+			m.syncDryRunFingerprint = msg.fingerprint
+		}
+		m.screen = ScreenSync
+		return m, nil
 	}
 	return m, nil
 }
@@ -155,6 +187,9 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.screen == ScreenSwitch {
 		return m.updateSwitchKey(msg)
+	}
+	if m.screen == ScreenSync {
+		return m.updateSyncKey(msg)
 	}
 	switch msg.String() {
 	case "q", "ctrl+c":
@@ -201,6 +236,9 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.screen = ScreenSwitch
 		m.ensureSwitchSelection()
 		return m, nil
+	case "y":
+		m.screen = ScreenSync
+		return m, nil
 	}
 	return m, nil
 }
@@ -231,6 +269,7 @@ func (m *Model) openSelected() {
 func (m Model) dashboardItems() []dashboardItem {
 	return []dashboardItem{
 		{Screen: ScreenSwitch, Key: "w", Label: "Switch", Description: "dry-run profile activation"},
+		{Screen: ScreenSync, Key: "y", Label: "Sync", Description: "dry-run provider conflict cleanup"},
 		{Screen: ScreenDoctor, Key: "d", Label: "Doctor", Description: formatSectionStatus(m.doctorErr, formatDoctorSummary(m.doctor))},
 		{Screen: ScreenMachine, Key: "m", Label: "Machine", Description: formatSectionStatus(m.machineErr, formatMachineFromStatus(m.status, m.machine))},
 		{Screen: ScreenSecrets, Key: "s", Label: "Secrets", Description: formatSectionStatus(m.secretsErr, formatSecretsReady(m.secrets))},
@@ -254,6 +293,8 @@ func (m Model) View() string {
 		return m.profilesView()
 	case ScreenSwitch:
 		return m.switchView()
+	case ScreenSync:
+		return m.syncView()
 	case ScreenConfirm:
 		return m.confirmView()
 	case ScreenError:

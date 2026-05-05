@@ -13,7 +13,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/store"
 )
 
-func TestSyncDryRunDetectsConflictsWithoutDeleting(t *testing.T) {
+func TestSyncDryRunDetectsConflictsWithoutWriting(t *testing.T) {
 	ctx := context.Background()
 	svc := newSyncTestService(t, ctx, t.TempDir())
 	defer svc.Close()
@@ -26,11 +26,17 @@ func TestSyncDryRunDetectsConflictsWithoutDeleting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Sync(dry-run) error = %v", err)
 	}
-	if !result.DryRun || result.WouldDeleteCount != 1 || result.DeletedCount != 0 || len(result.Conflicts) != 1 {
+	if !result.DryRun || result.WouldDeleteCount != 1 || result.DeletedCount != 0 || len(result.Conflicts) != 1 || result.ConflictFingerprint == "" || result.HeartbeatUpdated || result.MachineID != "" {
 		t.Fatalf("result = %+v", result)
 	}
 	if _, err := os.Stat(conflict); err != nil {
 		t.Fatalf("dry-run deleted conflict or stat failed: %v", err)
+	}
+	if _, err := os.Stat(store.OperationLockPath(storePath)); !os.IsNotExist(err) {
+		t.Fatalf("dry-run wrote operation lock or stat err = %v", err)
+	}
+	if _, err := os.Stat(svc.paths.MachineIDPath); !os.IsNotExist(err) {
+		t.Fatalf("dry-run wrote machine id or stat err = %v", err)
 	}
 }
 
@@ -88,7 +94,7 @@ func TestSyncYesRequiresRegisteredMachine(t *testing.T) {
 	}
 }
 
-func TestSyncFailsWhenStoreOperationLockHeld(t *testing.T) {
+func TestSyncYesFailsWhenStoreOperationLockHeld(t *testing.T) {
 	ctx := context.Background()
 	svc := newSyncTestService(t, ctx, t.TempDir())
 	defer svc.Close()
@@ -104,9 +110,67 @@ func TestSyncFailsWhenStoreOperationLockHeld(t *testing.T) {
 
 	lockCtx, cancel := context.WithTimeout(ctx, 20*time.Millisecond)
 	defer cancel()
-	_, err = svc.Sync(lockCtx, SyncRequest{StorePath: storePath, DryRun: true})
+	_, err = svc.Sync(lockCtx, SyncRequest{StorePath: storePath, Yes: true})
 	if err == nil || !strings.Contains(err.Error(), "operation lock") {
 		t.Fatalf("Sync() error = %v, want lock error", err)
+	}
+}
+
+func TestSyncYesAbortsOnExpectedFingerprintDrift(t *testing.T) {
+	ctx := context.Background()
+	svc := newSyncTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := syncTestStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	first := filepath.Join(storePath, "profiles", "work", "core", "files", "settings conflicted copy.json")
+	second := filepath.Join(storePath, "profiles", "work", "core", "files", "settings 2 conflicted copy.json")
+	writeAppFile(t, first, "losing")
+	dryRun, err := svc.Sync(ctx, SyncRequest{StorePath: storePath, DryRun: true})
+	if err != nil {
+		t.Fatalf("Sync(dry-run) error = %v", err)
+	}
+	writeAppFile(t, second, "new")
+
+	result, err := svc.Sync(ctx, SyncRequest{StorePath: storePath, Yes: true, ExpectedConflictFingerprint: dryRun.ConflictFingerprint})
+	if err == nil || !strings.Contains(err.Error(), "conflict list changed") {
+		t.Fatalf("Sync(yes) error = %v, want drift", err)
+	}
+	if result.WouldDeleteCount != 2 {
+		t.Fatalf("result = %+v, want updated conflict count", result)
+	}
+	for _, path := range []string{first, second} {
+		if _, statErr := os.Stat(path); statErr != nil {
+			t.Fatalf("drift sync deleted %s or stat failed: %v", path, statErr)
+		}
+	}
+}
+
+func TestSyncYesWithMatchingExpectedFingerprintDeletes(t *testing.T) {
+	ctx := context.Background()
+	svc := newSyncTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := syncTestStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	conflict := filepath.Join(storePath, "profiles", "work", "core", "files", "settings conflicted copy.json")
+	writeAppFile(t, conflict, "losing")
+	dryRun, err := svc.Sync(ctx, SyncRequest{StorePath: storePath, DryRun: true})
+	if err != nil {
+		t.Fatalf("Sync(dry-run) error = %v", err)
+	}
+
+	result, err := svc.Sync(ctx, SyncRequest{StorePath: storePath, Yes: true, ExpectedConflictFingerprint: dryRun.ConflictFingerprint})
+	if err != nil {
+		t.Fatalf("Sync(yes) error = %v", err)
+	}
+	if result.DeletedCount != 1 || result.ConflictFingerprint != dryRun.ConflictFingerprint {
+		t.Fatalf("result = %+v", result)
+	}
+	if _, err := os.Stat(conflict); !os.IsNotExist(err) {
+		t.Fatalf("conflict still exists or stat err = %v", err)
 	}
 }
 

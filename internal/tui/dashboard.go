@@ -47,7 +47,7 @@ func (m Model) dashboardView() string {
 	for i, item := range items {
 		lines = append(lines, menuLine(i == m.selected, item))
 	}
-	lines = append(lines, "", helpStyle.Render("↑/↓ select • enter open • d/m/s/p quick open • esc back • r refresh • q quit"))
+	lines = append(lines, "", helpStyle.Render("↑/↓ select • enter open • d/m/s/p/y quick open • esc back • r refresh • q quit"))
 	return frame(lines...)
 }
 

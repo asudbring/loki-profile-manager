@@ -14,10 +14,16 @@ import (
 	diagnostics "github.com/allensu/loki-profile-manager/internal/doctor"
 	"github.com/allensu/loki-profile-manager/internal/machine"
 	"github.com/allensu/loki-profile-manager/internal/secrets"
+	"github.com/allensu/loki-profile-manager/internal/storesync"
 )
 
 type fakeSwitchResult struct {
 	result app.SwitchResult
+	err    error
+}
+
+type fakeSyncResult struct {
+	result app.SyncResult
 	err    error
 }
 
@@ -36,6 +42,8 @@ type fakeClient struct {
 	snapshotsErr  error
 	switchResults []fakeSwitchResult
 	switchCalls   *[]app.SwitchRequest
+	syncResults   []fakeSyncResult
+	syncCalls     *[]app.SyncRequest
 }
 
 func (f fakeClient) Status(context.Context) (app.StatusResult, error) {
@@ -73,6 +81,22 @@ func (f fakeClient) Switch(ctx context.Context, req app.SwitchRequest) (app.Swit
 		return f.switchResults[idx].result, f.switchResults[idx].err
 	}
 	return switchResult(req.ParentProfile, req.Buckets, req.DryRun, 1), nil
+}
+
+func (f fakeClient) Sync(ctx context.Context, req app.SyncRequest) (app.SyncResult, error) {
+	_ = ctx
+	idx := 0
+	if f.syncCalls != nil {
+		idx = len(*f.syncCalls)
+		*f.syncCalls = append(*f.syncCalls, req)
+	}
+	if idx < len(f.syncResults) {
+		return f.syncResults[idx].result, f.syncResults[idx].err
+	}
+	if req.Yes {
+		return syncResult(1, 0, "fp-1", false), nil
+	}
+	return syncResult(1, 1, "fp-1", true), nil
 }
 
 func TestModelLoadsDashboard(t *testing.T) {
@@ -126,6 +150,8 @@ func TestModelRefreshReturnsLoadCommand(t *testing.T) {
 func TestDashboardNavigationOpensDoctorAndBack(t *testing.T) {
 	model := loadedModel(populatedFakeClient())
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
 	model = updated.(Model)
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	opened := updated.(Model)
@@ -361,6 +387,188 @@ func TestSwitchDryRunDriftAbortsExecution(t *testing.T) {
 	}
 }
 
+func TestSyncDryRunRendersDeletionsAndSkipped(t *testing.T) {
+	client := populatedFakeClient()
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	if !model.syncBusy || cmd == nil {
+		t.Fatalf("dry-run not started: %+v cmd nil=%v", model, cmd == nil)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	for _, want := range []string{"Sync conflicts", "Would delete:", "1", "settings conflicted copy.json", "case conflict notes.md", "conflict-copy name needs manual review"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestSyncExecuteDisabledBeforeDryRun(t *testing.T) {
+	calls := []app.SyncRequest{}
+	client := populatedFakeClient()
+	client.syncCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	if cmd != nil || len(calls) != 0 || model.syncExecErr == nil || !strings.Contains(model.View(), "successful dry-run required") {
+		t.Fatalf("execute should be blocked: %+v calls=%+v cmd nil=%v", model, calls, cmd == nil)
+	}
+}
+
+func TestSyncWrongConfirmationBlocksExecution(t *testing.T) {
+	calls := []app.SyncRequest{}
+	client := populatedFakeClient()
+	client.syncCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	for _, r := range "WRONG" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if cmd != nil || model.syncConfirmErr == "" || len(calls) != 1 {
+		t.Fatalf("wrong confirm model/calls = %+v %+v", model, calls)
+	}
+}
+
+func TestSyncDryRunAndConfirmExecute(t *testing.T) {
+	calls := []app.SyncRequest{}
+	client := populatedFakeClient()
+	client.syncCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	for _, r := range "DELETE 1 CONFLICTS" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.syncBusy || cmd == nil {
+		t.Fatalf("execute not started: %+v cmd nil=%v", model, cmd == nil)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.syncExecErr != nil || !strings.Contains(model.View(), "Deleted:") || !strings.Contains(model.View(), "Sync cleanup complete") {
+		t.Fatalf("execute model/view = %+v\n%s", model, model.View())
+	}
+	if len(calls) != 3 || !calls[0].DryRun || !calls[1].DryRun || calls[2].DryRun || !calls[2].Yes || calls[2].ExpectedConflictFingerprint == "" {
+		t.Fatalf("sync calls = %+v", calls)
+	}
+}
+
+func TestSyncConflictDriftAbortsExecution(t *testing.T) {
+	calls := []app.SyncRequest{}
+	client := populatedFakeClient()
+	client.syncCalls = &calls
+	client.syncResults = []fakeSyncResult{
+		{result: syncResult(1, 0, "fp-1", true)},
+		{result: syncResult(2, 0, "fp-2", true)},
+	}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	for _, r := range "DELETE 1 CONFLICTS" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.syncExecErr == nil || !strings.Contains(model.syncExecErr.Error(), "conflict list changed") || len(calls) != 2 || !strings.Contains(model.View(), "Would delete:") || !strings.Contains(model.View(), "2") {
+		t.Fatalf("drift model/calls = %+v %+v\n%s", model, calls, model.View())
+	}
+}
+
+func TestSyncConfirmIgnoresDuplicateEnterWhileBusy(t *testing.T) {
+	client := populatedFakeClient()
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	for _, r := range "DELETE 1 CONFLICTS" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if cmd == nil || !model.syncBusy {
+		t.Fatalf("first execute not started: %+v", model)
+	}
+	_, duplicate := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if duplicate != nil {
+		t.Fatal("duplicate enter returned command")
+	}
+}
+
+func TestSyncLockErrorRenders(t *testing.T) {
+	calls := []app.SyncRequest{}
+	client := populatedFakeClient()
+	client.syncCalls = &calls
+	client.syncResults = []fakeSyncResult{
+		{result: syncResult(1, 0, "fp-1", true)},
+		{result: syncResult(1, 0, "fp-1", true)},
+		{result: app.SyncResult{}, err: errors.New("acquire store operation lock /tmp/loki/.loki-operation.lock: timed out waiting for sync")},
+	}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	for _, r := range "DELETE 1 CONFLICTS" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.syncExecErr == nil || !strings.Contains(model.View(), "operation lock") {
+		t.Fatalf("lock model/view = %+v\n%s", model, model.View())
+	}
+}
+
+func TestSyncDryRunErrorRendersWithoutCrash(t *testing.T) {
+	client := populatedFakeClient()
+	client.syncResults = []fakeSyncResult{{result: app.SyncResult{}, err: errors.New("scan failed")}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.syncDryRunErr == nil || !strings.Contains(model.View(), "scan failed") {
+		t.Fatalf("dry-run error model/view = %+v\n%s", model, model.View())
+	}
+}
+
 func loadedModel(client fakeClient) Model {
 	model := NewModel(context.Background(), client)
 	updated, _ := model.Update(dashboardLoadedMsg{status: client.status, catalog: client.catalog, doctor: client.doctor, machine: client.machine, secrets: client.secrets, snapshots: client.snapshots, catalogErr: client.catalogErr, doctorErr: client.doctorErr, machineErr: client.machineErr, secretsErr: client.secretsErr, snapshotsErr: client.snapshotsErr})
@@ -379,6 +587,43 @@ func switchResult(profile string, buckets []string, dryRun bool, operations int)
 		})
 	}
 	return app.SwitchResult{Plan: activation.Plan{StorePath: "/tmp/loki", Profile: profile, Buckets: buckets, Operations: ops}, DryRun: dryRun, Changed: operations}
+}
+
+func syncResult(deleteCount, skippedCount int, fingerprint string, dryRun bool) app.SyncResult {
+	conflicts := make([]storesync.ConflictCopy, 0, deleteCount+skippedCount)
+	for i := 0; i < deleteCount; i++ {
+		name := "settings conflicted copy.json"
+		if i > 0 {
+			name = fmt.Sprintf("settings %d conflicted copy.json", i+1)
+		}
+		conflicts = append(conflicts, storesync.ConflictCopy{
+			Path:         "/tmp/loki/profiles/work/core/files/" + name,
+			RelativePath: "profiles/work/core/files/" + name,
+			Name:         name,
+			Kind:         "file",
+			Action:       storesync.ConflictActionDelete,
+		})
+	}
+	for i := 0; i < skippedCount; i++ {
+		name := "case conflict notes.md"
+		if i > 0 {
+			name = fmt.Sprintf("case conflict notes %d.md", i+1)
+		}
+		conflicts = append(conflicts, storesync.ConflictCopy{
+			Path:         "/tmp/loki/profiles/work/core/files/" + name,
+			RelativePath: "profiles/work/core/files/" + name,
+			Name:         name,
+			Kind:         "file",
+			Action:       storesync.ConflictActionSkip,
+			Reason:       "conflict-copy name needs manual review",
+		})
+	}
+	result := app.SyncResult{StorePath: "/tmp/loki", DryRun: dryRun, WouldDeleteCount: deleteCount, SkippedCount: skippedCount, Conflicts: conflicts, ConflictFingerprint: fingerprint}
+	if !dryRun {
+		result.DeletedCount = deleteCount
+		result.HeartbeatUpdated = deleteCount > 0
+	}
+	return result
 }
 
 func populatedFakeClient() fakeClient {
