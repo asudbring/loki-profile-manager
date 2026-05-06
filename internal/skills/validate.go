@@ -74,7 +74,6 @@ func ValidateFolder(dir string) Result {
 			continue
 		}
 		if _, err := os.Stat(resolved); err != nil {
-			result.Valid = false
 			result.Issues = append(result.Issues, Issue{Code: "skill.reference_missing", Message: fmt.Sprintf("relative reference %q does not exist", ref), Path: resolved})
 		}
 	}

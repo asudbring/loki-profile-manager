@@ -61,11 +61,11 @@ func TestValidateFolderAllowsMarkdownReferenceTitle(t *testing.T) {
 	}
 }
 
-func TestValidateFolderBrokenReference(t *testing.T) {
+func TestValidateFolderBrokenReferenceIsWarning(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [missing](docs/missing.md), [web](https://example.com), and [anchor](#x).\n")
 	result := ValidateFolder(dir)
-	if result.Valid || result.Issues[0].Code != "skill.reference_missing" {
+	if !result.Valid || result.Issues[0].Code != "skill.reference_missing" {
 		t.Fatalf("result = %+v", result)
 	}
 }
