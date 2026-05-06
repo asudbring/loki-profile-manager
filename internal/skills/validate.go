@@ -53,15 +53,16 @@ func ValidateFolder(dir string) Result {
 	}
 	result.Name = fm.Name
 	for _, ref := range references(body) {
-		if skipReference(ref) {
+		cleaned := cleanReferenceTarget(ref)
+		if skipReference(cleaned) {
 			continue
 		}
-		if isLocalAbsoluteReference(ref) {
+		if isLocalAbsoluteReference(cleaned) {
 			result.Valid = false
-			result.Issues = append(result.Issues, Issue{Code: "skill.reference_absolute", Message: fmt.Sprintf("absolute local reference %q is not allowed", ref), Path: skillPath})
+			result.Issues = append(result.Issues, Issue{Code: "skill.reference_absolute", Message: fmt.Sprintf("absolute local reference %q is not allowed", cleaned), Path: skillPath})
 			continue
 		}
-		cleaned := strings.TrimSpace(strings.Split(strings.Split(ref, "#")[0], "?")[0])
+		cleaned = strings.TrimSpace(strings.Split(strings.Split(cleaned, "#")[0], "?")[0])
 		if cleaned == "" {
 			continue
 		}
@@ -111,6 +112,20 @@ func references(body string) []string {
 		refs = append(refs, match[1])
 	}
 	return refs
+}
+
+func cleanReferenceTarget(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if strings.HasPrefix(ref, "<") {
+		if end := strings.Index(ref, ">"); end >= 0 {
+			return strings.TrimSpace(ref[1:end])
+		}
+	}
+	fields := strings.Fields(ref)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.Trim(fields[0], "<>")
 }
 
 func skipReference(ref string) bool {

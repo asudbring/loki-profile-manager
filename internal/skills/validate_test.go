@@ -46,6 +46,21 @@ func TestValidateFolderMissingNameDescription(t *testing.T) {
 	}
 }
 
+func TestValidateFolderAllowsMarkdownReferenceTitle(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee ![diagram](images/diagram.png \"Description\").\n")
+	if err := os.MkdirAll(filepath.Join(dir, "images"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "images", "diagram.png"), []byte("png"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	result := ValidateFolder(dir)
+	if !result.Valid {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestValidateFolderBrokenReference(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [missing](docs/missing.md), [web](https://example.com), and [anchor](#x).\n")
