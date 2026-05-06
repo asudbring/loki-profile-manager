@@ -79,9 +79,18 @@ func TestValidateFolderEscapingRelativeReferenceIsWarning(t *testing.T) {
 	}
 }
 
+func TestValidateFolderAllowsRootRelativeWebReference(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [docs](/entra/identity/role-based-access-control/permissions-reference#role-slug).\n")
+	result := ValidateFolder(dir)
+	if !result.Valid || len(result.Issues) != 0 {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestValidateFolderRejectsAbsoluteLocalReference(t *testing.T) {
 	dir := t.TempDir()
-	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [secret](/etc/passwd), [win](C:\\Users\\alice\\secret.txt), and [web](https://example.com).\n")
+	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [win](C:\\Users\\alice\\secret.txt), and [web](https://example.com).\n")
 	result := ValidateFolder(dir)
 	if result.Valid || !hasSkillIssue(result.Issues, "skill.reference_absolute") {
 		t.Fatalf("result = %+v", result)

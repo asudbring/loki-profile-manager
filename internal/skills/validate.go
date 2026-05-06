@@ -129,10 +129,10 @@ func cleanReferenceTarget(ref string) string {
 func skipReference(ref string) bool {
 	ref = strings.TrimSpace(ref)
 	lower := strings.ToLower(ref)
-	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "mailto:") || strings.HasPrefix(ref, "#")
+	return strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "mailto:") || strings.HasPrefix(ref, "#") || strings.HasPrefix(ref, "/")
 }
 
 func isLocalAbsoluteReference(ref string) bool {
 	ref = strings.TrimSpace(ref)
-	return filepath.IsAbs(ref) || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, `\`) || len(ref) >= 2 && ref[1] == ':'
+	return filepath.IsAbs(ref) || strings.HasPrefix(ref, `\`) || len(ref) >= 2 && ref[1] == ':'
 }
