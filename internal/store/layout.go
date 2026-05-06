@@ -46,6 +46,29 @@ func EnsureLayout(root string) (EnsureResult, error) {
 	return EnsureResult{Layout: layout, Created: false, Valid: false, Missing: validation.Missing}, nil
 }
 
+func InspectLayout(root string) (InspectionResult, error) {
+	if root == "" {
+		return InspectionResult{}, fmt.Errorf("inspect store layout: store root is required")
+	}
+	layout := NewLayout(root)
+	info, err := os.Stat(layout.Root)
+	if os.IsNotExist(err) {
+		return InspectionResult{Exists: false, Empty: true, IsDir: false, Valid: false}, nil
+	}
+	if err != nil {
+		return InspectionResult{}, fmt.Errorf("stat store root %s: %w", layout.Root, err)
+	}
+	if !info.IsDir() {
+		return InspectionResult{Exists: true, Empty: false, IsDir: false, Valid: false}, fmt.Errorf("store root %s is not a directory", layout.Root)
+	}
+	entries, err := os.ReadDir(layout.Root)
+	if err != nil {
+		return InspectionResult{}, fmt.Errorf("read store root %s: %w", layout.Root, err)
+	}
+	validation := ValidateLayout(layout.Root)
+	return InspectionResult{Exists: true, Empty: len(entries) == 0, IsDir: true, Valid: validation.Valid, Missing: validation.Missing}, nil
+}
+
 func ValidateLayout(root string) ValidationResult {
 	layout := NewLayout(root)
 	missing := []string{}

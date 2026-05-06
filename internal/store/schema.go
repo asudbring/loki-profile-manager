@@ -46,6 +46,14 @@ type ValidationResult struct {
 	Missing []string `json:"missing"`
 }
 
+type InspectionResult struct {
+	Exists  bool     `json:"exists"`
+	Empty   bool     `json:"empty"`
+	IsDir   bool     `json:"is_dir"`
+	Valid   bool     `json:"valid"`
+	Missing []string `json:"missing"`
+}
+
 type EnsureResult struct {
 	Layout  Layout   `json:"layout"`
 	Created bool     `json:"created"`

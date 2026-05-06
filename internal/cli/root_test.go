@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 
 	"github.com/allensu/loki-profile-manager/internal/app"
 	"github.com/allensu/loki-profile-manager/internal/config"
+	lokiui "github.com/allensu/loki-profile-manager/internal/tui"
 )
 
 func TestHelpPrints(t *testing.T) {
@@ -23,14 +25,35 @@ func TestHelpPrints(t *testing.T) {
 	}
 }
 
-func TestNoArgsPrintsHelp(t *testing.T) {
-	cmd, out, _ := testCommand(t)
+func TestNoArgsLaunchesTUI(t *testing.T) {
+	var called bool
+	cmd := NewRootCommand(Options{
+		Resolver: config.PathResolver{GOOS: "darwin", HomeDir: t.TempDir()},
+		TUIRunner: func(ctx context.Context, client lokiui.Client, opts lokiui.Options) error {
+			called = true
+			if opts.StorePath != "" || opts.Verbose {
+				t.Fatalf("tui options = %+v", opts)
+			}
+			return nil
+		},
+	})
 	cmd.SetArgs(nil)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
+	if !called {
+		t.Fatal("TUI runner was not called")
+	}
+}
+
+func TestRootWithGlobalFlagPrintsHelp(t *testing.T) {
+	cmd, out, _ := testCommand(t)
+	cmd.SetArgs([]string{"--verbose"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
 	if !strings.Contains(out.String(), "Usage:") {
-		t.Fatalf("no-args output missing help: %s", out.String())
+		t.Fatalf("global-flag root output missing help: %s", out.String())
 	}
 }
 

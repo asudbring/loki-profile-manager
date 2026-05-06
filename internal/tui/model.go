@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/allensu/loki-profile-manager/internal/app"
+	"github.com/allensu/loki-profile-manager/internal/machine"
 )
 
 type ScreenID string
@@ -15,6 +16,7 @@ type ScreenID string
 const (
 	ScreenLoading   ScreenID = "loading"
 	ScreenDashboard ScreenID = "dashboard"
+	ScreenStore     ScreenID = "store"
 	ScreenDoctor    ScreenID = "doctor"
 	ScreenMachine   ScreenID = "machine"
 	ScreenSecrets   ScreenID = "secrets"
@@ -45,18 +47,33 @@ type Model struct {
 
 	selected int
 
-	status    app.StatusResult
-	catalog   app.ProfileCatalogResult
-	doctor    app.DoctorResult
-	machine   app.MachineStatusResult
-	secrets   app.SecretsStatusResult
-	snapshots app.SnapshotListResult
+	status          app.StatusResult
+	storeStatus     app.StoreStatusResult
+	storeCandidates app.DiscoverStoresResult
+	catalog         app.ProfileCatalogResult
+	doctor          app.DoctorResult
+	machine         app.MachineStatusResult
+	secrets         app.SecretsStatusResult
+	snapshots       app.SnapshotListResult
 
-	catalogErr   error
-	doctorErr    error
-	machineErr   error
-	secretsErr   error
-	snapshotsErr error
+	storeStatusErr   error
+	storeDiscoverErr error
+	catalogErr       error
+	doctorErr        error
+	machineErr       error
+	secretsErr       error
+	snapshotsErr     error
+
+	storeCandidateIndex int
+	storeManualMode     bool
+	storeManualInput    string
+	storeConfirmAction  string
+	storeConfirmPath    string
+	storeConfirmInput   string
+	storeConfirmErr     string
+	storeActionErr      error
+	storeMessage        string
+	storeBusy           bool
 
 	switchInitialized       bool
 	switchProfileIndex      int
@@ -88,6 +105,16 @@ type Model struct {
 	snapshotRestoreDryRunErr    error
 	snapshotRestoreDryRunTarget string
 	snapshotBusy                bool
+
+	machineEdit           bool
+	machineConfirm        bool
+	machineFieldIndex     int
+	machineInputs         []string
+	machineConfirmInput   string
+	machineConfirmErr     string
+	machineRegisterErr    error
+	machineRegisterRecord machine.Record
+	machineBusy           bool
 
 	spinner spinner.Model
 }
@@ -128,11 +155,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case dashboardLoadedMsg:
 		m.loading = false
 		m.status = msg.status
+		m.storeStatus = msg.storeStatus
+		m.storeCandidates = msg.storeCandidates
 		m.catalog = msg.catalog
 		m.doctor = msg.doctor
 		m.machine = msg.machine
 		m.secrets = msg.secrets
 		m.snapshots = msg.snapshots
+		m.storeStatusErr = msg.storeStatusErr
+		m.storeDiscoverErr = msg.storeDiscoverErr
 		m.catalogErr = msg.catalogErr
 		m.doctorErr = msg.doctorErr
 		m.machineErr = msg.machineErr
@@ -146,6 +177,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.screen = ScreenDashboard
 		m.ensureSwitchSelection()
+		m.ensureStoreSelection()
 		return m, nil
 	case switchDryRunMsg:
 		m.switchBusy = false
@@ -204,6 +236,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.snapshotRestoreDryRunTarget = msg.target
 		m.screen = ScreenSnapshots
 		return m, nil
+	case storeDiscoverMsg:
+		m.storeBusy = false
+		m.storeCandidates = msg.result
+		m.storeDiscoverErr = msg.err
+		m.storeManualMode = false
+		m.ensureStoreSelection()
+		m.screen = ScreenStore
+		return m, nil
+	case storeActionMsg:
+		m.storeBusy = false
+		m.storeActionErr = msg.err
+		m.storeConfirmAction = ""
+		m.storeConfirmPath = ""
+		m.storeConfirmInput = ""
+		m.storeConfirmErr = ""
+		if msg.err == nil {
+			m.storeMessage = msg.message
+			m.storeStatus = msg.status
+			m.storeCandidates = msg.candidates
+			m.status.Configured = msg.status.Valid
+			m.status.StorePath = msg.status.EffectiveStorePath
+		}
+		m.screen = ScreenStore
+		return m, nil
+	case machineRegisterMsg:
+		m.machineBusy = false
+		m.machineRegisterRecord = msg.record
+		m.machineRegisterErr = msg.err
+		m.machineConfirm = false
+		m.machineConfirmInput = ""
+		m.machineConfirmErr = ""
+		if msg.err == nil {
+			m.machineEdit = false
+			m.machine.Registered = true
+			m.machine.Record = &m.machineRegisterRecord
+			m.machine.MachineID = msg.record.MachineID
+			m.status.MachineRegistered = true
+			m.status.MachineID = msg.record.MachineID
+			m.status.MachineDisplayName = msg.record.DisplayName
+			m.status.MachineAllowedParentProfiles = cloneStringSlice(msg.record.AllowedParentProfiles)
+			m.status.MachineAllowedBuckets = cloneStringSlice(msg.record.AllowedBuckets)
+		}
+		m.screen = ScreenMachine
+		return m, nil
 	}
 	return m, nil
 }
@@ -211,6 +287,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.screen == ScreenConfirm {
 		return m.updateConfirmKey(msg)
+	}
+	if m.screen == ScreenStore {
+		return m.updateStoreKey(msg)
+	}
+	if m.screen == ScreenMachine {
+		return m.updateMachineKey(msg)
 	}
 	if m.screen == ScreenSwitch {
 		return m.updateSwitchKey(msg)
@@ -249,6 +331,10 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.screen == ScreenDashboard {
 			m.openSelected()
 		}
+		return m, nil
+	case "g":
+		m.screen = ScreenStore
+		m.ensureStoreSelection()
 		return m, nil
 	case "d":
 		m.screen = ScreenDoctor
@@ -304,7 +390,8 @@ func (m *Model) openSelected() {
 }
 
 func (m Model) dashboardItems() []dashboardItem {
-	return []dashboardItem{
+	storeItem := dashboardItem{Screen: ScreenStore, Key: "g", Label: "Store", Description: formatSectionStatus(firstError(m.storeStatusErr, m.storeDiscoverErr), formatStoreSummary(m.storeStatus))}
+	items := []dashboardItem{
 		{Screen: ScreenSwitch, Key: "w", Label: "Switch", Description: "dry-run profile activation"},
 		{Screen: ScreenSync, Key: "y", Label: "Sync", Description: "dry-run provider conflict cleanup"},
 		{Screen: ScreenSnapshots, Key: "n", Label: "Snapshots", Description: formatSectionStatus(m.snapshotsErr, fmt.Sprintf("%d retained", len(m.snapshots.Snapshots)))},
@@ -313,6 +400,10 @@ func (m Model) dashboardItems() []dashboardItem {
 		{Screen: ScreenSecrets, Key: "s", Label: "Secrets", Description: formatSectionStatus(m.secretsErr, formatSecretsReady(m.secrets))},
 		{Screen: ScreenProfiles, Key: "p", Label: "Profiles", Description: formatSectionStatus(m.catalogErr, formatCatalogSummary(m.catalog))},
 	}
+	if !m.status.Configured {
+		return append([]dashboardItem{storeItem}, items...)
+	}
+	return append(items, storeItem)
 }
 
 func (m Model) View() string {
@@ -321,6 +412,8 @@ func (m Model) View() string {
 		return m.loadingView()
 	case ScreenDashboard:
 		return m.dashboardView()
+	case ScreenStore:
+		return m.storeView()
 	case ScreenDoctor:
 		return m.doctorView()
 	case ScreenMachine:

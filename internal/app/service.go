@@ -179,13 +179,46 @@ type SnapshotRestoreDryRunTarget struct {
 	Warnings           []string `json:"warnings,omitempty"`
 }
 
+type StoreStatusRequest struct{}
+
+type StoreStatusResult struct {
+	StoreOverride      string   `json:"store_override,omitempty"`
+	PersistedStorePath string   `json:"persisted_store_path,omitempty"`
+	EffectiveStorePath string   `json:"effective_store_path,omitempty"`
+	EffectiveSource    string   `json:"effective_source"`
+	LocalStatePath     string   `json:"local_state_path"`
+	DatabasePath       string   `json:"database_path"`
+	Valid              bool     `json:"valid"`
+	Missing            []string `json:"missing,omitempty"`
+	Message            string   `json:"message"`
+}
+
 type DiscoverStoresRequest struct {
 	ManualPath string
 }
 
-type DiscoverStoresResult struct {
-	Candidates []store.ProviderCandidate `json:"candidates"`
+type StoreCandidate struct {
+	Provider       store.ProviderType `json:"provider"`
+	ProviderPath   string             `json:"provider_path"`
+	StorePath      string             `json:"store_path"`
+	Source         string             `json:"source"`
+	ProviderExists bool               `json:"provider_exists"`
+	StoreExists    bool               `json:"store_exists"`
+	StoreEmpty     bool               `json:"store_empty"`
+	StoreIsDir     bool               `json:"store_is_dir"`
+	StoreValid     bool               `json:"store_valid"`
+	Missing        []string           `json:"missing,omitempty"`
 }
+
+type DiscoverStoresResult struct {
+	Candidates []StoreCandidate `json:"candidates"`
+}
+
+type UseStoreRequest struct {
+	StorePath string
+}
+
+type ForgetStoreRequest struct{}
 
 type EnsureStoreRequest struct {
 	StorePath string
@@ -475,6 +508,53 @@ func (s *Service) RestoreSnapshot(ctx context.Context, req SnapshotRestoreReques
 	return result, nil
 }
 
+func (s *Service) StoreStatus(ctx context.Context, req StoreStatusRequest) (StoreStatusResult, error) {
+	if s == nil {
+		return StoreStatusResult{}, fmt.Errorf("store status: service is nil")
+	}
+	_ = req
+	persisted, ok, err := db.GetKV(ctx, s.database, kvStorePath)
+	if err != nil {
+		return StoreStatusResult{}, err
+	}
+	if !ok {
+		persisted = ""
+	}
+	persisted = s.resolver.CleanStoreOverride(persisted)
+	result := StoreStatusResult{
+		StoreOverride:      s.storeOverride,
+		PersistedStorePath: persisted,
+		LocalStatePath:     s.paths.StateDir,
+		DatabasePath:       s.paths.DBPath,
+		EffectiveSource:    "none",
+		Message:            "Loki store is not configured.",
+	}
+	if s.storeOverride != "" {
+		result.EffectiveStorePath = s.storeOverride
+		result.EffectiveSource = "override"
+	} else if persisted != "" {
+		result.EffectiveStorePath = persisted
+		result.EffectiveSource = "persisted"
+	}
+	if result.EffectiveStorePath == "" {
+		return result, nil
+	}
+	inspection, err := store.InspectLayout(result.EffectiveStorePath)
+	if err != nil {
+		result.Missing = inspection.Missing
+		result.Message = err.Error()
+		return result, nil
+	}
+	result.Valid = inspection.Valid
+	result.Missing = inspection.Missing
+	if inspection.Valid {
+		result.Message = "Loki store is configured."
+	} else {
+		result.Message = "Loki store path is configured but layout is invalid."
+	}
+	return result, nil
+}
+
 func (s *Service) DiscoverStores(ctx context.Context, req DiscoverStoresRequest) (DiscoverStoresResult, error) {
 	if s == nil {
 		return DiscoverStoresResult{}, fmt.Errorf("discover stores: service is nil")
@@ -483,13 +563,68 @@ func (s *Service) DiscoverStores(ctx context.Context, req DiscoverStoresRequest)
 	if manualPath == "" {
 		manualPath = s.storeOverride
 	}
-	candidates := store.DiscoverProviderFolders(store.DiscoveryOptions{
+	providerCandidates := store.DiscoverProviderFolders(store.DiscoveryOptions{
 		GOOS:       s.resolver.GOOS,
 		HomeDir:    s.resolver.HomeDir,
 		ManualPath: manualPath,
 		Env:        s.resolver.Env,
 	})
+	candidates := make([]StoreCandidate, 0, len(providerCandidates))
+	for _, candidate := range providerCandidates {
+		out := StoreCandidate{
+			Provider:       candidate.Provider,
+			ProviderPath:   candidate.Path,
+			StorePath:      candidate.StorePath,
+			Source:         candidate.Source,
+			ProviderExists: candidate.Exists,
+		}
+		inspection, err := store.InspectLayout(candidate.StorePath)
+		out.StoreExists = inspection.Exists
+		out.StoreEmpty = inspection.Empty
+		out.StoreIsDir = inspection.IsDir
+		out.StoreValid = inspection.Valid
+		out.Missing = inspection.Missing
+		if err != nil {
+			out.Missing = append(out.Missing, err.Error())
+		}
+		candidates = append(candidates, out)
+	}
 	return DiscoverStoresResult{Candidates: candidates}, nil
+}
+
+func (s *Service) UseStore(ctx context.Context, req UseStoreRequest) (EnsureStoreResult, error) {
+	if s == nil {
+		return EnsureStoreResult{}, fmt.Errorf("store use: service is nil")
+	}
+	storePath := s.resolver.CleanStoreOverride(req.StorePath)
+	if storePath == "" {
+		return EnsureStoreResult{}, fmt.Errorf("store use: store path is required")
+	}
+	inspection, err := store.InspectLayout(storePath)
+	if err != nil {
+		return EnsureStoreResult{StorePath: storePath, Valid: false, Missing: inspection.Missing}, err
+	}
+	if !inspection.Exists {
+		return EnsureStoreResult{StorePath: storePath, Valid: false}, fmt.Errorf("store use: store path does not exist: %s", storePath)
+	}
+	if !inspection.Valid {
+		return EnsureStoreResult{StorePath: storePath, Valid: false, Missing: inspection.Missing}, fmt.Errorf("store use: invalid store layout: missing %v", inspection.Missing)
+	}
+	if err := db.SetKV(ctx, s.database, kvStorePath, storePath); err != nil {
+		return EnsureStoreResult{}, err
+	}
+	return EnsureStoreResult{StorePath: storePath, Created: false, Valid: true}, nil
+}
+
+func (s *Service) ForgetStore(ctx context.Context, req ForgetStoreRequest) (StoreStatusResult, error) {
+	if s == nil {
+		return StoreStatusResult{}, fmt.Errorf("store unset: service is nil")
+	}
+	_ = req
+	if err := db.DeleteKV(ctx, s.database, kvStorePath); err != nil {
+		return StoreStatusResult{}, err
+	}
+	return s.StoreStatus(ctx, StoreStatusRequest{})
 }
 
 func (s *Service) EnsureStore(ctx context.Context, req EnsureStoreRequest) (EnsureStoreResult, error) {

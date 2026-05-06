@@ -20,6 +20,11 @@ Current commands:
 | Command | Status |
 |---|---|
 | `status` | Implemented |
+| `store status` | Implemented |
+| `store discover` | Implemented |
+| `store use` | Implemented |
+| `store init` | Implemented |
+| `store unset` | Implemented |
 | `verify` | Implemented |
 | `switch` | Implemented |
 | `sync` | Implemented |
@@ -51,15 +56,19 @@ Planned but not implemented:
 Launch the interactive terminal UI.
 
 ```bash
+loki
 loki tui
 loki --store /path/to/loki tui
 ```
 
 Behavior:
 
+- `loki` with no arguments launches the TUI. Any command or flag uses normal CLI mode.
 - Requires an interactive terminal. Non-TTY execution returns a clear error.
-- Loads status, doctor, machine, secrets, profile catalog, and snapshot summary data through `internal/app` service APIs.
-- Dashboard quick actions: `w` switch, `y` sync conflicts, `n` snapshots, `d` doctor, `m` machine, `s` secrets, `p` profiles.
+- Loads status, store, doctor, machine, secrets, profile catalog, and snapshot summary data through `internal/app` service APIs.
+- Dashboard quick actions: `g` store, `w` switch, `y` sync conflicts, `n` snapshots, `d` doctor, `m` machine, `s` secrets, `p` profiles.
+- Store screen can discover candidates, manually inspect a path, persist an existing store, initialize a missing/empty store, or unset local store config with typed confirmation.
+- Machine screen can register/update this machine with allowed profiles/buckets and active profile/bucket metadata with typed confirmation.
 - Switch screen runs `Switch(DryRun:true)`, requires exact `SWITCH <profile> [bucket...]` confirmation, rechecks the dry-run fingerprint, then calls app-owned `Switch(Yes:true)`.
 - Sync screen runs `Sync(DryRun:true)`, requires exact `DELETE <n> CONFLICTS` confirmation, rechecks the conflict fingerprint, then calls app-owned `Sync(Yes:true)`.
 - Snapshot screen lists and shows metadata only, runs restore dry-runs, and displays the guarded CLI restore command. It does not execute restore writes in the TUI MVP.
@@ -73,8 +82,9 @@ Keys:
 | `q`, `ctrl+c` | Quit. |
 | `esc` | Back/cancel. |
 | `r` | Refresh dashboard. |
-| `enter` | Open selected dashboard item or show selected snapshot. |
-| `d` | Dry-run switch/sync/snapshot restore on action screens. |
+| `enter` | Open selected dashboard item, show selected snapshot, or choose selected store candidate. |
+| `g` | Open Store screen from dashboard. |
+| `d` | Dry-run switch/sync/snapshot restore on action screens; rediscover store candidates on Store screen. |
 | `x` | Switch execute confirmation or sync confirmation reset. Snapshot restore has no execute key. |
 | Arrow keys / `hjkl` | Navigate lists, profile/bucket selection, and snapshot targets. |
 
@@ -118,6 +128,61 @@ loki status
 loki status --json
 loki --store /path/to/loki status
 loki --store /path/to/loki --verbose status
+```
+
+## `loki store`
+
+Manage persistent local store configuration. Persistent configuration is stored in local SQLite state and is machine-local. `--store <path>` still overrides the persisted path for one command.
+
+### `loki store status`
+
+```bash
+loki store status [--json]
+loki --store /path/to/loki store status [--json]
+```
+
+Shows persisted path, override path, effective path/source, local state/database paths, and layout validity.
+
+### `loki store discover`
+
+```bash
+loki store discover [--manual <path>] [--json]
+```
+
+Lists OneDrive, Dropbox, and optional manual candidates with provider root, candidate store path, existence, validity, and missing layout paths.
+
+### `loki store use`
+
+```bash
+loki store use <path> [--json]
+```
+
+Persists an existing valid Loki store path. It validates only and does not create files.
+
+### `loki store init`
+
+```bash
+loki store init <path> [--json]
+```
+
+Creates a missing/empty Loki store layout or accepts an existing valid layout, then persists the path. It refuses non-empty invalid directories.
+
+### `loki store unset`
+
+```bash
+loki store unset [--json]
+```
+
+Clears the local persisted store path. It does not delete synced store files.
+
+Examples:
+
+```bash
+loki store discover
+loki store init ~/OneDrive/loki
+loki store status
+loki store use ~/OneDrive/loki
+loki store unset
 ```
 
 ## `loki machine register`

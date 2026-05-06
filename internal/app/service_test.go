@@ -11,6 +11,7 @@ import (
 	"github.com/allensu/loki-profile-manager/internal/activation"
 	"github.com/allensu/loki-profile-manager/internal/config"
 	"github.com/allensu/loki-profile-manager/internal/machine"
+	"github.com/allensu/loki-profile-manager/internal/store"
 )
 
 func TestStatusNotConfigured(t *testing.T) {
@@ -79,6 +80,104 @@ func TestEnsureStoreCreatesValidStoreAndStatusConfigured(t *testing.T) {
 	}
 	if !status.Configured || status.StorePath != wantStorePath {
 		t.Fatalf("status = %+v, want store %s", status, wantStorePath)
+	}
+}
+
+func TestStoreStatusUseAndForget(t *testing.T) {
+	svc := testService(t)
+	defer svc.Close()
+	ctx := context.Background()
+	initial, err := svc.StoreStatus(ctx, StoreStatusRequest{})
+	if err != nil {
+		t.Fatalf("StoreStatus() error = %v", err)
+	}
+	if initial.EffectiveSource != "none" || initial.Valid || initial.EffectiveStorePath != "" {
+		t.Fatalf("initial store status = %+v", initial)
+	}
+
+	storePath := filepath.Join(t.TempDir(), "loki")
+	if _, err := store.EnsureLayout(storePath); err != nil {
+		t.Fatalf("EnsureLayout() error = %v", err)
+	}
+	used, err := svc.UseStore(ctx, UseStoreRequest{StorePath: storePath})
+	if err != nil {
+		t.Fatalf("UseStore() error = %v", err)
+	}
+	if used.Created || !used.Valid {
+		t.Fatalf("UseStore() = %+v, want existing valid", used)
+	}
+	configured, err := svc.StoreStatus(ctx, StoreStatusRequest{})
+	if err != nil {
+		t.Fatalf("StoreStatus() configured error = %v", err)
+	}
+	if configured.EffectiveSource != "persisted" || !configured.Valid || configured.PersistedStorePath != config.CleanForOS("darwin", storePath) {
+		t.Fatalf("configured store status = %+v", configured)
+	}
+	forgotten, err := svc.ForgetStore(ctx, ForgetStoreRequest{})
+	if err != nil {
+		t.Fatalf("ForgetStore() error = %v", err)
+	}
+	if forgotten.EffectiveSource != "none" || forgotten.PersistedStorePath != "" {
+		t.Fatalf("forgotten status = %+v", forgotten)
+	}
+}
+
+func TestUseStoreRejectsMissingAndInvalid(t *testing.T) {
+	svc := testService(t)
+	defer svc.Close()
+	ctx := context.Background()
+	missing := filepath.Join(t.TempDir(), "missing")
+	if _, err := svc.UseStore(ctx, UseStoreRequest{StorePath: missing}); err == nil || !strings.Contains(err.Error(), "does not exist") {
+		t.Fatalf("UseStore(missing) error = %v", err)
+	}
+	invalid := filepath.Join(t.TempDir(), "loki")
+	if err := os.MkdirAll(invalid, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(invalid, "README.md"), []byte("not a store"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if _, err := svc.UseStore(ctx, UseStoreRequest{StorePath: invalid}); err == nil || !strings.Contains(err.Error(), "invalid store layout") {
+		t.Fatalf("UseStore(invalid) error = %v", err)
+	}
+	status, err := svc.StoreStatus(ctx, StoreStatusRequest{})
+	if err != nil {
+		t.Fatalf("StoreStatus() error = %v", err)
+	}
+	if status.EffectiveSource != "none" {
+		t.Fatalf("status = %+v, want no persisted store", status)
+	}
+}
+
+func TestStoreStatusReportsOverrideSeparately(t *testing.T) {
+	home := t.TempDir()
+	persistedStore := filepath.Join(t.TempDir(), "persisted")
+	overrideStore := filepath.Join(t.TempDir(), "override")
+	if _, err := store.EnsureLayout(persistedStore); err != nil {
+		t.Fatalf("EnsureLayout(persisted) error = %v", err)
+	}
+	if _, err := store.EnsureLayout(overrideStore); err != nil {
+		t.Fatalf("EnsureLayout(override) error = %v", err)
+	}
+	svc, err := NewService(context.Background(), Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := svc.UseStore(context.Background(), UseStoreRequest{StorePath: persistedStore}); err != nil {
+		t.Fatalf("UseStore() error = %v", err)
+	}
+	svc.Close()
+	svc, err = NewService(context.Background(), Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, StoreOverride: overrideStore})
+	if err != nil {
+		t.Fatalf("NewService override error = %v", err)
+	}
+	defer svc.Close()
+	status, err := svc.StoreStatus(context.Background(), StoreStatusRequest{})
+	if err != nil {
+		t.Fatalf("StoreStatus() error = %v", err)
+	}
+	if status.EffectiveSource != "override" || status.StoreOverride == "" || status.PersistedStorePath == "" || status.EffectiveStorePath != config.CleanForOS("darwin", overrideStore) {
+		t.Fatalf("override store status = %+v", status)
 	}
 }
 

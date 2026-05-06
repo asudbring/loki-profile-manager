@@ -39,11 +39,14 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "loki",
 		Short:         "Manage local profiles, dotfiles, and AI tool skills.",
-		Long:          "Loki Profile Manager manages local dotfile/profile stores and AI tool skills. Current commands provide status, verification, and manifest-driven profile switching.",
+		Long:          "Loki Profile Manager manages local dotfile/profile stores and AI tool skills. Running `loki` with no arguments launches the terminal UI; commands and flags use CLI mode.",
 		Version:       app.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 && globals.store == "" && !globals.verbose {
+				return runTUIFromCommand(cmd, opts.Resolver, globals, factory, opts.TUIRunner)
+			}
 			return cmd.Help()
 		},
 	}
@@ -65,6 +68,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newImportSkillCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newSecretsCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newSnapshotsCommand(opts.Resolver, globals, factory))
+	cmd.AddCommand(newStoreCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newMigrateCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newAdoptCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newMachineCommand(opts.Resolver, globals, factory))

@@ -31,17 +31,17 @@ Dependency note: do a tiny compile spike before full implementation. Bubble Tea 
 |---|---|---|
 | Dashboard | Store path, configured state, active profile/buckets, machine state, managed target count, doctor summary, secrets readiness, quick actions | No |
 | Doctor | Checks grouped by blocking/warning/info with remediation | No |
-| Machine | Machine ID/registration/policy summary | No |
+| Machine | Machine ID/registration/policy summary plus register/update form | Yes, gated |
 | Secrets | Infisical readiness and named-secret presence checks; no values | No |
 | Profiles / Switch | Choose profile/buckets, run switch dry-run, show plan/blockers, execute after typed confirmation | Yes, gated |
 | Sync conflicts | Run sync dry-run, show deletable/skipped conflicts, execute after typed confirmation | Yes, gated |
 | Snapshots | List/show snapshots, run restore dry-run, show guarded CLI command for restore | Restore write deferred |
-| Store | Discover/configure/create store from explicit path/candidate | Optional, gated; can defer if scope tight |
+| Store | Discover/configure/create/unset store from explicit path/candidate | Yes, gated |
 
 ### Non-goals for MVP
 
 - No manifest editor.
-- No `adopt`, `migrate`, or `import-skill` execution forms. Show CLI next steps instead.
+- No `adopt`, `migrate`, or `import-skill` execution forms yet. Show CLI next steps instead.
 - No inline `secrets login`; show/run existing `loki secrets login` guidance unless terminal handoff is explicitly implemented later.
 - No real snapshot restore execution in TUI MVP; keep existing guarded CLI restore path.
 - No daemon/watcher/provider API sync.
@@ -57,12 +57,13 @@ internal/tui/model.go        # Root Bubble Tea model
 internal/tui/messages.go     # typed tea.Msg results
 internal/tui/dashboard.go    # dashboard state/view/update helpers
 internal/tui/doctor.go       # diagnostics screen
-internal/tui/machine.go      # machine summary screen
+internal/tui/machine.go      # machine summary + registration screen
 internal/tui/secrets.go      # secrets readiness/check screen, names only
 internal/tui/profiles.go     # profile/bucket picker
 internal/tui/switch.go       # dry-run/confirm/execute switch flow
 internal/tui/sync.go         # sync dry-run/confirm/execute flow
 internal/tui/snapshots.go    # snapshot list/show/restore dry-run
+internal/tui/store.go        # persistent store setup screen
 internal/tui/confirm.go      # typed confirmation model
 internal/tui/fingerprint.go  # dry-run fingerprint helpers
 internal/tui/format.go       # path redaction/truncation/status formatting

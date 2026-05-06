@@ -5,13 +5,20 @@ import (
 	"fmt"
 
 	"github.com/allensu/loki-profile-manager/internal/app"
+	"github.com/allensu/loki-profile-manager/internal/machine"
 )
 
 type Client interface {
 	Status(context.Context) (app.StatusResult, error)
+	StoreStatus(context.Context) (app.StoreStatusResult, error)
+	DiscoverStores(context.Context, app.DiscoverStoresRequest) (app.DiscoverStoresResult, error)
+	UseStore(context.Context, app.UseStoreRequest) (app.EnsureStoreResult, error)
+	EnsureStore(context.Context, app.EnsureStoreRequest) (app.EnsureStoreResult, error)
+	ForgetStore(context.Context, app.ForgetStoreRequest) (app.StoreStatusResult, error)
 	ProfileCatalog(context.Context) (app.ProfileCatalogResult, error)
 	Doctor(context.Context) (app.DoctorResult, error)
 	MachineStatus(context.Context) (app.MachineStatusResult, error)
+	RegisterMachine(context.Context, app.RegisterMachineRequest) (machine.Record, error)
 	SecretsStatus(context.Context) (app.SecretsStatusResult, error)
 	ListSnapshots(context.Context) (app.SnapshotListResult, error)
 	ShowSnapshot(context.Context, app.SnapshotShowRequest) (app.SnapshotShowResult, error)
@@ -36,6 +43,41 @@ func (c ServiceClient) Status(ctx context.Context) (app.StatusResult, error) {
 	return c.Service.Status(ctx, app.StatusRequest{})
 }
 
+func (c ServiceClient) StoreStatus(ctx context.Context) (app.StoreStatusResult, error) {
+	if c.Service == nil {
+		return app.StoreStatusResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	return c.Service.StoreStatus(ctx, app.StoreStatusRequest{})
+}
+
+func (c ServiceClient) DiscoverStores(ctx context.Context, req app.DiscoverStoresRequest) (app.DiscoverStoresResult, error) {
+	if c.Service == nil {
+		return app.DiscoverStoresResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	return c.Service.DiscoverStores(ctx, req)
+}
+
+func (c ServiceClient) UseStore(ctx context.Context, req app.UseStoreRequest) (app.EnsureStoreResult, error) {
+	if c.Service == nil {
+		return app.EnsureStoreResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	return c.Service.UseStore(ctx, req)
+}
+
+func (c ServiceClient) EnsureStore(ctx context.Context, req app.EnsureStoreRequest) (app.EnsureStoreResult, error) {
+	if c.Service == nil {
+		return app.EnsureStoreResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	return c.Service.EnsureStore(ctx, req)
+}
+
+func (c ServiceClient) ForgetStore(ctx context.Context, req app.ForgetStoreRequest) (app.StoreStatusResult, error) {
+	if c.Service == nil {
+		return app.StoreStatusResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	return c.Service.ForgetStore(ctx, req)
+}
+
 func (c ServiceClient) ProfileCatalog(ctx context.Context) (app.ProfileCatalogResult, error) {
 	if c.Service == nil {
 		return app.ProfileCatalogResult{}, fmt.Errorf("tui client: service is nil")
@@ -55,6 +97,16 @@ func (c ServiceClient) MachineStatus(ctx context.Context) (app.MachineStatusResu
 		return app.MachineStatusResult{}, fmt.Errorf("tui client: service is nil")
 	}
 	return c.Service.MachineStatus(ctx, app.MachineStatusRequest{StorePath: c.StorePath})
+}
+
+func (c ServiceClient) RegisterMachine(ctx context.Context, req app.RegisterMachineRequest) (machine.Record, error) {
+	if c.Service == nil {
+		return machine.Record{}, fmt.Errorf("tui client: service is nil")
+	}
+	if req.StorePath == "" {
+		req.StorePath = c.StorePath
+	}
+	return c.Service.RegisterMachine(ctx, req)
 }
 
 func (c ServiceClient) SecretsStatus(ctx context.Context) (app.SecretsStatusResult, error) {

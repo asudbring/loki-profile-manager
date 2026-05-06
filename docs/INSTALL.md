@@ -1,6 +1,6 @@
 # Install
 
-Loki Profile Manager can be installed from GitHub release binaries or built from source. Package-manager formulas/installers do not exist yet.
+Loki Profile Manager can be installed from GitHub release binaries, bundled script installers, or source builds. Package-manager formulas do not exist yet.
 
 Requirements for release binaries:
 
@@ -33,6 +33,11 @@ Release asset names use this pattern:
 ```text
 loki_<version>_<os>_<arch>.tar.gz
 loki_<version>_windows_<arch>.zip
+install.sh
+uninstall.sh
+install.ps1
+uninstall.ps1
+release-manifest.json
 checksums.txt
 ```
 
@@ -47,7 +52,63 @@ Supported assets:
 | Windows | amd64 | `zip` |
 | Windows | arm64 | `zip` |
 
-Verify checksums before running the binary.
+Use the script installers for normal installs. Install path and Loki store path are separate: installers copy the binary and optionally configure a store only when `--store-path` / `-StorePath` is provided.
+
+Linux/macOS script install from downloaded assets:
+
+```bash
+chmod +x install.sh uninstall.sh
+./install.sh --version <version> \
+  --archive ./loki_<version>_<os>_<arch>.tar.gz \
+  --checksums ./checksums.txt \
+  --install-dir "$HOME/.local/bin"
+
+# Optional store setup; creates a missing/empty store or accepts an existing valid one.
+./install.sh --version <version> \
+  --archive ./loki_<version>_<os>_<arch>.tar.gz \
+  --checksums ./checksums.txt \
+  --store-path "$HOME/OneDrive/LokiProfileManager" \
+  --force
+```
+
+Windows PowerShell script install from downloaded assets:
+
+```powershell
+.\install.ps1 `
+  -Version <version> `
+  -ArchivePath .\loki_<version>_windows_arm64.zip `
+  -ChecksumsPath .\checksums.txt `
+  -InstallDir "$env:LOCALAPPDATA\Programs\Loki" `
+  -AddToPath
+
+# Optional store setup; creates a missing/empty store or accepts an existing valid one.
+.\install.ps1 `
+  -Version <version> `
+  -ArchivePath .\loki_<version>_windows_arm64.zip `
+  -ChecksumsPath .\checksums.txt `
+  -StorePath "$env:USERPROFILE\OneDrive\LokiProfileManager" `
+  -Force
+```
+
+Default install paths:
+
+| OS | Default install path | Local state preserved by uninstall |
+|---|---|---|
+| Windows | `%LOCALAPPDATA%\Programs\Loki` | `%LOCALAPPDATA%\loki-profile-manager` |
+| macOS | `$HOME/.local/bin` | `~/Library/Application Support/loki-profile-manager` |
+| Linux | `$HOME/.local/bin` | `~/.local/state/loki-profile-manager` |
+
+Uninstall preserves local state, synced stores, managed targets, and Windows Developer Mode by default:
+
+```bash
+./uninstall.sh --install-dir "$HOME/.local/bin"
+```
+
+```powershell
+.\uninstall.ps1 -InstallDir "$env:LOCALAPPDATA\Programs\Loki"
+```
+
+Manual archive verification still works.
 
 Linux/macOS, selected archive only:
 
@@ -198,30 +259,18 @@ MSYS_NO_PATHCONV=1 docker run --rm \
 
 ## Smoke test with a valid store
 
-The store layout can be created by application service code. For a command-line smoke test, create the minimal layout manually or use an existing fixture store, then register the current machine before switching.
+The store layout can be created by application service code. For a command-line smoke test, initialize a disposable store, register the current machine, then switch.
 
 Linux/macOS shell:
 
 ```bash
 STORE=$(mktemp -d)/loki
-mkdir -p "$STORE"/registry/machines "$STORE"/profiles/common/{files,skills,templates} "$STORE"/profiles/work/core/{files,skills,templates} "$STORE"/profiles/work/buckets "$STORE"/profiles/dev/core/{files,skills,templates} "$STORE"/profiles/dev/buckets "$STORE"/profiles/writer/core/{files,skills,templates} "$STORE"/profiles/writer/buckets "$STORE"/conflicts "$STORE"/snapshots "$STORE"/logs
-printf '{"version":1,"machines":[]}' > "$STORE/registry/machines.json"
-for path in common work/core dev/core writer/core; do
-  name=$(basename "$path")
-  cat > "$STORE/profiles/$path/manifest.yaml" <<EOF
-version: 1
-name: $name
-files: []
-skills: []
-ignore: []
-merge_rules: {}
-targets: {}
-EOF
-done
-go run ./cmd/loki --store "$STORE" machine register --allow-profile work
-go run ./cmd/loki --store "$STORE" verify work
-go run ./cmd/loki --store "$STORE" switch work --dry-run
-go run ./cmd/loki --store "$STORE" tui --help
+go run ./cmd/loki store init "$STORE"
+go run ./cmd/loki machine register --allow-profile work
+go run ./cmd/loki verify work
+go run ./cmd/loki switch work --dry-run
+go run ./cmd/loki --help
+go run ./cmd/loki tui --help
 ```
 
 Expected switch output includes:
@@ -232,7 +281,7 @@ Profile: work
 Operations: 0
 ```
 
-No `machine.record_missing` warning should appear after `machine register` succeeds. For an interactive TUI smoke, run `go run ./cmd/loki --store "$STORE" tui` in a real terminal and verify the dashboard opens, `r` refreshes, and `q` exits.
+No `machine.record_missing` warning should appear after `machine register` succeeds. For an interactive TUI smoke, run `go run ./cmd/loki` in a real terminal and verify the dashboard opens, Store (`g`) and Machine (`m`) screens open, `r` refreshes, and `q` exits.
 
 ## OneDrive Windows VM smoke
 
@@ -252,12 +301,13 @@ if (-not $OneDrive) {
 }
 
 $Store = Join-Path $OneDrive "LokiProfileManager"
-New-Item -ItemType Directory -Force $Store | Out-Null
+.\bin\loki.exe store init $Store
+.\bin\loki.exe machine register --allow-profile work --allow-bucket content-dev,azure
 attrib +P -U "$Store" /S /D
 ```
 
-Build Loki, create or verify the store layout, then run every command with `--store $Store`. Confirm a file written to `$Store` on the VM appears on the other machine and vice versa before testing `adopt`, `migrate`, or `switch`.
+Build Loki, initialize or use the store with `loki store init`/`loki store use`, then commands can run without `--store`. Confirm a file written to `$Store` on the VM appears on the other machine and vice versa before testing `adopt`, `migrate`, or `switch`.
 
 ## Next install gap
 
-Package-manager installers, code signing, and notarization are not implemented yet. Use release archives or source builds until installer workflows exist.
+Package-manager installers, code signing, MSI/MSIX, macOS notarization, Homebrew, winget, Scoop, deb, and rpm are not implemented yet. Use release archives plus script installers or source builds.

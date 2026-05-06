@@ -26,7 +26,8 @@ func (m Model) dashboardView() string {
 		titleStyle.Render("Loki Profile Manager"),
 		"",
 		labelValue("Status", status),
-		labelValue("Store", firstNonEmpty(m.status.StorePath, "not configured")),
+		labelValue("Store", firstNonEmpty(m.storeStatus.EffectiveStorePath, m.status.StorePath, "not configured")),
+		labelValue("Store source", firstNonEmpty(m.storeStatus.EffectiveSource, "unknown")),
 		labelValue("Local state", firstNonEmpty(m.status.LocalStatePath, "unknown")),
 		labelValue("Active profile", formatActiveProfile(m.status.ActiveProfile, m.status.ActiveBuckets)),
 		labelValue("Managed targets", fmt.Sprintf("%d", m.status.ManagedTargetCount)),
@@ -47,7 +48,7 @@ func (m Model) dashboardView() string {
 	for i, item := range items {
 		lines = append(lines, menuLine(i == m.selected, item))
 	}
-	lines = append(lines, "", helpStyle.Render("↑/↓ select • enter open • d/m/s/p/y/n quick open • esc back • r refresh • q quit"))
+	lines = append(lines, "", helpStyle.Render("↑/↓ select • enter open • g store • d/m/s/p/y/n quick open • esc back • r refresh • q quit"))
 	return frame(lines...)
 }
 

@@ -38,6 +38,15 @@ func formatSectionStatus(err error, value string) string {
 	return value
 }
 
+func firstError(values ...error) error {
+	for _, value := range values {
+		if value != nil {
+			return value
+		}
+	}
+	return nil
+}
+
 func formatList(values []string) string {
 	if len(values) == 0 {
 		return "none"
@@ -60,6 +69,16 @@ func formatSecretsReady(status app.SecretsStatusResult) string {
 		return string(status.Provider) + " ready"
 	}
 	return string(status.Provider) + " not ready"
+}
+
+func formatStoreSummary(status app.StoreStatusResult) string {
+	if status.EffectiveStorePath == "" {
+		return "configure persistent store"
+	}
+	if status.Valid {
+		return status.EffectiveStorePath + " valid"
+	}
+	return fmt.Sprintf("%s invalid (%d missing)", status.EffectiveStorePath, len(status.Missing))
 }
 
 func formatMachineFromStatus(status app.StatusResult, machine app.MachineStatusResult) string {

@@ -278,7 +278,7 @@ The current-machine-wins policy means detected provider conflict-copy files are 
 
 ## TUI MVP flow
 
-`loki tui` uses Bubble Tea under `internal/tui`. The TUI is presentation/orchestration only; app services remain write authority.
+`loki` with no arguments and `loki tui` use Bubble Tea under `internal/tui`. The TUI is presentation/orchestration only; app services remain write authority.
 
 ```mermaid
 sequenceDiagram
@@ -288,15 +288,15 @@ sequenceDiagram
     participant App as app.Service
 
     User->>TUI: open dashboard
-    TUI->>Client: Status / Doctor / MachineStatus / SecretsStatus / ProfileCatalog / ListSnapshots
-    Client->>App: read-only service calls
+    TUI->>Client: Status / StoreStatus / DiscoverStores / Doctor / MachineStatus / SecretsStatus / ProfileCatalog / ListSnapshots
+    Client->>App: service calls
     App-->>Client: typed results
     Client-->>TUI: tea.Msg values
     TUI-->>User: dashboard + detail screens
 
     User->>TUI: guarded action
-    TUI->>Client: Dry-run service call
-    Client->>App: Switch / Sync / RestoreSnapshotDryRun
+    TUI->>Client: Dry-run or setup service call
+    Client->>App: Switch / Sync / RestoreSnapshotDryRun / UseStore / EnsureStore / ForgetStore / RegisterMachine
     App-->>TUI: plan, blockers, warnings, fingerprint/guard
     alt switch or sync execute
         User->>TUI: exact typed confirmation
@@ -311,6 +311,8 @@ sequenceDiagram
 
 TUI write-capable flows are intentionally narrow:
 
+- Store setup requires exact `USE STORE`, `INIT STORE`, or `UNSET STORE` phrase before persisting local config or creating a missing/empty store layout.
+- Machine registration requires exact `REGISTER MACHINE` phrase before writing the synced machine registry.
 - Switch requires successful dry-run, exact `SWITCH <profile> [bucket...]` phrase, and dry-run fingerprint recheck before `Switch(Yes:true)`.
 - Sync requires successful dry-run, exact `DELETE <n> CONFLICTS` phrase, dry-run recheck, and app-side expected conflict fingerprint before `Sync(Yes:true)` deletes conflict copies.
 - Snapshot restore writes are not exposed. TUI can record a restore dry-run guard and displays the existing guarded CLI restore command.
@@ -406,6 +408,6 @@ Doctor reports Infisical readiness as a warning when missing or not ready, not a
 - Skill folder import exists, but zip import, markdown conversion, runtime mirroring, and target-adapter sync are not implemented.
 - Secrets V1 supports Infisical only; Azure Key Vault and other providers are deferred.
 - Sync is conflict-copy cleanup only; watcher capture and full provider-state reconciliation are not implemented.
-- TUI MVP exists, but no manifest editor, setup wizard, `adopt`/`migrate`/`import-skill` execution forms, daemon control, or inline snapshot restore execution.
+- TUI MVP exists, including store setup and machine registration, but no manifest editor, `adopt`/`migrate`/`import-skill` execution forms, daemon control, or inline snapshot restore execution.
 - `OperationMirror` is currently a no-op.
 - Verify does not reuse activation safety classification because it has no SQLite dependency in its current shape.

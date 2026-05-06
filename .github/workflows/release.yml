@@ -3,90 +3,155 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version/tag to package, e.g. v0.1.0-doctor.1'
+        description: 'Release tag/version, e.g. v0.1.0'
         required: true
         type: string
 
 permissions:
   contents: write
 
+env:
+  RELEASE_VERSION: ${{ inputs.version || github.ref_name }}
+
 jobs:
   package:
-    name: package release
+    name: Validate and package
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
-          cache: true
-      - name: Resolve version
-        id: version
+      - name: Validate
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            version="${{ inputs.version }}"
-          else
-            version="${GITHUB_REF_NAME}"
-          fi
-          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][A-Za-z0-9._-]+)?$ ]]; then
-            echo "Invalid release version: $version" >&2
-            exit 2
-          fi
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-      - name: Validate
-        run: |
           go test ./...
           go vet ./...
           go mod verify
-      - name: Package
-        run: ./scripts/package-release.sh "${{ steps.version.outputs.version }}"
-      - name: Smoke packaged linux binary
+          go build -trimpath -o "$RUNNER_TEMP/loki" ./cmd/loki
+          bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh
+          pwsh -NoProfile -Command '
+            $allErrors = @()
+            foreach ($file in @("scripts/install.ps1", "scripts/uninstall.ps1", "scripts/windows-installer-smoke.ps1", "scripts/validate-local.ps1")) {
+              $errors = $null
+              $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw $file), [ref]$errors)
+              if ($errors) { $allErrors += $errors }
+            }
+            if ($allErrors.Count -gt 0) { $allErrors | Format-List *; exit 1 }
+          '
+      - name: Package release assets
         shell: bash
         run: |
           set -euo pipefail
-          version="${{ steps.version.outputs.version }}"
-          tmp=$(mktemp -d)
-          tar -xzf "dist/packages/loki_${version}_linux_amd64.tar.gz" -C "$tmp"
-          got="$($tmp/loki --version)"
-          if [[ "$got" != "$version" ]]; then
-            echo "version smoke failed: got $got want $version" >&2
-            exit 1
-          fi
-          "$tmp/loki" doctor --json >/dev/null
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+          scripts/package-release.sh "$RELEASE_VERSION" dist/packages
+      - uses: actions/upload-artifact@v4
         with:
-          name: loki-${{ steps.version.outputs.version }}-packages
+          name: loki-release-packages
           path: dist/packages/*
-          if-no-files-found: error
-      - name: Create GitHub release
-        if: github.event_name == 'push'
+
+  installer-smoke:
+    name: Installer smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+      - uses: actions/download-artifact@v4
+        with:
+          name: loki-release-packages
+          path: packages
+      - name: Unix installer smoke
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x packages/install.sh packages/uninstall.sh
+          goos=$(go env GOOS)
+          goarch=$(go env GOARCH)
+          archive="$PWD/packages/loki_${RELEASE_VERSION}_${goos}_${goarch}.tar.gz"
+          install_dir="$RUNNER_TEMP/loki-bin"
+          store="$RUNNER_TEMP/loki-store"
+          bash packages/install.sh --version "$RELEASE_VERSION" --archive "$archive" --checksums "$PWD/packages/checksums.txt" --install-dir "$install_dir" --force --store-path "$store"
+          "$install_dir/loki" machine register --allow-profile work --active-profile work
+          "$install_dir/loki" verify work
+          "$install_dir/loki" switch work --dry-run
+          bash packages/uninstall.sh --install-dir "$install_dir"
+          test ! -e "$install_dir/loki"
+          test -d "$store"
+      - name: Windows installer smoke
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $assets = (Resolve-Path packages).Path
+          $arch = if (($env:PROCESSOR_ARCHITEW6432 -eq 'ARM64') -or ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64')) { 'arm64' } else { 'amd64' }
+          $archive = Get-ChildItem -LiteralPath $assets -Filter "loki_${env:RELEASE_VERSION}_windows_${arch}.zip" | Select-Object -First 1
+          if (-not $archive) { throw "Windows archive missing for $arch" }
+          $installDir = Join-Path $env:RUNNER_TEMP 'Loki'
+          ./scripts/windows-installer-smoke.ps1 -Version $env:RELEASE_VERSION -AssetsDir $assets -ArchivePath $archive.FullName -InstallDir $installDir
+
+  publish:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: installer-smoke
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: loki-release-packages
+          path: packages
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ steps.version.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          notes=$(mktemp)
-          {
-            echo "Loki Profile Manager $VERSION"
-            echo
-            echo "Pre-release binary packages for private dogfood validation."
-            echo
-            echo "Verify downloads with checksums.txt before running."
-          } > "$notes"
-          prerelease=()
-          if [[ "$VERSION" == *-* ]]; then
-            prerelease=(--prerelease)
+          notes="$RUNNER_TEMP/release-notes.md"
+          cat > "$notes" <<'NOTES'
+          ## Loki Profile Manager __VERSION__
+
+          Private dogfood release.
+
+          ### Install
+
+          Windows:
+
+          ```powershell
+          .\install.ps1 -Version __VERSION__ -ArchivePath .\loki___VERSION___windows_arm64.zip -ChecksumsPath .\checksums.txt -AddToPath
+          ```
+
+          macOS/Linux:
+
+          ```bash
+          ./install.sh --version __VERSION__ --archive ./loki___VERSION___darwin_arm64.tar.gz --checksums ./checksums.txt
+          ```
+
+          ### Notes
+
+          - Verify `checksums.txt` before install.
+          - Windows symlink activation requires Developer Mode or elevation.
+          - Uninstall preserves local Loki state, synced stores, and managed targets by default.
+          NOTES
+          python3 - "$notes" "$RELEASE_VERSION" <<'PY'
+          import pathlib
+          import sys
+          path = pathlib.Path(sys.argv[1])
+          version = sys.argv[2]
+          path.write_text(path.read_text().replace('__VERSION__', version), encoding='utf-8')
+          PY
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_VERSION" packages/* --clobber
+          else
+            prerelease=()
+            if [[ "$RELEASE_VERSION" == *-* ]]; then prerelease=(--prerelease); fi
+            gh release create "$RELEASE_VERSION" packages/* --title "$RELEASE_VERSION" --notes-file "$notes" "${prerelease[@]}"
           fi
-          gh release create "$VERSION" dist/packages/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "$VERSION" \
-            --notes-file "$notes" \
-            "${prerelease[@]}"

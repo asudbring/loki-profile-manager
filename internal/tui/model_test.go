@@ -37,14 +37,23 @@ type fakeSnapshotRestoreResult struct {
 	err    error
 }
 
+type fakeMachineRegisterResult struct {
+	record machine.Record
+	err    error
+}
+
 type fakeClient struct {
 	status                 app.StatusResult
+	storeStatus            app.StoreStatusResult
+	storeCandidates        app.DiscoverStoresResult
 	catalog                app.ProfileCatalogResult
 	doctor                 app.DoctorResult
 	machine                app.MachineStatusResult
 	secrets                app.SecretsStatusResult
 	snapshots              app.SnapshotListResult
 	statusErr              error
+	storeStatusErr         error
+	storeDiscoverErr       error
 	catalogErr             error
 	doctorErr              error
 	machineErr             error
@@ -58,10 +67,47 @@ type fakeClient struct {
 	snapshotShowCalls      *[]app.SnapshotShowRequest
 	snapshotRestoreResults []fakeSnapshotRestoreResult
 	snapshotRestoreCalls   *[]app.SnapshotRestoreDryRunRequest
+	storeUseCalls          *[]app.UseStoreRequest
+	storeEnsureCalls       *[]app.EnsureStoreRequest
+	storeForgetCalls       *[]app.ForgetStoreRequest
+	machineRegisterResults []fakeMachineRegisterResult
+	machineRegisterCalls   *[]app.RegisterMachineRequest
 }
 
 func (f fakeClient) Status(context.Context) (app.StatusResult, error) {
 	return f.status, f.statusErr
+}
+
+func (f fakeClient) StoreStatus(context.Context) (app.StoreStatusResult, error) {
+	return f.storeStatus, f.storeStatusErr
+}
+
+func (f fakeClient) DiscoverStores(context.Context, app.DiscoverStoresRequest) (app.DiscoverStoresResult, error) {
+	return f.storeCandidates, f.storeDiscoverErr
+}
+
+func (f fakeClient) UseStore(ctx context.Context, req app.UseStoreRequest) (app.EnsureStoreResult, error) {
+	_ = ctx
+	if f.storeUseCalls != nil {
+		*f.storeUseCalls = append(*f.storeUseCalls, req)
+	}
+	return app.EnsureStoreResult{StorePath: req.StorePath, Valid: true}, nil
+}
+
+func (f fakeClient) EnsureStore(ctx context.Context, req app.EnsureStoreRequest) (app.EnsureStoreResult, error) {
+	_ = ctx
+	if f.storeEnsureCalls != nil {
+		*f.storeEnsureCalls = append(*f.storeEnsureCalls, req)
+	}
+	return app.EnsureStoreResult{StorePath: req.StorePath, Created: true, Valid: true}, nil
+}
+
+func (f fakeClient) ForgetStore(ctx context.Context, req app.ForgetStoreRequest) (app.StoreStatusResult, error) {
+	_ = ctx
+	if f.storeForgetCalls != nil {
+		*f.storeForgetCalls = append(*f.storeForgetCalls, req)
+	}
+	return app.StoreStatusResult{EffectiveSource: "none", Message: "Loki store is not configured."}, nil
 }
 
 func (f fakeClient) ProfileCatalog(context.Context) (app.ProfileCatalogResult, error) {
@@ -74,6 +120,19 @@ func (f fakeClient) Doctor(context.Context) (app.DoctorResult, error) {
 
 func (f fakeClient) MachineStatus(context.Context) (app.MachineStatusResult, error) {
 	return f.machine, f.machineErr
+}
+
+func (f fakeClient) RegisterMachine(ctx context.Context, req app.RegisterMachineRequest) (machine.Record, error) {
+	_ = ctx
+	idx := 0
+	if f.machineRegisterCalls != nil {
+		idx = len(*f.machineRegisterCalls)
+		*f.machineRegisterCalls = append(*f.machineRegisterCalls, req)
+	}
+	if idx < len(f.machineRegisterResults) {
+		return f.machineRegisterResults[idx].record, f.machineRegisterResults[idx].err
+	}
+	return machine.Record{MachineID: "machine-1", DisplayName: req.DisplayName, AllowedParentProfiles: req.AllowedParentProfiles, AllowedBuckets: req.AllowedBuckets, ActiveProfile: req.ActiveProfile, ActiveBuckets: req.ActiveBuckets}, nil
 }
 
 func (f fakeClient) SecretsStatus(context.Context) (app.SecretsStatusResult, error) {
@@ -210,7 +269,7 @@ func TestDashboardNavigationOpensDoctorAndBack(t *testing.T) {
 	}
 }
 
-func TestDashboardSelectionWrapsAndOpensProfiles(t *testing.T) {
+func TestDashboardSelectionWrapsAndOpensStore(t *testing.T) {
 	model := loadedModel(populatedFakeClient())
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyUp})
 	wrapped := updated.(Model)
@@ -219,8 +278,8 @@ func TestDashboardSelectionWrapsAndOpensProfiles(t *testing.T) {
 	}
 	updated, _ = wrapped.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	opened := updated.(Model)
-	if opened.screen != ScreenProfiles || !strings.Contains(opened.View(), "azure") {
-		t.Fatalf("profiles screen/view = %s\n%s", opened.screen, opened.View())
+	if opened.screen != ScreenStore || !strings.Contains(opened.View(), "Store") {
+		t.Fatalf("store screen/view = %s\n%s", opened.screen, opened.View())
 	}
 }
 
@@ -249,6 +308,96 @@ func TestSecretsViewDoesNotRenderFreeformSecretValues(t *testing.T) {
 	}
 	if !strings.Contains(view, "TOKEN") || !strings.Contains(view, "fix available") {
 		t.Fatalf("secrets status missing safe fields:\n%s", view)
+	}
+}
+
+func TestStoreUseCandidateConfirmation(t *testing.T) {
+	calls := []app.UseStoreRequest{}
+	client := populatedFakeClient()
+	client.storeUseCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	model = updated.(Model)
+	if model.screen != ScreenStore || !strings.Contains(model.View(), "/tmp/loki") {
+		t.Fatalf("store view = %s\n%s", model.screen, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.storeConfirmAction != storeActionUse || !strings.Contains(model.View(), "USE STORE") {
+		t.Fatalf("store confirm = %+v\n%s", model, model.View())
+	}
+	for _, r := range "USE STORE" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.storeBusy || cmd == nil {
+		t.Fatalf("store action not started: %+v", model)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if len(calls) != 1 || calls[0].StorePath != "/tmp/loki" || model.storeActionErr != nil || !strings.Contains(model.View(), "Store configured") {
+		t.Fatalf("store calls/model = %+v %+v\n%s", calls, model, model.View())
+	}
+}
+
+func TestStoreInitMissingCandidate(t *testing.T) {
+	calls := []app.EnsureStoreRequest{}
+	client := populatedFakeClient()
+	client.storeCandidates = app.DiscoverStoresResult{Candidates: []app.StoreCandidate{{Provider: "manual", StorePath: "/tmp/new-loki", StoreExists: false, StoreEmpty: true}}}
+	client.storeEnsureCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if model.storeConfirmAction != storeActionInit || !strings.Contains(model.View(), "INIT STORE") {
+		t.Fatalf("store confirm = %+v\n%s", model, model.View())
+	}
+	for _, r := range "INIT STORE" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if len(calls) != 1 || calls[0].StorePath != "/tmp/new-loki" || model.storeActionErr != nil {
+		t.Fatalf("store init calls/model = %+v %+v", calls, model)
+	}
+}
+
+func TestMachineEditRegisterConfirmation(t *testing.T) {
+	calls := []app.RegisterMachineRequest{}
+	client := populatedFakeClient()
+	client.machineRegisterCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	model = updated.(Model)
+	if !model.machineEdit || !strings.Contains(model.View(), "Edit registration") {
+		t.Fatalf("machine edit view = %+v\n%s", model, model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	model = updated.(Model)
+	if !model.machineConfirm || !strings.Contains(model.View(), machineConfirmPhrase) {
+		t.Fatalf("machine confirm = %+v\n%s", model, model.View())
+	}
+	for _, r := range machineConfirmPhrase {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.machineBusy || cmd == nil {
+		t.Fatalf("machine register not started: %+v", model)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if len(calls) != 1 || len(calls[0].AllowedParentProfiles) == 0 || model.machineRegisterErr != nil || !model.machine.Registered {
+		t.Fatalf("machine calls/model = %+v %+v", calls, model)
 	}
 }
 
@@ -806,7 +955,7 @@ func TestSnapshotRestoreNoExecuteKey(t *testing.T) {
 
 func loadedModel(client fakeClient) Model {
 	model := NewModel(context.Background(), client)
-	updated, _ := model.Update(dashboardLoadedMsg{status: client.status, catalog: client.catalog, doctor: client.doctor, machine: client.machine, secrets: client.secrets, snapshots: client.snapshots, catalogErr: client.catalogErr, doctorErr: client.doctorErr, machineErr: client.machineErr, secretsErr: client.secretsErr, snapshotsErr: client.snapshotsErr})
+	updated, _ := model.Update(dashboardLoadedMsg{status: client.status, storeStatus: client.storeStatus, storeCandidates: client.storeCandidates, catalog: client.catalog, doctor: client.doctor, machine: client.machine, secrets: client.secrets, snapshots: client.snapshots, storeStatusErr: client.storeStatusErr, storeDiscoverErr: client.storeDiscoverErr, catalogErr: client.catalogErr, doctorErr: client.doctorErr, machineErr: client.machineErr, secretsErr: client.secretsErr, snapshotsErr: client.snapshotsErr})
 	return updated.(Model)
 }
 
@@ -943,11 +1092,13 @@ func snapshotRestoreDryRunResult(id, target string, redacted bool, guardRecorded
 
 func populatedFakeClient() fakeClient {
 	return fakeClient{
-		status:    app.StatusResult{Configured: true, StorePath: "/tmp/loki", LocalStatePath: "/tmp/state", ActiveProfile: "work", ActiveBuckets: []string{"azure"}, ManagedTargetCount: 2, MachineID: "machine-1", MachineRegistered: true, MachineDisplayName: "laptop"},
-		catalog:   app.ProfileCatalogResult{StorePath: "/tmp/loki", Profiles: []app.ProfileSummary{{Name: "work", Buckets: []app.BucketSummary{{Name: "azure"}}}}},
-		doctor:    app.DoctorResult{Healthy: false, Runtime: diagnostics.RuntimeInfo{GOOS: "darwin", GOARCH: "arm64"}, StorePath: "/tmp/loki", Summary: diagnostics.Summary{Blocking: 1, Warnings: 2, Info: 3}, Checks: []diagnostics.Check{{Severity: diagnostics.SeverityBlocking, Code: "store_missing", Message: "store missing"}}},
-		machine:   app.MachineStatusResult{StorePath: "/tmp/loki", MachineIDPath: "/tmp/state/machine-id", MachineID: "machine-1", Registered: true, Message: "Machine is registered.", Record: &machine.Record{MachineID: "machine-1", DisplayName: "laptop", OS: "darwin", Hostname: "host", AllowedParentProfiles: []string{"work"}, AllowedBuckets: []string{"azure"}, ActiveProfile: "work", ActiveBuckets: []string{"azure"}, LastSeen: "2026-05-05T00:00:00Z", LokiVersion: "dev"}},
-		secrets:   app.SecretsStatusResult{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true, Checks: []secrets.Check{{Severity: secrets.SeverityInfo, Code: "auth", Message: "authenticated"}}},
-		snapshots: app.SnapshotListResult{},
+		status:          app.StatusResult{Configured: true, StorePath: "/tmp/loki", LocalStatePath: "/tmp/state", ActiveProfile: "work", ActiveBuckets: []string{"azure"}, ManagedTargetCount: 2, MachineID: "machine-1", MachineRegistered: true, MachineDisplayName: "laptop"},
+		storeStatus:     app.StoreStatusResult{PersistedStorePath: "/tmp/loki", EffectiveStorePath: "/tmp/loki", EffectiveSource: "persisted", Valid: true, Message: "Loki store is configured."},
+		storeCandidates: app.DiscoverStoresResult{Candidates: []app.StoreCandidate{{Provider: "manual", ProviderPath: "/tmp/loki", StorePath: "/tmp/loki", Source: "manual", ProviderExists: true, StoreExists: true, StoreIsDir: true, StoreValid: true}}},
+		catalog:         app.ProfileCatalogResult{StorePath: "/tmp/loki", Profiles: []app.ProfileSummary{{Name: "work", Buckets: []app.BucketSummary{{Name: "azure"}}}}},
+		doctor:          app.DoctorResult{Healthy: false, Runtime: diagnostics.RuntimeInfo{GOOS: "darwin", GOARCH: "arm64"}, StorePath: "/tmp/loki", Summary: diagnostics.Summary{Blocking: 1, Warnings: 2, Info: 3}, Checks: []diagnostics.Check{{Severity: diagnostics.SeverityBlocking, Code: "store_missing", Message: "store missing"}}},
+		machine:         app.MachineStatusResult{StorePath: "/tmp/loki", MachineIDPath: "/tmp/state/machine-id", MachineID: "machine-1", Registered: true, Message: "Machine is registered.", Record: &machine.Record{MachineID: "machine-1", DisplayName: "laptop", OS: "darwin", Hostname: "host", AllowedParentProfiles: []string{"work"}, AllowedBuckets: []string{"azure"}, ActiveProfile: "work", ActiveBuckets: []string{"azure"}, LastSeen: "2026-05-05T00:00:00Z", LokiVersion: "dev"}},
+		secrets:         app.SecretsStatusResult{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true, Checks: []secrets.Check{{Severity: secrets.SeverityInfo, Code: "auth", Message: "authenticated"}}},
+		snapshots:       app.SnapshotListResult{},
 	}
 }

@@ -103,3 +103,53 @@ func TestEnsureLayoutInvalidNonEmptyStoreReportsMissing(t *testing.T) {
 		t.Fatalf("result = %+v, want invalid missing", result)
 	}
 }
+
+func TestInspectLayoutMissingRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "missing")
+	result, err := InspectLayout(root)
+	if err != nil {
+		t.Fatalf("InspectLayout() error = %v", err)
+	}
+	if result.Exists || !result.Empty || result.Valid {
+		t.Fatalf("result = %+v, want missing empty invalid", result)
+	}
+}
+
+func TestInspectLayoutEmptyDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "loki")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	result, err := InspectLayout(root)
+	if err != nil {
+		t.Fatalf("InspectLayout() error = %v", err)
+	}
+	if !result.Exists || !result.Empty || !result.IsDir || result.Valid {
+		t.Fatalf("result = %+v, want empty directory invalid", result)
+	}
+}
+
+func TestInspectLayoutValidStore(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "loki")
+	if _, err := EnsureLayout(root); err != nil {
+		t.Fatalf("EnsureLayout() error = %v", err)
+	}
+	result, err := InspectLayout(root)
+	if err != nil {
+		t.Fatalf("InspectLayout() error = %v", err)
+	}
+	if !result.Exists || result.Empty || !result.IsDir || !result.Valid || len(result.Missing) != 0 {
+		t.Fatalf("result = %+v, want valid store", result)
+	}
+}
+
+func TestInspectLayoutNonDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "loki")
+	if err := os.WriteFile(root, []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	result, err := InspectLayout(root)
+	if err == nil || !result.Exists || result.IsDir || result.Valid {
+		t.Fatalf("InspectLayout() = %+v, %v, want non-directory error", result, err)
+	}
+}

@@ -5,8 +5,8 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: private.
-- Current implementation: Phases 1-7 complete through the TUI MVP; Phase 4.5 migration/adoption bootstrap, guarded snapshot inspection/restore, sync conflict cleanup, skill folder import MVP, Infisical secrets readiness UX, and Bubble Tea terminal UI are implemented.
-- Current commands: `status`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Current implementation: Phases 1-7 complete through the TUI MVP; Phase 4.5 migration/adoption bootstrap, persistent store setup, guarded snapshot inspection/restore, sync conflict cleanup, skill folder import MVP, Infisical secrets readiness UX, and Bubble Tea terminal UI are implemented.
+- Current commands: `status`, `store status`, `store discover`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `import-skill` zip/markdown import and Azure Key Vault/other secret providers.
 - License: not selected yet.
 
@@ -21,10 +21,28 @@ Activation is guarded by unsafe overwrite protection. Loki refuses to replace un
 Release assets are published from semver tags such as `v0.1.0-doctor.1`. This repository is private, so downloads require GitHub access.
 
 1. Open the GitHub release.
-2. Download the archive for your OS/architecture.
-3. Download `checksums.txt` and verify the archive.
-4. Extract `loki` or `loki.exe` onto your `PATH`.
-5. Run `loki --version` and `loki doctor`.
+2. Download the archive for your OS/architecture plus `checksums.txt`.
+3. Use the script installer, or manually verify/extract the archive.
+
+Windows PowerShell:
+
+```powershell
+.\install.ps1 -Version <version> `
+  -ArchivePath .\loki_<version>_windows_arm64.zip `
+  -ChecksumsPath .\checksums.txt `
+  -AddToPath
+```
+
+macOS/Linux:
+
+```bash
+chmod +x install.sh uninstall.sh
+./install.sh --version <version> \
+  --archive ./loki_<version>_<os>_<arch>.tar.gz \
+  --checksums ./checksums.txt
+```
+
+Uninstall scripts preserve local Loki state, synced stores, and managed targets by default. See [`docs/INSTALL.md`](docs/INSTALL.md) for install paths, store setup flags, and manual checksum commands.
 
 ## Install from source
 
@@ -59,9 +77,20 @@ go run ./cmd/loki status
 go run ./cmd/loki --verbose status
 ```
 
+Configure a persistent store:
+
+```bash
+go run ./cmd/loki store discover
+go run ./cmd/loki store init /path/to/loki
+# or use an existing valid store without creating files
+go run ./cmd/loki store use /path/to/loki
+```
+
 Verify a store:
 
 ```bash
+go run ./cmd/loki verify
+# or override for one command
 go run ./cmd/loki --store /path/to/loki verify
 ```
 
@@ -131,11 +160,13 @@ Full snapshot restore without `--target` requires a matching prior dry-run guard
 Launch the terminal UI:
 
 ```bash
+go run ./cmd/loki
+# explicit subcommand still works
 go run ./cmd/loki tui
 go run ./cmd/loki --store /path/to/loki tui
 ```
 
-TUI MVP screens cover dashboard diagnostics, machine/secrets/profile views, guarded profile switching, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff. Restore writes still happen only through the existing `loki snapshots restore ... --yes` CLI flow shown by the TUI after dry-run.
+TUI MVP screens cover dashboard diagnostics, persistent store setup, machine registration, secrets/profile views, guarded profile switching, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff. Restore writes still happen only through the existing `loki snapshots restore ... --yes` CLI flow shown by the TUI after dry-run.
 
 ## Documentation
 
