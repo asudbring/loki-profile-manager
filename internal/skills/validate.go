@@ -69,7 +69,6 @@ func ValidateFolder(dir string) Result {
 		resolved := filepath.Clean(filepath.Join(dir, filepath.FromSlash(cleaned)))
 		rel, err := filepath.Rel(dir, resolved)
 		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-			result.Valid = false
 			result.Issues = append(result.Issues, Issue{Code: "skill.reference_invalid", Message: fmt.Sprintf("relative reference %q escapes skill folder", ref), Path: skillPath})
 			continue
 		}

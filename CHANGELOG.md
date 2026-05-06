@@ -12,7 +12,7 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 - Added `loki secrets login|status|check` Infisical V1 UX for render-template readiness without storing or printing secret values.
 - Added Infisical machine identity support via `INFISICAL_TOKEN` or Universal Auth environment variables with explicit `--projectId` routing for machine-auth secret reads.
 - Fixed Infisical secret checks to treat existing empty-valued secrets as available, keep non-missing read failures redacted, and retry stale `INFISICAL_TOKEN` values with Universal Auth when configured.
-- Fixed skill validation for Markdown references with optional titles, such as image links using `path "title"`; missing local reference assets now warn instead of blocking migration.
+- Fixed skill validation for Markdown references with optional titles, such as image links using `path "title"`; missing or escaping relative reference assets now warn instead of blocking migration.
 - Planned: `import-skill` zip/markdown import and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.0-doctor.1 — 2026-05-04

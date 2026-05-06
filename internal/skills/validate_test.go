@@ -70,6 +70,15 @@ func TestValidateFolderBrokenReferenceIsWarning(t *testing.T) {
 	}
 }
 
+func TestValidateFolderEscapingRelativeReferenceIsWarning(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [shared](../../prompts/fact-check.prompt.md).\n")
+	result := ValidateFolder(dir)
+	if !result.Valid || !hasSkillIssue(result.Issues, "skill.reference_invalid") {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestValidateFolderRejectsAbsoluteLocalReference(t *testing.T) {
 	dir := t.TempDir()
 	writeSkill(t, dir, "---\nname: test\ndescription: desc\n---\nSee [secret](/etc/passwd), [win](C:\\Users\\alice\\secret.txt), and [web](https://example.com).\n")
