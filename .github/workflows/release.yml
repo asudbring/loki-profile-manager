@@ -148,10 +148,10 @@ jobs:
           version = sys.argv[2]
           path.write_text(path.read_text().replace('__VERSION__', version), encoding='utf-8')
           PY
-          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_VERSION" packages/* --clobber
+          if gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_VERSION" packages/* --repo "$GITHUB_REPOSITORY" --clobber
           else
             prerelease=()
             if [[ "$RELEASE_VERSION" == *-* ]]; then prerelease=(--prerelease); fi
-            gh release create "$RELEASE_VERSION" packages/* --title "$RELEASE_VERSION" --notes-file "$notes" "${prerelease[@]}"
+            gh release create "$RELEASE_VERSION" packages/* --repo "$GITHUB_REPOSITORY" --title "$RELEASE_VERSION" --notes-file "$notes" "${prerelease[@]}"
           fi
