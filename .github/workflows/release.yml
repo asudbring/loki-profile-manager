@@ -125,7 +125,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          package_tgz=$(find packages -maxdepth 1 -name '*.tgz' -print -quit)
+          package_tgz=$(node -e "const fs=require('fs'),path=require('path'); const dir=path.resolve('packages'); const name=fs.readdirSync(dir).find((entry)=>entry.endsWith('.tgz')); if(!name) process.exit(1); console.log(path.join(dir, name));")
           if [[ -z "$package_tgz" ]]; then
             echo "npm package tarball missing" >&2
             exit 1
