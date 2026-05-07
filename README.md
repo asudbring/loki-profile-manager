@@ -20,6 +20,15 @@ Activation is guarded by unsafe overwrite protection. Loki refuses to replace un
 
 Release assets are published from semver tags such as `v0.1.0-doctor.1`. This repository is private, so downloads require GitHub access.
 
+Recommended cross-platform install is the release npm tarball. It bundles Loki binaries for Windows, macOS, and Linux on amd64/arm64, and npm uninstall only removes the wrapper/bundled binary.
+
+```bash
+npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
+loki --version
+```
+
+`<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`). Script installers remain available for direct archive installs.
+
 1. Open the GitHub release.
 2. Download the archive for your OS/architecture plus `checksums.txt`.
 3. Use the script installer, or manually verify/extract the archive.

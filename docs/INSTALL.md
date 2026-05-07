@@ -1,6 +1,12 @@
 # Install
 
-Loki Profile Manager can be installed from GitHub release binaries, bundled script installers, or source builds. Package-manager formulas do not exist yet.
+Loki Profile Manager can be installed from a release npm tarball, GitHub release binaries, bundled script installers, or source builds. Homebrew/Scoop/winget formulas do not exist yet.
+
+Requirements for the release npm tarball:
+
+- Node.js 18 or later with npm.
+- Access to the private GitHub release asset.
+- The downloaded `asudbring-loki-profile-manager-<npm-version>.tgz` file.
 
 Requirements for release binaries:
 
@@ -26,11 +32,38 @@ Supported targets:
 
 OneDrive/Dropbox/iCloud/etc. are the sync transport. Loki must read and write a store path inside the synced folder; Loki does not implement cloud sync itself.
 
+## npm tarball install
+
+The release npm tarball is the preferred cross-platform installer for dogfood releases. It bundles all supported native Loki binaries and installs a `loki` wrapper on PATH.
+
+Download the `.tgz` asset from the GitHub release, then install it. `<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`).
+
+```bash
+npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
+loki --version
+loki doctor
+```
+
+PowerShell uses the same npm command:
+
+```powershell
+npm install -g .\asudbring-loki-profile-manager-<npm-version>.tgz
+loki --version
+loki doctor
+```
+
+Uninstall removes only the npm wrapper and bundled binary. Loki local state, synced stores, and managed targets are not part of the npm package and are preserved:
+
+```bash
+npm uninstall -g @asudbring/loki-profile-manager
+```
+
 ## Release binary install
 
 Release asset names use this pattern:
 
 ```text
+asudbring-loki-profile-manager-<npm-version>.tgz
 loki_<version>_<os>_<arch>.tar.gz
 loki_<version>_windows_<arch>.zip
 install.sh

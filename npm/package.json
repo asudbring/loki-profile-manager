@@ -1,0 +1,27 @@
+{
+  "name": "@asudbring/loki-profile-manager",
+  "version": "0.0.0-dev",
+  "description": "Cross-platform installer wrapper for the Loki Profile Manager CLI.",
+  "license": "UNLICENSED",
+  "bin": {
+    "loki": "bin/loki.js"
+  },
+  "files": [
+    "bin/",
+    "vendor/",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "keywords": [
+    "loki",
+    "dotfiles",
+    "profiles",
+    "cli"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

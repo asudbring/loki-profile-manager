@@ -26,6 +26,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.23.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
       - name: Validate
         shell: bash
         run: |
@@ -34,7 +37,8 @@ jobs:
           go vet ./...
           go mod verify
           go build -trimpath -o "$RUNNER_TEMP/loki" ./cmd/loki
-          bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh
+          bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/package-npm.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh
+          node --check npm/bin/loki.js
           pwsh -NoProfile -Command '
             $allErrors = @()
             foreach ($file in @("scripts/install.ps1", "scripts/uninstall.ps1", "scripts/windows-installer-smoke.ps1", "scripts/validate-local.ps1")) {
@@ -49,6 +53,7 @@ jobs:
         run: |
           set -euo pipefail
           scripts/package-release.sh "$RELEASE_VERSION" dist/packages
+          scripts/package-npm.sh "$RELEASE_VERSION" dist/packages
       - uses: actions/upload-artifact@v4
         with:
           name: loki-release-packages
@@ -100,10 +105,55 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP 'Loki'
           ./scripts/windows-installer-smoke.ps1 -Version $env:RELEASE_VERSION -AssetsDir $assets -ArchivePath $archive.FullName -InstallDir $installDir
 
+  npm-smoke:
+    name: npm installer smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/download-artifact@v4
+        with:
+          name: loki-release-packages
+          path: packages
+      - name: npm global install smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_tgz=$(find packages -maxdepth 1 -name '*.tgz' -print -quit)
+          if [[ -z "$package_tgz" ]]; then
+            echo "npm package tarball missing" >&2
+            exit 1
+          fi
+          npm install -g "$package_tgz"
+          installed_version=$(loki --version | tr -d '\r')
+          if [[ "$installed_version" != "$RELEASE_VERSION" ]]; then
+            echo "version mismatch: got $installed_version want $RELEASE_VERSION" >&2
+            exit 1
+          fi
+          store=$(node -e "console.log(require('path').join(require('os').tmpdir(), 'loki-npm-store'))")
+          node -e "require('fs').rmSync(process.argv[1], { recursive: true, force: true })" "$store"
+          loki --store "$store" store init "$store" >/dev/null
+          loki --store "$store" doctor --json >/dev/null
+          loki --store "$store" machine register --allow-profile work --active-profile work >/dev/null
+          loki --store "$store" verify work >/dev/null
+          loki --store "$store" switch work --dry-run >/dev/null
+          npm uninstall -g @asudbring/loki-profile-manager
+          hash -r
+          if command -v loki >/dev/null 2>&1; then
+            echo "loki still found after npm uninstall" >&2
+            exit 1
+          fi
+
   publish:
     name: Publish GitHub release
     runs-on: ubuntu-latest
-    needs: installer-smoke
+    needs: [installer-smoke, npm-smoke]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -123,13 +173,20 @@ jobs:
 
           ### Install
 
-          Windows:
+          npm tarball install:
+
+          ```bash
+          npm install -g ./asudbring-loki-profile-manager-__NPM_VERSION__.tgz
+          loki --version
+          ```
+
+          Windows script install:
 
           ```powershell
           .\install.ps1 -Version __VERSION__ -ArchivePath .\loki___VERSION___windows_arm64.zip -ChecksumsPath .\checksums.txt -AddToPath
           ```
 
-          macOS/Linux:
+          macOS/Linux script install:
 
           ```bash
           ./install.sh --version __VERSION__ --archive ./loki___VERSION___darwin_arm64.tar.gz --checksums ./checksums.txt
@@ -138,15 +195,19 @@ jobs:
           ### Notes
 
           - Verify `checksums.txt` before install.
+          - npm install/uninstall affects only the npm wrapper and bundled binary; Loki local state and synced stores are preserved.
           - Windows symlink activation requires Developer Mode or elevation.
-          - Uninstall preserves local Loki state, synced stores, and managed targets by default.
+          - Script uninstall preserves local Loki state, synced stores, and managed targets by default.
           NOTES
           python3 - "$notes" "$RELEASE_VERSION" <<'PY'
           import pathlib
           import sys
           path = pathlib.Path(sys.argv[1])
           version = sys.argv[2]
-          path.write_text(path.read_text().replace('__VERSION__', version), encoding='utf-8')
+          npm_version = version[1:] if version.startswith('v') else version
+          text = path.read_text(encoding='utf-8')
+          text = text.replace('__VERSION__', version).replace('__NPM_VERSION__', npm_version)
+          path.write_text(text, encoding='utf-8')
           PY
           if gh release view "$RELEASE_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_VERSION" packages/* --repo "$GITHUB_REPOSITORY" --clobber
