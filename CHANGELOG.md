@@ -16,6 +16,7 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 - Added Infisical machine identity support via `INFISICAL_TOKEN` or Universal Auth environment variables with explicit `--projectId` routing for machine-auth secret reads.
 - Fixed Infisical secret checks to treat existing empty-valued secrets as available, keep non-missing read failures redacted, and retry stale `INFISICAL_TOKEN` values with Universal Auth when configured.
 - Fixed skill validation for Markdown references with optional titles and root-relative web paths; missing or escaping relative reference assets now warn instead of blocking migration.
+- Documented dogfood install troubleshooting for GitHub release npm tarballs, Windows npm global PATH, and transient OneDrive locks on `registry\machines.json`.
 - Planned: `import-skill` zip/markdown import and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.0-doctor.1 — 2026-05-04

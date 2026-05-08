@@ -36,7 +36,7 @@ OneDrive/Dropbox/iCloud/etc. are the sync transport. Loki must read and write a 
 
 The release npm tarball is the preferred cross-platform installer for dogfood releases. It bundles all supported native Loki binaries and installs a `loki` wrapper on PATH.
 
-Download the `.tgz` asset from the GitHub release, then install it. `<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`).
+Download the `.tgz` asset from the GitHub release, then install it. `<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`). This package is currently distributed as a GitHub release asset, not through the public npm registry.
 
 ```bash
 npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
@@ -51,6 +51,15 @@ npm install -g .\asudbring-loki-profile-manager-<npm-version>.tgz
 loki --version
 loki doctor
 ```
+
+If Windows cannot find `loki` after npm install, open a new shell and confirm the npm global bin directory is on `PATH`:
+
+```powershell
+npm config get prefix
+$env:PATH
+```
+
+The user npm global bin is usually `%APPDATA%\npm` (for example, `C:\Users\allen\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`. The bundled native binary remains under the npm package's `vendor\win32-<arch>` directory, but the normal entry point is the npm shim.
 
 Uninstall removes only the npm wrapper and bundled binary. Loki local state, synced stores, and managed targets are not part of the npm package and are preserved:
 
@@ -181,6 +190,40 @@ Windows PowerShell:
 .\loki.exe doctor
 .\loki.exe tui --help
 ```
+
+## Troubleshooting
+
+### Windows: `loki` not found after npm install
+
+Npm global installs create a platform shim in the npm global bin directory. If `npm install -g .\asudbring-loki-profile-manager-<npm-version>.tgz` succeeds but `loki --version` fails:
+
+1. Open a new PowerShell or Command Prompt window.
+2. Confirm the npm prefix:
+
+   ```powershell
+   npm config get prefix
+   ```
+
+3. Confirm the prefix directory is on `PATH`. For the default per-user prefix, add `%APPDATA%\npm` (for example, `C:\Users\allen\AppData\Roaming\npm`).
+4. Confirm Node.js is on `PATH` (`C:\Program Files\nodejs` for the standard Windows installer).
+5. Retry `loki --version` in PowerShell and Command Prompt.
+
+### Windows/OneDrive: `Access is denied` replacing `registry\machines.json`
+
+OneDrive can transiently lock or hydrate store files while Loki updates machine registration. If `loki machine register` fails while replacing `registry\machines.json` with an `Access is denied` error:
+
+1. Wait for OneDrive sync/hydration to settle.
+2. Confirm the store folder is available locally.
+3. Retry the same `loki machine register` command.
+4. If it persists, inspect file attributes and ACLs:
+
+   ```powershell
+   $Store = "$env:USERPROFILE\OneDrive\LokiProfileManager"
+   attrib "$Store\registry\machines.json"
+   Get-Acl "$Store\registry\machines.json"
+   ```
+
+A retry after sync settles should preserve existing profile/bucket allowances and update the machine registry cleanly.
 
 ## Windows source build
 

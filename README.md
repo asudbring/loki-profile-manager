@@ -27,7 +27,9 @@ npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
 loki --version
 ```
 
-`<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`). Script installers remain available for direct archive installs.
+`<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`). The package is installed from the downloaded GitHub release tarball; it is not published to the npm registry yet. Script installers remain available for direct archive installs.
+
+On Windows, open a new shell after npm global install and make sure the npm global bin directory is on `PATH` (typically `%APPDATA%\npm`, for example `C:\Users\allen\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`.
 
 1. Open the GitHub release.
 2. Download the archive for your OS/architecture plus `checksums.txt`.
