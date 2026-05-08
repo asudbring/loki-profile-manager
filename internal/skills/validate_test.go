@@ -21,6 +21,15 @@ func TestValidateFolderValid(t *testing.T) {
 	}
 }
 
+func TestValidateFolderAllowsUTF8BOM(t *testing.T) {
+	dir := t.TempDir()
+	writeSkill(t, dir, "\ufeff---\nname: bom-skill\ndescription: PowerShell 5.1 can write UTF-8 BOM\n---\n# bom-skill\n")
+	result := ValidateFolder(dir)
+	if !result.Valid || result.Name != "bom-skill" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestValidateFolderMissingSkillMD(t *testing.T) {
 	result := ValidateFolder(t.TempDir())
 	if result.Valid || result.Issues[0].Code != "skill.missing_file" {

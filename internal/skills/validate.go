@@ -84,7 +84,7 @@ func invalid(code, message, path string) Result {
 }
 
 func parseFrontmatter(content []byte) (frontmatter, string, error) {
-	text := strings.ReplaceAll(string(content), "\r\n", "\n")
+	text := strings.TrimPrefix(strings.ReplaceAll(string(content), "\r\n", "\n"), "\ufeff")
 	if !strings.HasPrefix(text, "---\n") {
 		return frontmatter{}, "", fmt.Errorf("SKILL.md must start with YAML frontmatter")
 	}
