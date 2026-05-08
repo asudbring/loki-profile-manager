@@ -128,11 +128,15 @@ func extractImportSkillZip(files []*zip.File, destRoot string) error {
 }
 
 func cleanImportSkillZipEntryName(name string) (string, bool, error) {
-	if name == "" || strings.Contains(name, "\\") || strings.HasPrefix(name, "/") || len(name) >= 2 && name[1] == ':' {
+	if name == "" || len(name) >= 2 && name[1] == ':' {
 		return "", false, fmt.Errorf("import-skill: unsafe zip entry %q", name)
 	}
-	isDir := strings.HasSuffix(name, "/")
-	raw := strings.TrimSuffix(name, "/")
+	normalized := strings.ReplaceAll(name, `\\`, "/")
+	if strings.HasPrefix(normalized, "/") {
+		return "", false, fmt.Errorf("import-skill: unsafe zip entry %q", name)
+	}
+	isDir := strings.HasSuffix(normalized, "/")
+	raw := strings.TrimSuffix(normalized, "/")
 	if raw == "" {
 		return "", false, fmt.Errorf("import-skill: unsafe zip entry %q", name)
 	}

@@ -118,6 +118,28 @@ func TestImportSkillZipArchiveRootCopiesWithZipBaseName(t *testing.T) {
 	}
 }
 
+func TestImportSkillZipAcceptsWindowsSeparators(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	archivePath := writeSkillZip(t, filepath.Join(t.TempDir(), "windows-skill.zip"), map[string]string{
+		`windows-skill\\SKILL.md`: "---\nname: windows-skill\ndescription: Test skill\n---\n# windows-skill\n",
+		`windows-skill\\notes.md`: "v1",
+	})
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: archivePath, Common: true, Yes: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(zip with windows separators) error = %v", err)
+	}
+	if result.SourceKind != "zip" || result.Name != "windows-skill" || result.ManifestSource != "skills/windows-skill" {
+		t.Fatalf("windows separator zip result = %+v", result)
+	}
+	if got := readAppFile(t, filepath.Join(result.DestinationPath, "notes.md")); got != "v1" {
+		t.Fatalf("windows separator imported notes = %q", got)
+	}
+}
+
 func TestImportSkillZipNameOverride(t *testing.T) {
 	ctx := context.Background()
 	svc := newImportSkillTestService(t, ctx, t.TempDir())

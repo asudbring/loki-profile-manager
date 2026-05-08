@@ -349,7 +349,7 @@ sequenceDiagram
     end
 ```
 
-Existing destinations require `--overwrite`. Source symlinks are rejected for the MVP so imported skill content is regular directories/files only. Zip archives must contain `SKILL.md` at archive root or exactly one top-level skill folder, and extraction rejects traversal, absolute paths, Windows drive paths, backslashes, symlink entries, non-regular entries, oversized archives, and ambiguous roots.
+Existing destinations require `--overwrite`. Source symlinks are rejected for the MVP so imported skill content is regular directories/files only. Zip archives must contain `SKILL.md` at archive root or exactly one top-level skill folder, and extraction normalizes Windows path separators while rejecting traversal, absolute paths, Windows drive paths, symlink entries, non-regular entries, oversized archives, and ambiguous roots.
 
 ## Unsafe overwrite protection
 

@@ -350,7 +350,7 @@ Behavior:
 - Requires exactly one destination family: `--common` or `--profile <profile>` with optional `--bucket <bucket>`.
 - Validates the source with Loki skill validation (`SKILL.md` frontmatter and local references).
 - Accepts an existing skill folder or a `.zip` archive containing `SKILL.md` at archive root or exactly one top-level skill folder.
-- Extracts zip archives into a temporary staging directory, rejects path traversal, absolute paths, Windows drive paths, backslashes, symlink entries, non-regular entries, oversized archives, and ambiguous multi-root archives.
+- Extracts zip archives into a temporary staging directory, normalizes Windows path separators, and rejects path traversal, absolute paths, Windows drive paths, symlink entries, non-regular entries, oversized archives, and ambiguous multi-root archives.
 - Rejects symlinks anywhere inside the staged source skill folder.
 - Acquires the store operation lock before checking destination conflicts or writing.
 - Copies the folder to the selected layer at `skills/<store-name>`.
