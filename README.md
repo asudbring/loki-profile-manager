@@ -16,6 +16,8 @@ Loki creates and validates a local store layout, tracks machine identity and mac
 
 Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories. A target must be missing, already managed by Loki, or adopted by migration/adoption commands before activation can overwrite it.
 
+Before switching, Loki also checks copied managed targets from the currently active profile for local edits. If a tool changed a copied settings file, `loki switch` reports the local change and blocks real activation until you either resolve it or rerun with `--capture-local` to write safe copy-mode changes back to the store. Symlinked targets already write directly to the store; rendered outputs are never captured because they can contain secrets.
+
 ## Install from release binary
 
 Release assets are published from semver tags such as `v0.1.0-doctor.1`. This repository is private, so downloads require GitHub access.

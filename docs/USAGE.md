@@ -451,7 +451,7 @@ loki --store /path/to/loki doctor --json
 Activate a profile and optional buckets.
 
 ```bash
-loki switch <profile> [buckets...] [--dry-run] [--yes]
+loki switch <profile> [buckets...] [--dry-run] [--yes] [--capture-local]
 ```
 
 Flags:
@@ -460,6 +460,7 @@ Flags:
 |---|---|
 | `--dry-run` | Build and safety-check the activation plan without writing target files. |
 | `--yes` | Reserve confirmation behavior for future prompts. Does not bypass unsafe overwrite protection. |
+| `--capture-local` | Write safe local changes from copied managed targets back to the Loki store before switching. |
 
 Behavior:
 
@@ -468,6 +469,10 @@ Behavior:
 - Requires this machine to be registered in the store registry before planning or writing.
 - Enforces machine policy from `registry/machines.json`.
 - Builds an activation plan from the selected profile layers.
+- Scans the currently active managed targets for local drift before switching.
+- If copied targets changed locally and the store source is unchanged, reports a capture plan. Real switches block until rerun with `--capture-local`; `--capture-local` writes those safe local changes back to the store first.
+- Symlink targets need no capture because app writes already land in the store. Render targets are never captured because rendered output can contain secrets. Merge target capture is detected but manual in this MVP.
+- If both local target and store source changed since the last switch/adoption, capture blocks as a conflict and requires manual resolution.
 - Classifies target safety before writing.
 - Blocks unmanaged files, unmanaged directories, broken symlinks, managed hash mismatches, and targets outside the configured home root.
 - Creates a local snapshot before real activation writes.
@@ -482,6 +487,7 @@ Dry-run:
 ```bash
 loki --store /path/to/loki switch work --dry-run
 loki --store /path/to/loki switch work content-dev azure --dry-run
+loki --store /path/to/loki switch work content-dev azure --capture-local --dry-run
 ```
 
 Activate:
@@ -489,6 +495,7 @@ Activate:
 ```bash
 loki --store /path/to/loki switch work --yes
 loki --store /path/to/loki switch work content-dev azure --yes
+loki --store /path/to/loki switch work content-dev azure --capture-local --yes
 ```
 
 ## `loki snapshots list`

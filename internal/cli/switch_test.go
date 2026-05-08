@@ -30,6 +30,58 @@ func TestSwitchDryRunCLI(t *testing.T) {
 	}
 }
 
+func TestSwitchCLILocalChangesPrintCapturePlan(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "capture.txt", "store")
+	registerSwitchTestMachine(t, home, storePath)
+	cmd, _, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial switch error = %v", err)
+	}
+	target := filepath.ToSlash(filepath.Join(home, "capture.txt"))
+	if err := os.WriteFile(target, []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cmd, out, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("capture dry-run error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Local changes: 1") || !strings.Contains(got, "Capture required") || !strings.Contains(got, "--capture-local") || !strings.Contains(got, "capture "+target) {
+		t.Fatalf("output = %s", got)
+	}
+}
+
+func TestSwitchCLICaptureLocalYesWritesBackAndSwitches(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "capture-yes.txt", "store")
+	registerSwitchTestMachine(t, home, storePath)
+	cmd, _, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial switch error = %v", err)
+	}
+	target := filepath.ToSlash(filepath.Join(home, "capture-yes.txt"))
+	if err := os.WriteFile(target, []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	cmd, out, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--capture-local", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("capture switch error = %v output=%s", err, out.String())
+	}
+	if got := string(mustRead(t, filepath.Join(storePath, "profiles", "work", "core", "files", "capture-yes.txt"))); got != "local" {
+		t.Fatalf("store source = %q", got)
+	}
+	if !strings.Contains(out.String(), "Captured: 1") {
+		t.Fatalf("output = %s", out.String())
+	}
+}
+
 func TestSwitchCLIUnsafeOverwriteReturnsError(t *testing.T) {
 	home := t.TempDir()
 	storePath := cliSwitchStore(t, "unsafe.txt", "new")

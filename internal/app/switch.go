@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/allensu/loki-profile-manager/internal/activation"
 	"github.com/allensu/loki-profile-manager/internal/db"
@@ -25,16 +26,20 @@ type SwitchRequest struct {
 	Buckets       []string
 	DryRun        bool
 	Yes           bool
+	CaptureLocal  bool
 	FailAfter     int
 }
 
 type SwitchResult struct {
-	Plan       activation.Plan     `json:"plan"`
-	SnapshotID string              `json:"snapshot_id,omitempty"`
-	DryRun     bool                `json:"dry_run"`
-	Changed    int                 `json:"changed"`
-	Warnings   []string            `json:"warnings,omitempty"`
-	Execution  activation.Snapshot `json:"snapshot,omitempty"`
+	Plan            activation.Plan        `json:"plan"`
+	SnapshotID      string                 `json:"snapshot_id,omitempty"`
+	DryRun          bool                   `json:"dry_run"`
+	Changed         int                    `json:"changed"`
+	Captured        int                    `json:"captured"`
+	CapturePlan     activation.CapturePlan `json:"capture_plan,omitempty"`
+	CaptureRequired bool                   `json:"capture_required,omitempty"`
+	Warnings        []string               `json:"warnings,omitempty"`
+	Execution       activation.Snapshot    `json:"snapshot,omitempty"`
 }
 
 func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, error) {
@@ -68,6 +73,42 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 			return err
 		}
 		previousProfile, previousBuckets := s.previousActiveState(ctx, record, registered)
+		captureTargets := map[string]bool{}
+		if previousProfile != "" {
+			previousPlan, previousErr := activation.BuildPlan(ctx, activation.PlanRequest{StorePath: storePath, Profile: previousProfile, Buckets: previousBuckets, Resolver: s.resolver})
+			if previousErr == nil {
+				for _, op := range previousPlan.Operations {
+					captureTargets[op.TargetPath] = true
+				}
+			}
+		}
+		capturePlan, err := activation.BuildCapturePlanForTargets(ctx, s.database, captureTargets)
+		if err != nil {
+			return err
+		}
+		if capturePlan.HasChanges() {
+			result = SwitchResult{Plan: plan, DryRun: req.DryRun, CapturePlan: capturePlan, Warnings: warnings}
+			if capturePlan.HasBlocking() {
+				return fmt.Errorf("local changes cannot be captured automatically; resolve conflicts or unsupported modes before switching")
+			}
+			if req.DryRun {
+				result.CaptureRequired = !req.CaptureLocal
+				return nil
+			}
+			if !req.CaptureLocal {
+				result.CaptureRequired = true
+				return fmt.Errorf("local changes detected; rerun with --capture-local to write them back before switching")
+			}
+			captured, err := activation.ApplyCaptures(ctx, s.database, capturePlan, time.Now())
+			if err != nil {
+				return err
+			}
+			result.Captured = captured
+			plan, err = activation.BuildPlan(ctx, activation.PlanRequest{StorePath: storePath, Profile: req.ParentProfile, Buckets: req.Buckets, Resolver: s.resolver})
+			if err != nil {
+				return err
+			}
+		}
 		execResult, err := activation.Execute(ctx, activation.ExecuteRequest{
 			Database:              s.database,
 			LocalPaths:            s.paths,
@@ -79,7 +120,10 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 			DryRun:                req.DryRun,
 			FailAfter:             req.FailAfter,
 		})
-		result = SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Warnings: warnings, Execution: execResult.Snapshot}
+		captured := result.Captured
+		captureRequired := result.CaptureRequired
+		capturePlan = result.CapturePlan
+		result = SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Captured: captured, CapturePlan: capturePlan, CaptureRequired: captureRequired, Warnings: warnings, Execution: execResult.Snapshot}
 		if execResult.Snapshot.SnapshotID != "" {
 			result.SnapshotID = execResult.Snapshot.SnapshotID
 		}

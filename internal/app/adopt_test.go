@@ -62,8 +62,12 @@ func TestAdoptWritesManagedTargetAndSwitchSafety(t *testing.T) {
 		t.Fatalf("Switch(dry-run after adopt) error = %v", err)
 	}
 	writeAppFile(t, target, "changed")
-	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", DryRun: true}); err == nil || !strings.Contains(err.Error(), "hash differs") {
-		t.Fatalf("Switch(changed target) error = %v", err)
+	changed, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", DryRun: true})
+	if err != nil {
+		t.Fatalf("Switch(changed target dry-run) error = %v", err)
+	}
+	if !changed.CaptureRequired || len(changed.CapturePlan.Changes) != 1 {
+		t.Fatalf("Switch(changed target) result = %+v", changed)
 	}
 }
 
@@ -109,7 +113,7 @@ func TestAdoptSymlinkWritesManagedTargetAndSwitchSafety(t *testing.T) {
 	if err := os.Symlink(otherTarget, linkTarget); err != nil {
 		t.Fatalf("Symlink() error = %v", err)
 	}
-	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", DryRun: true}); err == nil || !strings.Contains(err.Error(), "hash differs") {
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", DryRun: true}); err == nil || !strings.Contains(err.Error(), "cannot be captured") {
 		t.Fatalf("Switch(changed symlink) error = %v", err)
 	}
 }
