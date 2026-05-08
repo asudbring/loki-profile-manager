@@ -144,7 +144,7 @@ func (c Client) resolvedConfig() Config {
 		cfg.APIURL = lookupFirst(c.lookup, "INFISICAL_API_URL")
 	}
 	if cfg.Host == "" {
-		cfg.Host = lookupFirst(c.lookup, "INFISICAL_HOST")
+		cfg.Host = lookupFirst(c.lookup, "INFISICAL_HOST", "INFISICAL_HOST_URL")
 	}
 	return cfg
 }

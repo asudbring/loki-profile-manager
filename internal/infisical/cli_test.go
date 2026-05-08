@@ -261,6 +261,27 @@ func TestClientReadsMachineIdentityFromEnv(t *testing.T) {
 	}
 }
 
+func TestClientReadsInfisicalHostURLAliasFromEnv(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}, machineToken: "env-token\n"}
+	client := Client{Runner: runner, LookupEnv: mapLookup(map[string]string{
+		"INFISICAL_AUTH_METHOD":   "universal-auth",
+		"INFISICAL_CLIENT_ID":     "env-client-id",
+		"INFISICAL_CLIENT_SECRET": "env-client-secret",
+		"INFISICAL_PROJECT_ID":    "env-project-id",
+		"INFISICAL_HOST_URL":      "https://app.infisical.com",
+	})}
+	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "env-client-id", "--client-secret", "env-client-secret", "--domain", "https://app.infisical.com", "--plain", "--silent"}
+	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) {
+		t.Fatalf("commands = %+v, want first command %+v", runner.commands, wantLogin)
+	}
+	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[1], "INFISICAL_HOST=https://app.infisical.com") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
 func TestClientRetriesStaleTokenWithUniversalAuth(t *testing.T) {
 	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}, machineToken: "fresh-token\n", failStaleToken: true}
 	client := testClient(runner)

@@ -136,7 +136,7 @@ go run ./cmd/loki secrets status
 go run ./cmd/loki secrets check OPENAI_API_KEY
 ```
 
-For machine identity auth, set `INFISICAL_TOKEN` or `INFISICAL_AUTH_METHOD=universal-auth` with `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID` in the local environment. Loki mints short-lived tokens only in child processes and never stores secret values in the synced store.
+For machine identity auth, set `INFISICAL_TOKEN` or `INFISICAL_AUTH_METHOD=universal-auth` with `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID` in the local environment. Set `INFISICAL_API_URL`, `INFISICAL_HOST`, or legacy `INFISICAL_HOST_URL` when using a non-default Infisical host. Loki mints short-lived tokens only in child processes and never stores secret values in the synced store.
 
 Register this machine for a profile and bucket policy:
 
