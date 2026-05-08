@@ -11,7 +11,7 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 - Added persistent store management with `loki store status|discover|use|init|unset`, plus TUI Store setup and TUI machine registration flows.
 - Added `loki tui` Bubble Tea MVP with dashboard, doctor/machine/secrets/profile views, guarded switch flow, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff.
 - Added `loki sync --dry-run|--yes` MVP for provider conflict-copy detection and deletion with current-machine-wins semantics; TUI/app execution guards now use stable conflict fingerprints and dry-run writes nothing.
-- Added `loki import-skill <folder>` folder-import MVP for validated skill folders into common, profile core, or profile bucket store layers.
+- Added `loki import-skill <source>` folder/zip-import MVP for validated skill folders and safe `.zip` archives into common, profile core, or profile bucket store layers.
 - Added `loki secrets login|status|check` Infisical V1 UX for render-template readiness without storing or printing secret values.
 - Added Infisical machine identity support via `INFISICAL_TOKEN` or Universal Auth environment variables with explicit `--projectId` routing for machine-auth secret reads.
 - Fixed Infisical secret checks to treat existing empty-valued secrets as available, keep non-missing read failures redacted, and retry stale `INFISICAL_TOKEN` values with Universal Auth when configured.
@@ -20,7 +20,7 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 - Fixed skill validation for Markdown references with optional titles and root-relative web paths; missing or escaping relative reference assets now warn instead of blocking migration.
 - Documented dogfood install troubleshooting for GitHub release npm tarballs, Windows npm global PATH, and transient OneDrive locks on `registry\machines.json`.
 - Added pre-switch local-change capture for copied managed targets with `loki switch --capture-local`; render and merge drift are reported but not auto-captured.
-- Planned: `import-skill` zip/markdown import and Azure Key Vault/other secret providers remain unimplemented.
+- Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.0-doctor.1 — 2026-05-04
 

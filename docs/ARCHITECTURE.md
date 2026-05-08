@@ -320,7 +320,7 @@ TUI write-capable flows are intentionally narrow:
 
 ## Skill import MVP flow
 
-`loki import-skill` imports one existing folder into store source-of-truth only. It does not mirror to runtime skill directories.
+`loki import-skill` imports one existing skill folder or `.zip` archive into store source-of-truth only. It does not mirror to runtime skill directories.
 
 ```mermaid
 sequenceDiagram
@@ -332,9 +332,10 @@ sequenceDiagram
     participant Store as Loki store
     participant Manifest as manifest writer
 
-    User->>CLI: loki import-skill <folder> --profile work --yes
+    User->>CLI: loki import-skill <source> --profile work --yes
     CLI->>App: ImportSkill(request)
     App->>Store: Validate layout and destination layer
+    App->>App: Prepare folder or safely extract zip to temp staging
     App->>Validator: Validate SKILL.md and local references
     App->>App: Reject source symlinks
     App->>Lock: Acquire cooperative operation lock
@@ -348,7 +349,7 @@ sequenceDiagram
     end
 ```
 
-Existing destinations require `--overwrite`. Source symlinks are rejected for the MVP so imported skill content is regular directories/files only.
+Existing destinations require `--overwrite`. Source symlinks are rejected for the MVP so imported skill content is regular directories/files only. Zip archives must contain `SKILL.md` at archive root or exactly one top-level skill folder, and extraction rejects traversal, absolute paths, Windows drive paths, backslashes, symlink entries, non-regular entries, oversized archives, and ambiguous roots.
 
 ## Unsafe overwrite protection
 
@@ -405,7 +406,7 @@ Doctor reports Infisical readiness as a warning when missing or not ready, not a
 
 - No setup CLI.
 - Manual snapshot restore exists; sensitive-looking paths are blocked/redacted by default, and per-target restore is available with `--target`.
-- Skill folder import exists, but zip import, markdown conversion, runtime mirroring, and target-adapter sync are not implemented.
+- Skill folder and zip import exist, but markdown conversion, runtime mirroring, and target-adapter sync are not implemented.
 - Secrets V1 supports Infisical only; Azure Key Vault and other providers are deferred.
 - Sync is conflict-copy cleanup only; watcher capture and full provider-state reconciliation are not implemented.
 - TUI MVP exists, including store setup and machine registration, but no manifest editor, `adopt`/`migrate`/`import-skill` execution forms, daemon control, or inline snapshot restore execution.

@@ -31,6 +31,7 @@ type ImportSkillRequest struct {
 type ImportSkillResult struct {
 	StorePath         string           `json:"store_path"`
 	SourcePath        string           `json:"source_path"`
+	SourceKind        string           `json:"source_kind,omitempty"`
 	Validation        skills.Result    `json:"validation"`
 	Name              string           `json:"name"`
 	Layer             ImportSkillLayer `json:"layer"`
@@ -86,18 +87,21 @@ func (s *Service) ImportSkill(ctx context.Context, req ImportSkillRequest) (Impo
 	if err != nil {
 		return ImportSkillResult{}, err
 	}
-	sourcePath, err := cleanImportSkillSource(req.SourceFolder)
+	prepared, err := prepareImportSkillSource(req.SourceFolder)
 	if err != nil {
 		return ImportSkillResult{}, err
 	}
+	defer prepared.Cleanup()
+	sourcePath := prepared.SkillDir
 	result := ImportSkillResult{
 		StorePath:      storePath,
-		SourcePath:     sourcePath,
+		SourcePath:     prepared.OriginalPath,
+		SourceKind:     prepared.Kind,
 		Layer:          importSkillLayerResult(layer),
 		ManifestPath:   layer.ManifestPath,
 		DryRun:         req.DryRun,
 		Overwrite:      req.Overwrite,
-		ManifestSource: path.Join("skills", firstNonEmptyString(strings.TrimSpace(req.Name), filepath.Base(sourcePath))),
+		ManifestSource: path.Join("skills", firstNonEmptyString(strings.TrimSpace(req.Name), prepared.DefaultName)),
 	}
 	if err := rejectImportSkillSymlinks(sourcePath); err != nil {
 		return result, err
@@ -109,7 +113,7 @@ func (s *Service) ImportSkill(ctx context.Context, req ImportSkillRequest) (Impo
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		name = filepath.Base(sourcePath)
+		name = prepared.DefaultName
 	}
 	if err := validateImportSkillName("skill name", name); err != nil {
 		return result, err

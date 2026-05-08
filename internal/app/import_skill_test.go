@@ -1,6 +1,7 @@
 package app
 
 import (
+	"archive/zip"
 	"context"
 	"os"
 	"path/filepath"
@@ -70,6 +71,121 @@ func TestImportSkillYesCopiesAndUpdatesManifest(t *testing.T) {
 	}
 	if len(managedTargets) != 0 {
 		t.Fatalf("import-skill wrote managed targets: %+v", managedTargets)
+	}
+}
+
+func TestImportSkillZipDryRunDoesNotWrite(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	archivePath := writeSkillZip(t, filepath.Join(t.TempDir(), "sample-skill.zip"), map[string]string{
+		"sample-skill/SKILL.md": "---\nname: sample-skill\ndescription: Test skill\n---\n# sample-skill\n",
+		"sample-skill/notes.md": "v1",
+	})
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: archivePath, Common: true, DryRun: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(zip dry-run) error = %v", err)
+	}
+	if result.SourceKind != "zip" || result.Name != "sample-skill" || !result.DryRun || !result.WouldCopy || !result.ManifestChanged || result.Changed != 0 {
+		t.Fatalf("zip dry-run result = %+v", result)
+	}
+	if _, err := os.Stat(result.DestinationPath); !os.IsNotExist(err) {
+		t.Fatalf("zip dry-run destination exists or stat err = %v", err)
+	}
+}
+
+func TestImportSkillZipArchiveRootCopiesWithZipBaseName(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	archivePath := writeSkillZip(t, filepath.Join(t.TempDir(), "root-skill.zip"), map[string]string{
+		"SKILL.md": "---\nname: root-skill\ndescription: Test skill\n---\n# root-skill\n",
+		"notes.md": "v1",
+	})
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: archivePath, Common: true, Yes: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(zip) error = %v", err)
+	}
+	if result.SourceKind != "zip" || result.Name != "root-skill" || result.ManifestSource != "skills/root-skill" || result.Changed != 1 {
+		t.Fatalf("zip result = %+v", result)
+	}
+	if got := readAppFile(t, filepath.Join(result.DestinationPath, "notes.md")); got != "v1" {
+		t.Fatalf("zip imported notes = %q", got)
+	}
+}
+
+func TestImportSkillZipNameOverride(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	archivePath := writeSkillZip(t, filepath.Join(t.TempDir(), "sample-skill.zip"), map[string]string{
+		"sample-skill/SKILL.md": "---\nname: sample-skill\ndescription: Test skill\n---\n# sample-skill\n",
+		"sample-skill/notes.md": "v1",
+	})
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: archivePath, Common: true, Name: "renamed-skill", Yes: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(zip renamed) error = %v", err)
+	}
+	if result.Name != "renamed-skill" || result.ManifestSource != "skills/renamed-skill" {
+		t.Fatalf("zip rename result = %+v", result)
+	}
+	if got := readAppFile(t, filepath.Join(storePath, "profiles", "common", "skills", "renamed-skill", "notes.md")); got != "v1" {
+		t.Fatalf("zip renamed notes = %q", got)
+	}
+}
+
+func TestImportSkillZipRejectsUnsafeEntries(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	root := t.TempDir()
+	archivePath := writeSkillZip(t, filepath.Join(root, "bad.zip"), map[string]string{
+		"../evil.txt": "evil",
+	})
+
+	_, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: archivePath, Common: true, DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "unsafe zip entry") {
+		t.Fatalf("ImportSkill(zip traversal) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "evil.txt")); !os.IsNotExist(err) {
+		t.Fatalf("unsafe zip wrote outside staging or stat err = %v", err)
+	}
+}
+
+func TestImportSkillZipRejectsMultipleSkillRoots(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	archivePath := writeSkillZip(t, filepath.Join(t.TempDir(), "multi.zip"), map[string]string{
+		"one/SKILL.md": "---\nname: one\ndescription: One\n---\n# one\n",
+		"two/SKILL.md": "---\nname: two\ndescription: Two\n---\n# two\n",
+	})
+
+	_, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: archivePath, Common: true, DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "exactly one top-level skill folder") {
+		t.Fatalf("ImportSkill(zip multiple roots) error = %v", err)
+	}
+}
+
+func TestImportSkillRejectsInvalidZip(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	archivePath := filepath.Join(t.TempDir(), "bad.zip")
+	writeAppFile(t, archivePath, "not a zip")
+
+	_, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: archivePath, Common: true, DryRun: true})
+	if err == nil || !strings.Contains(err.Error(), "open zip") {
+		t.Fatalf("ImportSkill(invalid zip) error = %v", err)
 	}
 }
 
@@ -209,4 +325,32 @@ func writeSkillFolder(t *testing.T, dir, name, notes string) string {
 	writeAppFile(t, filepath.Join(dir, "SKILL.md"), "---\nname: "+name+"\ndescription: Test skill\n---\n# "+name+"\n")
 	writeAppFile(t, filepath.Join(dir, "notes.md"), notes)
 	return dir
+}
+
+func writeSkillZip(t *testing.T, zipPath string, entries map[string]string) string {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(zipPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(zip parent) error = %v", err)
+	}
+	file, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatalf("Create(zip) error = %v", err)
+	}
+	writer := zip.NewWriter(file)
+	for name, content := range entries {
+		entry, err := writer.Create(name)
+		if err != nil {
+			t.Fatalf("Create(%s) error = %v", name, err)
+		}
+		if _, err := entry.Write([]byte(content)); err != nil {
+			t.Fatalf("Write(%s) error = %v", name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("zip Close() error = %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("file Close() error = %v", err)
+	}
+	return zipPath
 }

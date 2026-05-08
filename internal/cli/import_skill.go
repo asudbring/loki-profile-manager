@@ -21,8 +21,8 @@ func newImportSkillCommand(resolver config.PathResolver, globals *globalOptions,
 	var jsonOutput bool
 
 	cmd := &cobra.Command{
-		Use:   "import-skill <folder>",
-		Short: "Import a skill folder into a Loki store layer.",
+		Use:   "import-skill <source>",
+		Short: "Import a skill folder or .zip archive into a Loki store layer.",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			svc, err := factory(cmd.Context(), app.Options{Resolver: resolver, StoreOverride: globals.store, Verbose: globals.verbose, Stderr: cmd.ErrOrStderr()})
@@ -47,7 +47,7 @@ func newImportSkillCommand(resolver config.PathResolver, globals *globalOptions,
 	cmd.Flags().BoolVar(&common, "common", false, "import into the common layer")
 	cmd.Flags().StringVar(&profile, "profile", "", "profile core layer to import into")
 	cmd.Flags().StringVar(&bucket, "bucket", "", "optional profile bucket layer to import into")
-	cmd.Flags().StringVar(&name, "name", "", "store folder name under skills/ (defaults to source folder name)")
+	cmd.Flags().StringVar(&name, "name", "", "store folder name under skills/ (defaults to source name)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate and show planned import without writing files")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm store writes")
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "replace an existing skills/<name> folder")
@@ -64,6 +64,9 @@ func printImportSkillResult(cmd *cobra.Command, result app.ImportSkillResult) {
 	}
 	if result.SourcePath != "" {
 		fmt.Fprintf(out, "Source: %s\n", result.SourcePath)
+	}
+	if result.SourceKind != "" {
+		fmt.Fprintf(out, "Source kind: %s\n", result.SourceKind)
 	}
 	if result.Name != "" {
 		fmt.Fprintf(out, "Name: %s\n", result.Name)

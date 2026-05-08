@@ -5,9 +5,9 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: private.
-- Current implementation: Phases 1-7 complete through the TUI MVP; Phase 4.5 migration/adoption bootstrap, persistent store setup, guarded snapshot inspection/restore, sync conflict cleanup, skill folder import MVP, Infisical secrets readiness UX, and Bubble Tea terminal UI are implemented.
+- Current implementation: Phases 1-7 complete through the TUI MVP; Phase 4.5 migration/adoption bootstrap, persistent store setup, guarded snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, Infisical secrets readiness UX, and Bubble Tea terminal UI are implemented.
 - Current commands: `status`, `store status`, `store discover`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
-- Not implemented yet: `import-skill` zip/markdown import and Azure Key Vault/other secret providers.
+- Not implemented yet: `import-skill` markdown conversion and Azure Key Vault/other secret providers.
 - License: not selected yet.
 
 ## What it does today
@@ -121,11 +121,11 @@ go run ./cmd/loki --store /path/to/loki sync --dry-run
 go run ./cmd/loki --store /path/to/loki sync --yes
 ```
 
-Import a skill folder into the store:
+Import a skill folder or `.zip` archive into the store:
 
 ```bash
 go run ./cmd/loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --dry-run
-go run ./cmd/loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --yes
+go run ./cmd/loki --store /path/to/loki import-skill ~/Downloads/my-skill.zip --profile work --yes
 ```
 
 Prepare Infisical-backed render secrets without printing values:
