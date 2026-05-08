@@ -392,7 +392,7 @@ Behavior:
 - `check` fetches only the named secrets and reports available or missing names. It never prints values.
 - Loki does not store Infisical tokens or secret values in the synced store or local SQLite.
 - Render mode reads secret values only during real `switch` execution for files that use `render` mode.
-- Machine identity auth is supported through environment variables. If `INFISICAL_TOKEN` is set, Loki passes it only to Infisical child processes. If `INFISICAL_AUTH_METHOD=universal-auth` plus `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` are set, Loki mints a short-lived token with `infisical login --method=universal-auth --plain --silent` and uses it only for the current operation.
+- Machine identity auth is supported through environment variables or `~/.config/infisical/.env`. If `INFISICAL_TOKEN` is set, Loki passes it only to Infisical child processes. If `INFISICAL_AUTH_METHOD=universal-auth` plus `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` are set, Loki mints a short-lived token with `infisical login --method=universal-auth --plain --silent` and uses it only for the current operation.
 - When machine auth is active and `INFISICAL_PROJECT_ID` is set, Loki passes `--projectId <id>` to Infisical secret reads and `infisical run` calls. This avoids relying on ambient project detection for machine identities.
 - For non-default Infisical hosts, set `INFISICAL_API_URL`, `INFISICAL_HOST`, or legacy `INFISICAL_HOST_URL`. Loki maps `INFISICAL_HOST_URL` to the CLI-supported `INFISICAL_HOST` environment variable for child processes.
 
@@ -412,6 +412,8 @@ $env:INFISICAL_CLIENT_SECRET = "<client-secret>"
 $env:INFISICAL_PROJECT_ID = "<project-id>"
 $env:INFISICAL_HOST_URL = "https://app.infisical.com" # optional legacy host alias
 loki secrets status
+
+# Or place the same key-value pairs in ~/.config/infisical/.env for automatic local loading.
 ```
 
 ## `loki doctor`

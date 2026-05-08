@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -120,7 +121,81 @@ func (c Client) lookup(key string) (string, bool) {
 	if c.LookupEnv != nil {
 		return c.LookupEnv(key)
 	}
-	return os.LookupEnv(key)
+	if value, ok := os.LookupEnv(key); ok && strings.TrimSpace(value) != "" {
+		return value, true
+	}
+	return lookupInfisicalEnvFile(key)
+}
+
+func lookupInfisicalEnvFile(key string) (string, bool) {
+	path := defaultInfisicalEnvPath()
+	if path == "" {
+		return "", false
+	}
+	values, err := readInfisicalEnvFile(path)
+	if err != nil {
+		return "", false
+	}
+	value, ok := values[key]
+	if !ok || strings.TrimSpace(value) == "" {
+		return "", false
+	}
+	return value, true
+}
+
+func defaultInfisicalEnvPath() string {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return ""
+	}
+	return filepath.Join(home, ".config", "infisical", ".env")
+}
+
+func readInfisicalEnvFile(path string) (map[string]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	values := map[string]string{}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := parseEnvLine(line)
+		if ok {
+			values[key] = value
+		}
+	}
+	return values, nil
+}
+
+func parseEnvLine(line string) (string, string, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") {
+		return "", "", false
+	}
+	if strings.HasPrefix(line, "export ") || strings.HasPrefix(line, "export\t") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimPrefix(line, "export "), "export\t"))
+	}
+	idx := strings.Index(line, "=")
+	if idx <= 0 {
+		return "", "", false
+	}
+	key := strings.TrimSpace(line[:idx])
+	if !secretNameRE.MatchString(key) {
+		return "", "", false
+	}
+	value := strings.TrimSpace(line[idx+1:])
+	if len(value) >= 2 {
+		quote := value[0]
+		if quote == '\'' || quote == '"' {
+			if end := strings.LastIndexByte(value[1:], quote); end >= 0 {
+				value = value[1 : end+1]
+				return key, value, true
+			}
+		}
+	}
+	if idx := strings.Index(value, " #"); idx >= 0 {
+		value = strings.TrimSpace(value[:idx])
+	}
+	return key, value, true
 }
 
 func (c Client) resolvedConfig() Config {

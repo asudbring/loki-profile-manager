@@ -3,6 +3,8 @@ package infisical
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -278,6 +280,43 @@ func TestClientReadsInfisicalHostURLAliasFromEnv(t *testing.T) {
 		t.Fatalf("commands = %+v, want first command %+v", runner.commands, wantLogin)
 	}
 	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[1], "INFISICAL_HOST=https://app.infisical.com") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientReadsMachineIdentityFromDefaultEnvFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, key := range []string{"INFISICAL_TOKEN", "INFISICAL_AUTH_METHOD", "INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_SECRET", "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID", "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET", "INFISICAL_PROJECT_ID", "INFISICAL_API_URL", "INFISICAL_HOST", "INFISICAL_HOST_URL"} {
+		t.Setenv(key, "")
+	}
+	configDir := filepath.Join(home, ".config", "infisical")
+	if err := os.MkdirAll(configDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	envPath := filepath.Join(configDir, ".env")
+	envFile := "# local Infisical machine auth\n" +
+		"export INFISICAL_AUTH_METHOD=universal-auth\n" +
+		"INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=file-client\n" +
+		"INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET='file-secret'\n" +
+		"INFISICAL_PROJECT_ID=file-project\n" +
+		"INFISICAL_HOST_URL=\"https://app.infisical.com\" # legacy alias\n"
+	if err := os.WriteFile(envPath, []byte(envFile), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}, machineToken: "file-token\n"}
+	client := Client{Runner: runner}
+	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "file-client", "--client-secret", "file-secret", "--domain", "https://app.infisical.com", "--plain", "--silent"}
+	wantGet := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "file-project"}
+	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) || !reflect.DeepEqual(runner.commands[1], wantGet) {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=file-token") || !hasEnv(runner.envs[1], "INFISICAL_HOST=https://app.infisical.com") {
 		t.Fatalf("envs = %+v", runner.envs)
 	}
 }

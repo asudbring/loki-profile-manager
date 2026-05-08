@@ -16,6 +16,7 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 - Added Infisical machine identity support via `INFISICAL_TOKEN` or Universal Auth environment variables with explicit `--projectId` routing for machine-auth secret reads.
 - Fixed Infisical secret checks to treat existing empty-valued secrets as available, keep non-missing read failures redacted, and retry stale `INFISICAL_TOKEN` values with Universal Auth when configured.
 - Added `INFISICAL_HOST_URL` as a legacy host alias for Infisical machine identity auth.
+- Added automatic local loading of Infisical machine identity variables from `~/.config/infisical/.env`.
 - Fixed skill validation for Markdown references with optional titles and root-relative web paths; missing or escaping relative reference assets now warn instead of blocking migration.
 - Documented dogfood install troubleshooting for GitHub release npm tarballs, Windows npm global PATH, and transient OneDrive locks on `registry\machines.json`.
 - Added pre-switch local-change capture for copied managed targets with `loki switch --capture-local`; render and merge drift are reported but not auto-captured.
