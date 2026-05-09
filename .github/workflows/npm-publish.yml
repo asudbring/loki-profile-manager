@@ -70,7 +70,7 @@ jobs:
             exit 1
           fi
           npm_version="${RELEASE_VERSION#v}"
-          package_tgz="dist/packages/asudbring-loki-profile-manager-${npm_version}.tgz"
+          package_tgz="./dist/packages/asudbring-loki-profile-manager-${npm_version}.tgz"
           if [[ ! -f "$package_tgz" ]]; then
             echo "npm package tarball missing: $package_tgz" >&2
             exit 1

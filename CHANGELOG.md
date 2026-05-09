@@ -14,6 +14,7 @@ Patch release for npm registry distribution.
 
 - Added npm registry publishing to the tag-based release workflow.
 - Added a manual npm publish workflow for republishing or repairing package access.
+- Fixed workflow tarball paths so `npm publish` treats generated `.tgz` files as local files.
 - Updated install and release documentation to prefer `npm install -g @asudbring/loki-profile-manager`.
 - Fixed npm access repair command in the manual publish workflow.
 
