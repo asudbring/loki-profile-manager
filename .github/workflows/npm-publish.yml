@@ -76,7 +76,9 @@ jobs:
             exit 1
           fi
           if npm view "@asudbring/loki-profile-manager@${npm_version}" version >/dev/null 2>&1; then
-            echo "@asudbring/loki-profile-manager@${npm_version} already published; skipping"
+            npm access public @asudbring/loki-profile-manager
+            echo "@asudbring/loki-profile-manager@${npm_version} already published; ensured public access"
             exit 0
           fi
           npm publish "$package_tgz" --access public
+          npm access public @asudbring/loki-profile-manager
