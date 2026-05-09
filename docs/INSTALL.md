@@ -1,11 +1,10 @@
 # Install
 
-Loki Profile Manager can be installed from a release npm tarball, GitHub release binaries, bundled script installers, or source builds. Homebrew/Scoop/winget formulas do not exist yet.
+Loki Profile Manager can be installed from the npm registry, a GitHub Release npm tarball, GitHub Release binaries, bundled script installers, or source builds. Homebrew/Scoop/winget formulas do not exist yet.
 
-Requirements for the release npm tarball:
+Requirements for npm install:
 
 - Node.js 18 or later with npm.
-- The downloaded `asudbring-loki-profile-manager-<npm-version>.tgz` file from GitHub Releases.
 
 Requirements for release binaries:
 
@@ -29,14 +28,12 @@ Supported targets:
 
 OneDrive/Dropbox/iCloud/etc. are the sync transport. Loki must read and write a store path inside the synced folder; Loki does not implement cloud sync itself.
 
-## npm tarball install
+## npm install
 
-The release npm tarball is the preferred cross-platform installer for GitHub Release assets. It bundles all supported native Loki binaries and installs a `loki` wrapper on PATH.
-
-Download the `.tgz` asset from the GitHub release, then install it. `<npm-version>` is the release version without the leading `v` (for example, tag `v0.1.0` produces `asudbring-loki-profile-manager-0.1.0.tgz`). This package is currently distributed as a GitHub release asset, not through the public npm registry.
+The npm package is the preferred cross-platform installer. It bundles all supported native Loki binaries and installs a `loki` wrapper on PATH.
 
 ```bash
-npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
+npm install -g @asudbring/loki-profile-manager
 loki --version
 loki doctor
 ```
@@ -44,10 +41,18 @@ loki doctor
 PowerShell uses the same npm command:
 
 ```powershell
-npm install -g .\asudbring-loki-profile-manager-<npm-version>.tgz
+npm install -g @asudbring/loki-profile-manager
 loki --version
 loki doctor
 ```
+
+To install from a downloaded GitHub Release tarball instead, use:
+
+```bash
+npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
+```
+
+`<npm-version>` is the release version without the leading `v` (for example, tag `v0.1.0` produces `asudbring-loki-profile-manager-0.1.0.tgz`).
 
 If Windows cannot find `loki` after npm install, open a new shell and confirm the npm global bin directory is on `PATH`:
 
@@ -192,7 +197,7 @@ Windows PowerShell:
 
 ### Windows: `loki` not found after npm install
 
-Npm global installs create a platform shim in the npm global bin directory. If `npm install -g .\asudbring-loki-profile-manager-<npm-version>.tgz` succeeds but `loki --version` fails:
+Npm global installs create a platform shim in the npm global bin directory. If `npm install -g @asudbring/loki-profile-manager` succeeds but `loki --version` fails:
 
 1. Open a new PowerShell or Command Prompt window.
 2. Confirm the npm prefix:

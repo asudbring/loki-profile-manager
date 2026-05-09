@@ -2,10 +2,10 @@
 
 Loki Profile Manager has two release lanes:
 
-1. **Normal public-repo lane** — GitHub Actions validates, packages, smoke-tests installers, and publishes release assets from a `v*` tag.
-2. **Local fallback lane** — `scripts/release-local.sh` builds the same asset set locally when Actions is unavailable or when you want to validate packages before pushing a tag.
+1. **Normal public-repo lane** — GitHub Actions validates, packages, smoke-tests installers, publishes GitHub Release assets from a `v*` tag, and publishes the npm package.
+2. **Local fallback lane** — `scripts/release-local.sh` builds the same GitHub Release asset set locally when Actions is unavailable or when you want to validate packages before pushing a tag.
 
-Release assets include native archives for Linux, macOS, and Windows on amd64/arm64, install/uninstall scripts, a release manifest, checksums, and an npm tarball containing all supported native binaries.
+Release assets include native archives for Linux, macOS, and Windows on amd64/arm64, install/uninstall scripts, a release manifest, checksums, and an npm tarball containing all supported native binaries. The npm registry package uses the same tarball contents.
 
 ## Normal GitHub Actions release
 
@@ -30,6 +30,7 @@ Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow:
 5. Runs installer smoke tests on Ubuntu, macOS, and Windows.
 6. Runs npm global install smoke tests on Ubuntu, macOS, and Windows.
 7. Creates or updates the GitHub Release and uploads assets.
+8. Publishes the npm package with `.github/workflows/npm-publish.yml` using the `NPM_TOKEN` repository secret.
 
 Hyphenated versions such as `v0.1.0-beta.1` are prereleases. Plain versions such as `v0.1.0` are stable 0.x releases.
 
@@ -64,9 +65,16 @@ Default behavior:
 
 Output goes to `dist/packages` unless `--out-dir <dir>` is set. The output directory is cleaned by the packaging step, so `release-local.sh` only accepts paths under this repo's `dist/` directory, such as `dist/packages` or `dist/manual/v0.1.0`.
 
-## Install local package
+## Install package
 
-The npm tarball is the preferred local installer because it carries every supported native binary.
+For published releases, install from the npm registry:
+
+```bash
+npm install -g @asudbring/loki-profile-manager
+loki --version
+```
+
+For local package validation, install the generated tarball:
 
 ```bash
 npm install -g ./dist/packages/asudbring-loki-profile-manager-0.1.0.tgz
@@ -199,5 +207,6 @@ Do not promote a stable tag until:
 
 - Public CI is green on Ubuntu, macOS, and Windows.
 - Release workflow installer and npm smoke tests pass.
+- npm publish workflow succeeds or the package version is intentionally not published.
 - Current-tree secret and personal-information scans pass.
 - At least one dogfood prerelease has passed macOS and Windows final-store verification.

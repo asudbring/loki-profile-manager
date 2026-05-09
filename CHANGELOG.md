@@ -13,7 +13,7 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 First public 0.x release. Validated with public GitHub Actions CI/release workflows and dogfood installs on macOS and Windows.
 
 - Prepared the repository for public release with MIT licensing, a public security policy, sanitized current docs, and a module path aligned to `github.com/asudbring/loki-profile-manager`.
-- Added public release documentation, an AI-operator release procedure, and a local release fallback for periods when GitHub Actions is unavailable.
+- Added public release documentation, an AI-operator release procedure, npm registry publishing workflow, and a local release fallback for periods when GitHub Actions is unavailable.
 - Added Windows PowerShell and macOS/Linux shell install/uninstall scripts, release manifests, installer-aware packaging, CI installer smoke jobs, and release workflow smoke-before-upload gates.
 - Added no-args TUI launch: `loki` opens the terminal UI, while commands/flags keep CLI behavior.
 - Added persistent store management with `loki store status|discover|use|init|unset`, plus TUI Store setup and TUI machine registration flows.

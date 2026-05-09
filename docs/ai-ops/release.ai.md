@@ -42,7 +42,7 @@ requires_sudo: false
 
 # Release Loki Profile Manager
 
-This procedure validates the current checkout, builds a local release asset set, verifies checksums, and optionally uploads assets to a GitHub Release. It does not make the repository public and does not publish to npm.
+This procedure validates the current checkout, builds a local release asset set, verifies checksums, and optionally uploads assets to a GitHub Release. The normal tag-based GitHub Actions path also publishes the npm package through `.github/workflows/npm-publish.yml`.
 
 ## Prerequisites
 

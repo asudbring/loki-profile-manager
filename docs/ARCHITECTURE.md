@@ -419,6 +419,8 @@ flowchart TB
     Checksums[checksums.txt + release-manifest.json]
     Smoke[installer + npm smoke tests]
     GitHubRelease[GitHub Release]
+    NpmPublish[.github/workflows/npm-publish.yml]
+    NpmRegistry[npm registry]
 
     Commit --> Tag --> ReleaseWorkflow
     Commit --> LocalScript
@@ -427,10 +429,11 @@ flowchart TB
     Validate --> PackageRelease --> PackageNpm --> Assets
     Assets --> Checksums
     ReleaseWorkflow --> Smoke --> GitHubRelease
+    GitHubRelease --> NpmPublish --> NpmRegistry
     LocalScript -->|optional --upload| GitHubRelease
 ```
 
-`package-release.sh` cross-compiles native binaries for Linux, macOS, and Windows on amd64 and arm64, then writes release archives, installer scripts, `release-manifest.json`, and `checksums.txt`. `package-npm.sh` embeds the native binaries into the npm tarball and rewrites the manifest/checksums to include the tarball. `release-local.sh` wraps validation and packaging for the no-Actions path, refuses destructive output directories outside repo `dist/`, and refuses to clobber an existing GitHub Release unless the remote tag points at the current commit.
+`package-release.sh` cross-compiles native binaries for Linux, macOS, and Windows on amd64 and arm64, then writes release archives, installer scripts, `release-manifest.json`, and `checksums.txt`. `package-npm.sh` embeds the native binaries into the npm tarball and rewrites the manifest/checksums to include the tarball. `release-local.sh` wraps validation and packaging for the no-Actions path, refuses destructive output directories outside repo `dist/`, and refuses to clobber an existing GitHub Release unless the remote tag points at the current commit. The npm publish workflow uses the same packaging scripts and publishes with the `NPM_TOKEN` repository secret.
 
 ## Current limitations
 

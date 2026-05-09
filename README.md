@@ -22,14 +22,14 @@ Before switching, Loki also checks copied managed targets from the currently act
 
 Release assets are published from semver tags such as `v0.1.0`. Download assets from the GitHub Releases page.
 
-Recommended cross-platform install is the release npm tarball. It bundles Loki binaries for Windows, macOS, and Linux on amd64/arm64, and npm uninstall only removes the wrapper/bundled binary.
+Recommended cross-platform install is the npm registry package. It bundles Loki binaries for Windows, macOS, and Linux on amd64/arm64, and npm uninstall only removes the wrapper/bundled binary.
 
 ```bash
-npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
+npm install -g @asudbring/loki-profile-manager
 loki --version
 ```
 
-`<npm-version>` is the release version without the leading `v` (for example, tag `v0.1.0` produces `asudbring-loki-profile-manager-0.1.0.tgz`). The package is installed from the downloaded GitHub release tarball; it is not published to the npm registry yet. Script installers remain available for direct archive installs.
+GitHub Release npm tarballs and script installers remain available for direct archive installs.
 
 On Windows, open a new shell after npm global install and make sure the npm global bin directory is on `PATH` (typically `%APPDATA%\npm`, for example `%USERPROFILE%\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`.
 
