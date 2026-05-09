@@ -1,3 +1,7 @@
+<!-- historical-doc -->
+
+> **Historical note:** Historical installer/release plan. Current release instructions are in docs/RELEASE.md and current install instructions are in docs/INSTALL.md.
+
 # Installer + Release Plan
 
 ## Status
@@ -23,7 +27,7 @@ Start with script installers bundled with release archives. Do not start with MS
 
 Reason:
 
-- Repo is private dogfood, so public package managers add friction.
+- Repo is dogfood, so public package managers add friction.
 - Loki is a single static Go binary; script install/uninstall is enough for first release.
 - Windows symlink/Developer Mode checks need product-specific logic that is easier in PowerShell first.
 - MSI/MSIX/code signing/notarization can come after installer behavior settles.
@@ -97,8 +101,8 @@ Recommended parameters:
 | `-RequireSymlink` | Fail install if Loki cannot create symlinks. |
 | `-EnableDeveloperMode` | If symlink probe fails, try to enable Developer Mode. Requires admin. |
 | `-ElevateForDeveloperMode` | Prompt UAC and run only Developer Mode setup elevated. |
-| `-Repo <owner/repo>` | Optional download mode for private GitHub release. |
-| `-Token <token>` / `GH_TOKEN` | Private GitHub release auth. Never print token. |
+| `-Repo <owner/repo>` | Optional download mode for GitHub release. |
+| `-Token <token>` / `GH_TOKEN` | GitHub release auth when needed for restricted assets or higher rate limits. Never print token. |
 
 ### Install flow
 
@@ -281,7 +285,7 @@ Update `.github/workflows/release.yml`:
    - checksum instructions
    - Windows Developer Mode / symlink note
    - uninstall commands
-   - private GitHub token note
+   - GitHub token note
 
 Stable releases should require a manual Windows VM installer smoke result. Pre-release tags can remain automatic prereleases.
 

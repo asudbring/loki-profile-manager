@@ -8,8 +8,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/allensu/loki-profile-manager/internal/activation"
-	"github.com/allensu/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/activation"
+	"github.com/asudbring/loki-profile-manager/internal/config"
 )
 
 type ExecuteRequest struct {

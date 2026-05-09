@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/allensu/loki-profile-manager/internal/infisical"
+	"github.com/asudbring/loki-profile-manager/internal/infisical"
 )
 
 type SecretProvider interface {

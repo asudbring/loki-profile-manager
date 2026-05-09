@@ -1,55 +1,77 @@
 # Scribe Report: loki-profile-manager
 
-## Current documentation state
+## Files updated
 
-- `README.md` — root overview, implemented command list, install-from-source quick path, snapshot restore examples, and documentation links.
-- `docs/USAGE.md` — current CLI reference for `status`, `verify`, `doctor`, `switch`, `sync`, `import-skill`, `secrets`, `snapshots list/show/restore`, `machine`, `adopt`, and `migrate` commands.
-- `docs/INSTALL.md` — release archive install, checksum verification, source install, cross-platform validation, Docker fallback, and smoke testing.
-- `docs/ARCHITECTURE.md` — system overview, data ownership, store layout, local state, SQLite schema, manifest model, switch flow, secrets flow, safety model, rollback, and current limitations.
-- `docs/DEVELOPMENT.md` — package map, test/build/release commands, fixture guidance, and secret-handling rules.
-- `CHANGELOG.md` — pre-release dogfood and safety milestones for snapshot reporting, guarded restore, targeted restore, real-dotfile targeted restore, and full restore consent.
-- `docs/ai-ops/install.ai.md` — AI-operator companion for cloning, validating, building, and smoke-testing the private repository.
-- `tests/cross-machine-dogfood-copilot.ai.md` — Windows ARM64 disposable target dogfood prompt, including targeted snapshot restore.
-- `tests/real-dotfile-dogfood-copilot.ai.md` — Windows ARM64 real low-risk dotfile switch/status/snapshot dry-run prompt.
-- `tests/real-dotfile-targeted-restore-consent-copilot.ai.md` — consent-gated real-dotfile targeted restore prompt.
+- `README.md` — updated status/license wording, release documentation links, contributing/security links, and public install language.
+- `docs/ARCHITECTURE.md` — added release packaging flow and documented the local release fallback alongside GitHub Actions.
+- `docs/DEVELOPMENT.md` — aligned validation and release packaging instructions with public Actions plus local fallback.
+- `docs/INSTALL.md` — removed private-repository requirements and sanitized Windows user path examples.
+- `docs/USAGE.md` — kept Infisical examples placeholder-only to avoid secret-shaped examples.
+- `docs/RELEASE.md` — rewrote as the release guide covering normal public GitHub Actions releases, local fallback releases, upload provenance checks, and dogfood validation.
+- `docs/ai-ops/install.ai.md` — removed default private-repository authentication assumptions.
+- `docs/ai-ops/windows-arm64-vm-test.ai.md` — removed default private-repository authentication assumptions and kept the OneDrive smoke flow generic.
+- `docs/installer-release-plan.md` — marked as historical and removed stale private-release auth language.
+- `docs/store-tui-management-plan.md` — marked as historical.
+- `docs/TUI_PLAN.md` — marked as historical.
+- `plan-loki-profile-manager.md` — marked as historical and sanitized owner wording.
+- `spec-loki-profile-manager.md` — marked as historical and sanitized owner wording.
+- `tasks-loki-profile-manager.md` — marked as historical and sanitized owner wording.
+- `CHANGELOG.md` — added public-readiness notes and sanitized old local path examples.
+- `.github/workflows/ci.yml` — added `scripts/release-local.sh` to shell syntax checks.
+- `.github/workflows/release.yml` — added `scripts/release-local.sh` to shell syntax checks and updated public prerelease notes.
+- `.gitignore` — ignored `.pi/` local agent state.
+- `npm/package.json` — changed package license to MIT.
+- `go.mod`, Go imports, and release linker flags — aligned module path with `github.com/asudbring/loki-profile-manager`.
 
-## Latest validation
+## Files created
 
-- Windows ARM64 disposable target restore: passed with `dogfood-crossos` and `C:\Users\allen\loki-dogfood\probe.txt`.
-- Windows ARM64 real-dotfile targeted restore: passed for `C:\Users\allen\.config\git\ignore`.
-- Windows ARM64 real-dotfile targeted restore: passed for `C:\Users\allen\.gitconfig`.
-- Windows ARM64 disposable full-restore consent prompt: passed for `dogfood-crossos` and `C:\Users\allen\loki-dogfood\probe.txt`; wrong consent blocked, exact `RESTORE <snapshot-id>` consent restored only the disposable target and active local state.
-- GitHub Actions CI: green on `34fde0d feat: gate full snapshot restore consent`.
-- Milestone tags pushed:
-  - `targeted-snapshot-restore-dogfood`
-  - `real-dotfile-targeted-restore-dogfood`
+- `LICENSE` — MIT license.
+- `SECURITY.md` — vulnerability reporting policy and security boundaries.
+- `CONTRIBUTING.md` — setup, validation, PR expectations, and safety rules.
+- `docs/ai-ops/release.ai.md` — AI-operator release procedure.
+- `docs/RELEASE.md` — release guide for public Actions and local fallback.
 
-## Safety decisions documented
+## Files removed
 
-- Snapshot restore `--yes` requires a matching prior `--dry-run` guard.
-- Full snapshot restore without `--target` requires an interactive `RESTORE <snapshot-id>` confirmation phrase before service execution.
-- Targeted restore with `--target <path>` still requires the dry-run guard but does not prompt for full active-state restore consent.
-- Real-dotfile dogfood used targeted restore only.
-- Full real-dotfile restore was intentionally not run.
-- Full restore consent was dogfooded only on a disposable target snapshot, not real dotfiles.
-- Sensitive-looking paths such as `.ssh`, `.env`, tokens, credentials, private keys, `.pem`, and `.key` remain blocked/redacted by default.
+- `docs/handoffs/multi-os-phase-4.5-handoff.md` — stale internal handoff artifact.
 
 ## Diagrams
 
-- 1 system architecture flowchart in `docs/ARCHITECTURE.md`.
-- 1 data ownership flowchart in `docs/ARCHITECTURE.md`.
-- 1 switch flow sequence diagram in `docs/ARCHITECTURE.md`.
-- 1 sync flow sequence diagram and 1 skill import flow sequence diagram in `docs/ARCHITECTURE.md`.
+- Added release packaging flowchart in `docs/ARCHITECTURE.md`.
+- Existing architecture, switch, sync, TUI, and import-skill Mermaid diagrams remain in `docs/ARCHITECTURE.md`.
+
+## Validation
+
+- `go test ./...` passed.
+- `go vet ./...` passed.
+- `go mod verify` passed.
+- `go build -trimpath -o /tmp/loki-public-readiness ./cmd/loki` passed.
+- Shell syntax checks passed for installer, packaging, release-local, validation, and probe scripts.
+- `node --check npm/bin/loki.js` passed.
+- PowerShell parser checks passed for installer, uninstall, installer smoke, and local validation scripts.
+- `scripts/release-local.sh v0.0.0-public-readiness.1 --skip-validation --allow-dirty --out-dir dist/public-readiness-test` built 13 assets and verified checksums.
+- Unsafe output test rejected `--out-dir $HOME`.
+
+## Security and privacy scan summary
+
+- Current-tree custom secret scan: 0 findings.
+- Current-tree personal/private wording scan: 0 findings.
+- Semgrep `p/secrets`: 0 findings.
+- Semgrep `p/golang` + `p/owasp-top-ten`: 0 findings.
+- `govulncheck ./...`: no vulnerabilities found.
+- `gosec`: 0 high findings. Remaining medium findings are expected local-file/subprocess/permission patterns for a local CLI that manages filesystem targets and invokes Infisical.
+- Git history scan found no high-confidence secrets. Old commits retain historical personal name/module-owner/private-repo wording; user accepted that exposure before public visibility change.
 
 ## Deferred / out of scope
 
-- `LICENSE` — not created because no license choice exists. README states all rights reserved until a license file is added.
-- `docs/DEPLOY.md` — not applicable; this is a local CLI with no deploy target.
-- `import-skill` zip/markdown import, Azure Key Vault/other secret providers, and `tui` — documented as planned but not implemented. Skill folder import and Infisical V1 secrets UX are implemented. `sync` is implemented only for provider conflict-copy cleanup, not watcher capture/full reconciliation.
-- Full real-dotfile snapshot restore dogfood — deferred until there is explicit need beyond targeted restore validation.
+- Repository visibility flip. Do this after committing and pushing the public-readiness changes.
+- Stable `v0.1.0` release. First make public CI green, then decide dogfood prerelease vs stable.
+- Package-manager distribution beyond GitHub Release assets and npm tarball assets.
 
 ## Suggested follow-ups
 
-- Use semver tags such as `v0.1.0-doctor.1` for packaged prereleases; milestone tags remain dogfood markers only.
-- Re-run Scribe after `import-skill` zip/markdown import, Azure Key Vault support, watcher/full sync, or TUI land.
-- Consider a non-interactive full-restore override only if a future automation workflow needs it; keep default interactive consent.
+1. Commit and push public-readiness changes.
+2. Make the GitHub repository public.
+3. Run public CI.
+4. Cut one public dogfood prerelease through GitHub Actions.
+5. Promote to stable only after dogfood validation passes on macOS and Windows.

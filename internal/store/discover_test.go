@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/config"
 )
 
 func TestDiscoverWindowsEnvOneDrive(t *testing.T) {

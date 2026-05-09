@@ -55,11 +55,11 @@ Git Bash for Windows:
 
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm \
-  -v "C:/Users/allensu/github/loki-profile-manager:/work" \
+  -v "C:/Users/<user>/github/loki-profile-manager:/work" \
   -w /work golang:1.23 go test ./...
 
 MSYS_NO_PATHCONV=1 docker run --rm \
-  -v "C:/Users/allensu/github/loki-profile-manager:/work" \
+  -v "C:/Users/<user>/github/loki-profile-manager:/work" \
   -w /work golang:1.23 go vet ./...
 ```
 
@@ -100,7 +100,7 @@ for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64 linux/amd64 
 done
 ```
 
-GitHub Actions runs native tests and cross-compilation in `.github/workflows/ci.yml`.
+GitHub Actions runs native tests and cross-compilation in `.github/workflows/ci.yml`. If Actions is unavailable, use the local release lane in [`docs/RELEASE.md`](RELEASE.md).
 
 ## Release packaging
 
@@ -111,18 +111,25 @@ git tag v0.1.0-doctor.1
 git push origin v0.1.0-doctor.1
 ```
 
-Tag pushes matching `v*.*.*` run `.github/workflows/release.yml`. The workflow validates tests, packages Linux/macOS/Windows amd64/arm64 archives, writes `checksums.txt`, uploads artifacts, and creates a GitHub Release. Hyphenated versions are marked prerelease.
+Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow validates tests, packages Linux/macOS/Windows amd64/arm64 archives, writes `checksums.txt`, uploads artifacts, runs installer and npm smoke tests, and creates a GitHub Release. Hyphenated versions are marked prerelease.
 
-Local package build:
+Local fallback release build that does not require GitHub Actions:
+
+```bash
+./scripts/release-local.sh v0.1.0-doctor.1
+```
+
+Package-only lower-level build:
 
 ```bash
 ./scripts/package-release.sh v0.1.0-doctor.1
+./scripts/package-npm.sh v0.1.0-doctor.1
 ```
 
 Version injection uses linker flags:
 
 ```bash
-go build -trimpath -ldflags "-X github.com/allensu/loki-profile-manager/internal/app.Version=test-version" -o dist/loki-test ./cmd/loki
+go build -trimpath -ldflags "-X github.com/asudbring/loki-profile-manager/internal/app.Version=test-version" -o dist/loki-test ./cmd/loki
 ./dist/loki-test --version
 ```
 
@@ -211,11 +218,7 @@ For Infisical-related tests:
 
 Phases 1-7 are implemented through the TUI MVP. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, skill folder import, Infisical-backed secrets readiness, and guarded Bubble Tea TUI flows. Sensitive-looking restore targets remain blocked/redacted by default, and TUI snapshot restore writes remain deferred to the existing CLI flow.
 
-Relevant historical handoff:
-
-```text
-docs/handoffs/multi-os-phase-4.5-handoff.md
-```
+Historical handoff artifacts are not part of the public documentation set.
 
 ## Before committing
 

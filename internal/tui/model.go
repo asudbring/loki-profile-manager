@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
-	"github.com/allensu/loki-profile-manager/internal/machine"
+	"github.com/asudbring/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/machine"
 )
 
 type ScreenID string

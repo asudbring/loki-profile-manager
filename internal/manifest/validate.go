@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/infisical"
+	"github.com/asudbring/loki-profile-manager/internal/infisical"
 	"github.com/bmatcuk/doublestar/v4"
 )
 

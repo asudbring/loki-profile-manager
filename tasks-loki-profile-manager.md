@@ -1,7 +1,11 @@
+<!-- historical-doc -->
+
+> **Historical note:** Historical task breakdown. It is not the authoritative current backlog.
+
 # Tasks: Loki Profile Manager
 
 **Status:** Phase 4 complete; Phase 4.5 migration/adoption next  
-**Owner:** Allen Su  
+**Owner:** asudbring  
 **Last updated:** 2026-05-03
 
 ## Task rules

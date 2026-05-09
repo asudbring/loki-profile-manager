@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
-	"github.com/allensu/loki-profile-manager/internal/machine"
-	"github.com/allensu/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/machine"
+	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
 func TestSwitchDryRunWritesNothingAndRealSwitchUpdatesHeartbeat(t *testing.T) {

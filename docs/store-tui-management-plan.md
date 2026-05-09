@@ -1,3 +1,7 @@
+<!-- historical-doc -->
+
+> **Historical note:** Historical store/TUI management plan. Current behavior is documented in README.md, docs/USAGE.md, and docs/ARCHITECTURE.md.
+
 # Store + TUI Management Plan
 
 ## Goal

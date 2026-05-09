@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
-	"github.com/allensu/loki-profile-manager/internal/manifest"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/manifest"
 )
 
 type LocalRequest struct {

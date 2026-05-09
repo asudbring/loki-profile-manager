@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/config"
 )
 
 type Expander struct {

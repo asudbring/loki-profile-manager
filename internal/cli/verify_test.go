@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/store"
-	"github.com/allensu/loki-profile-manager/internal/verify"
+	"github.com/asudbring/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/verify"
 )
 
 func TestVerifyJSONValidStore(t *testing.T) {

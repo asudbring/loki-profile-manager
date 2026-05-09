@@ -39,7 +39,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/package-npm.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh
+          bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/package-npm.sh scripts/release-local.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh
           node --check npm/bin/loki.js
           pwsh -NoProfile -Command '
             $allErrors = @()

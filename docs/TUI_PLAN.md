@@ -1,3 +1,7 @@
+<!-- historical-doc -->
+
+> **Historical note:** Historical TUI plan. Current TUI behavior is documented in README.md, docs/USAGE.md, and docs/ARCHITECTURE.md.
+
 # Loki TUI Implementation Plan
 
 ## Goal

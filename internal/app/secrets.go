@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/allensu/loki-profile-manager/internal/secrets"
+	"github.com/asudbring/loki-profile-manager/internal/secrets"
 )
 
 type SecretsStatusRequest struct{}

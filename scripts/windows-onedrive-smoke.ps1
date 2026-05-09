@@ -50,7 +50,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/allensu/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
 func main() {

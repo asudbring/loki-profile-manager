@@ -6,17 +6,17 @@ Do not paste or save `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, or secret val
 
 ## Paths
 
-- Repo: `C:\Users\allen\github\loki-profile-manager`
-- Binary: `C:\Users\allen\github\loki-profile-manager\bin\loki.exe`
-- Store: `C:\Users\allen\OneDrive\LokiProfileManager`
-- Plan: `C:\Users\allen\github\loki-profile-manager\docs\test-plans\windows-vm-infisical-tui-smoke.md`
+- Repo: `%USERPROFILE%\github\loki-profile-manager`
+- Binary: `%USERPROFILE%\github\loki-profile-manager\bin\loki.exe`
+- Store: `%USERPROFILE%\OneDrive\LokiProfileManager`
+- Plan: `%USERPROFILE%\github\loki-profile-manager\docs\test-plans\windows-vm-infisical-tui-smoke.md`
 
 ## 1. Build check
 
 Open Windows Terminal in the VM:
 
 ```powershell
-cd C:\Users\allen\github\loki-profile-manager
+cd %USERPROFILE%\github\loki-profile-manager
 
 $go = Get-ChildItem $env:USERPROFILE\go-sdk -Directory -Filter go* |
   Sort-Object Name -Descending |
@@ -114,7 +114,7 @@ Expected:
 
 - TUI opens in Windows Terminal. No `interactive terminal` error.
 - Dashboard renders cleanly.
-- Store path is `C:\Users\allen\OneDrive\LokiProfileManager`.
+- Store path is `%USERPROFILE%\OneDrive\LokiProfileManager`.
 - Secrets row says ready/authenticated or shows a clear warning without secret values.
 
 ## 6. TUI navigation smoke

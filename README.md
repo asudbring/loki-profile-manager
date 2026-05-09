@@ -4,11 +4,11 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 
 ## Status
 
-- Repository visibility: private.
+- Repository visibility: public.
 - Current implementation: Phases 1-7 complete through the TUI MVP; Phase 4.5 migration/adoption bootstrap, persistent store setup, guarded snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, Infisical secrets readiness UX, and Bubble Tea terminal UI are implemented.
 - Current commands: `status`, `store status`, `store discover`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `import-skill` markdown conversion and Azure Key Vault/other secret providers.
-- License: not selected yet.
+- License: MIT.
 
 ## What it does today
 
@@ -20,7 +20,7 @@ Before switching, Loki also checks copied managed targets from the currently act
 
 ## Install from release binary
 
-Release assets are published from semver tags such as `v0.1.0-doctor.1`. This repository is private, so downloads require GitHub access.
+Release assets are published from semver tags such as `v0.1.0-doctor.1`. Download assets from the GitHub Releases page.
 
 Recommended cross-platform install is the release npm tarball. It bundles Loki binaries for Windows, macOS, and Linux on amd64/arm64, and npm uninstall only removes the wrapper/bundled binary.
 
@@ -31,7 +31,7 @@ loki --version
 
 `<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`). The package is installed from the downloaded GitHub release tarball; it is not published to the npm registry yet. Script installers remain available for direct archive installs.
 
-On Windows, open a new shell after npm global install and make sure the npm global bin directory is on `PATH` (typically `%APPDATA%\npm`, for example `C:\Users\allen\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`.
+On Windows, open a new shell after npm global install and make sure the npm global bin directory is on `PATH` (typically `%APPDATA%\npm`, for example `%USERPROFILE%\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`.
 
 1. Open the GitHub release.
 2. Download the archive for your OS/architecture plus `checksums.txt`.
@@ -187,14 +187,17 @@ TUI MVP screens cover dashboard diagnostics, persistent store setup, machine reg
 - [`docs/INSTALL.md`](docs/INSTALL.md) — Windows, macOS, Linux, and Docker validation.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — current components, data ownership, and switch flow.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — package map and development workflow.
+- [`docs/RELEASE.md`](docs/RELEASE.md) — public Actions release path and local fallback release process.
+- [`docs/ai-ops/release.ai.md`](docs/ai-ops/release.ai.md) — AI-operator release procedure.
 - [`CHANGELOG.md`](CHANGELOG.md) — pre-release dogfood and safety milestones.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, PR expectations, and safety rules.
+- [`SECURITY.md`](SECURITY.md) — vulnerability reporting and security boundaries.
 - [`docs/ai-ops/install.ai.md`](docs/ai-ops/install.ai.md) — AI-operator install/test procedure.
 - [`docs/ai-ops/windows-arm64-vm-test.ai.md`](docs/ai-ops/windows-arm64-vm-test.ai.md) — AI-operator Windows ARM64 VM + OneDrive validation procedure.
 - [`tests/windows-arm64-vm-copilot.ai.md`](tests/windows-arm64-vm-copilot.ai.md) — Copilot CLI prompt for running Windows ARM64 VM validation.
 - [`tests/cross-machine-dogfood-copilot.ai.md`](tests/cross-machine-dogfood-copilot.ai.md) — Copilot CLI prompt for cross-machine OneDrive dogfood verification.
 - [`tests/real-dotfile-dogfood-copilot.ai.md`](tests/real-dotfile-dogfood-copilot.ai.md) — Copilot CLI prompt for the first real low-risk dotfile dogfood.
 - [`tests/real-dotfile-targeted-restore-consent-copilot.ai.md`](tests/real-dotfile-targeted-restore-consent-copilot.ai.md) — consent-gated prompt for real-dotfile targeted snapshot restore.
-- [`docs/handoffs/multi-os-phase-4.5-handoff.md`](docs/handoffs/multi-os-phase-4.5-handoff.md) — continuation handoff for macOS and Windows VM work.
 - [`spec-loki-profile-manager.md`](spec-loki-profile-manager.md), [`plan-loki-profile-manager.md`](plan-loki-profile-manager.md), and [`tasks-loki-profile-manager.md`](tasks-loki-profile-manager.md) — planning documents, not a guarantee of implemented behavior.
 
 ## Development
@@ -216,4 +219,4 @@ On Git Bash for Windows, set `MSYS_NO_PATHCONV=1` for Docker volume paths that s
 
 ## License
 
-No license has been selected yet. Treat this private repository as all rights reserved until a license file is added.
+MIT. See [`LICENSE`](LICENSE).

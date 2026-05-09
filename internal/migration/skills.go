@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/activation"
-	"github.com/allensu/loki-profile-manager/internal/skills"
+	"github.com/asudbring/loki-profile-manager/internal/activation"
+	"github.com/asudbring/loki-profile-manager/internal/skills"
 )
 
 func isSkillDir(path string) bool {

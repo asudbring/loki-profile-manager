@@ -8,9 +8,8 @@ prerequisites:
     version: any
   - tool: go
     version: ">=1.23"
-  - account: github.com
-    permissions:
-      - read access to private repository asudbring/loki-profile-manager
+  - account: null
+    permissions: []
   - service: OneDrive
     requirement: signed in and sync folder available
 variables:
@@ -270,7 +269,7 @@ Sensitive key not copied.
 ...
 == result ==
 Windows OneDrive smoke passed.
-Store changes should sync from: C:\Users\allen\OneDrive\LokiProfileManager
+Store changes should sync from: %USERPROFILE%\OneDrive\LokiProfileManager
 ```
 
 Expected intentional error text during the run:
@@ -305,7 +304,7 @@ vm wrote 2026-05-03T17:50:06.2767188-05:00
 The source machine should see the same file under its OneDrive cloud storage path. On macOS this has been:
 
 ```text
-/Users/allen/Library/CloudStorage/OneDrive-Personal/LokiProfileManager/sync-probe-vm.txt
+$HOME/Library/CloudStorage/OneDrive-Personal/LokiProfileManager/sync-probe-vm.txt
 ```
 
 If the source machine does not see the probe, wait for OneDrive sync and check OneDrive status before changing Loki code.

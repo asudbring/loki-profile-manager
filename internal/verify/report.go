@@ -1,6 +1,6 @@
 package verify
 
-import "github.com/allensu/loki-profile-manager/internal/manifest"
+import "github.com/asudbring/loki-profile-manager/internal/manifest"
 
 type Severity string
 

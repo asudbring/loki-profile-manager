@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
-	"github.com/allensu/loki-profile-manager/internal/infisical"
-	"github.com/allensu/loki-profile-manager/internal/secrets"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/infisical"
+	"github.com/asudbring/loki-profile-manager/internal/secrets"
 )
 
 type fakeAppSecretProvider struct {

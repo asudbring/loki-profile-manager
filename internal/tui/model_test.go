@@ -9,12 +9,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/allensu/loki-profile-manager/internal/activation"
-	"github.com/allensu/loki-profile-manager/internal/app"
-	diagnostics "github.com/allensu/loki-profile-manager/internal/doctor"
-	"github.com/allensu/loki-profile-manager/internal/machine"
-	"github.com/allensu/loki-profile-manager/internal/secrets"
-	"github.com/allensu/loki-profile-manager/internal/storesync"
+	"github.com/asudbring/loki-profile-manager/internal/activation"
+	"github.com/asudbring/loki-profile-manager/internal/app"
+	diagnostics "github.com/asudbring/loki-profile-manager/internal/doctor"
+	"github.com/asudbring/loki-profile-manager/internal/machine"
+	"github.com/asudbring/loki-profile-manager/internal/secrets"
+	"github.com/asudbring/loki-profile-manager/internal/storesync"
 )
 
 type fakeSwitchResult struct {

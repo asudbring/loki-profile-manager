@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/app"
 )
 
 func TestDoctorHumanOutput(t *testing.T) {

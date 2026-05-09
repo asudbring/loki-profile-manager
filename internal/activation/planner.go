@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
-	"github.com/allensu/loki-profile-manager/internal/manifest"
-	"github.com/allensu/loki-profile-manager/internal/profile"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/manifest"
+	"github.com/asudbring/loki-profile-manager/internal/profile"
 )
 
 type PlanRequest struct {

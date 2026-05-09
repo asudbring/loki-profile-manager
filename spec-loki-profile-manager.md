@@ -1,7 +1,11 @@
+<!-- historical-doc -->
+
+> **Historical note:** Historical product specification. It records design intent and may not match every current command or implementation detail.
+
 # Spec: Loki Profile Manager
 
 **Status:** Ready for implementation  
-**Owner:** Allen Su  
+**Owner:** asudbring  
 **Last updated:** 2026-05-03
 
 ## 1. Summary
@@ -45,7 +49,7 @@ Loki Profile Manager is a local, cross-platform TUI/CLI application for one tech
 
 ## 3. Users & stories
 
-**Primary user.** Allen Su, an advanced technical user working across Windows and macOS machines with separate work, development, and writing contexts. He uses many local tools, AI coding agents, profile-specific dotfiles, Microsoft documentation workflows, and Infisical-managed secrets. He can edit YAML and use a CLI, but the day-to-day workflow should be driven by a TUI/dashboard instead of manual symlinks and scripts.
+**Primary user.** An advanced technical user working across Windows and macOS machines with separate work, development, and writing contexts. He uses many local tools, AI coding agents, profile-specific dotfiles, Microsoft documentation workflows, and Infisical-managed secrets. He can edit YAML and use a CLI, but the day-to-day workflow should be driven by a TUI/dashboard instead of manual symlinks and scripts.
 
 **Key user stories:**
 

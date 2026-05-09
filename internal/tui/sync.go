@@ -7,8 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
-	"github.com/allensu/loki-profile-manager/internal/storesync"
+	"github.com/asudbring/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/storesync"
 )
 
 type syncDryRunMsg struct {

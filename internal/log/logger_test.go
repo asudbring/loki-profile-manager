@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/config"
 )
 
 func TestLoggerWritesRedactedLogFile(t *testing.T) {

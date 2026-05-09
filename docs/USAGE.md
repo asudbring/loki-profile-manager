@@ -410,7 +410,7 @@ loki secrets check OPENAI_API_KEY GITHUB_TOKEN
 # Machine identity shell setup; keep client secret out of committed files.
 $env:INFISICAL_AUTH_METHOD = "universal-auth"
 $env:INFISICAL_CLIENT_ID = "<client-id>"
-$env:INFISICAL_CLIENT_SECRET = "<client-secret>"
+$env:INFISICAL_CLIENT_SECRET = "<value>"
 $env:INFISICAL_PROJECT_ID = "<project-id>"
 $env:INFISICAL_HOST_URL = "https://app.infisical.com" # optional legacy host alias
 loki secrets status

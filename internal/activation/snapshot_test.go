@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/config"
 )
 
 func TestCreateSnapshotMetadataAndRetention(t *testing.T) {

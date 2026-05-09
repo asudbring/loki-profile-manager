@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
-	"github.com/allensu/loki-profile-manager/internal/db"
-	diagnostics "github.com/allensu/loki-profile-manager/internal/doctor"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/db"
+	diagnostics "github.com/asudbring/loki-profile-manager/internal/doctor"
 )
 
 type DoctorRequest struct {

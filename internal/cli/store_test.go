@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
-	"github.com/allensu/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
 func TestStoreInitUseStatusAndUnsetCLI(t *testing.T) {

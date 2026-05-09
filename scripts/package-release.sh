@@ -16,7 +16,7 @@ fi
 repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
 cd "$repo_root"
 
-module="github.com/allensu/loki-profile-manager"
+module="github.com/asudbring/loki-profile-manager"
 ldflags="-s -w -X ${module}/internal/app.Version=${version}"
 go_bin="${GO_BIN:-${GO:-go}}"
 if ! command -v "$go_bin" >/dev/null 2>&1; then

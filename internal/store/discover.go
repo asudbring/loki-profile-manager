@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/config"
 )
 
 func DiscoverProviderFolders(opts DiscoveryOptions) []ProviderCandidate {

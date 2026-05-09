@@ -1,7 +1,11 @@
+<!-- historical-doc -->
+
+> **Historical note:** Historical planning document. Current implementation status is documented in README.md, docs/USAGE.md, docs/ARCHITECTURE.md, and CHANGELOG.md.
+
 # Plan: Loki Profile Manager
 
 **Status:** Ready for implementation  
-**Owner:** Allen Su  
+**Owner:** asudbring  
 **Last updated:** 2026-05-03
 
 ## 1. Implementation intent

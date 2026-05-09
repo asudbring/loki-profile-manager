@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/allensu/loki-profile-manager/internal/verify"
+	"github.com/asudbring/loki-profile-manager/internal/verify"
 )
 
 type VerifyRequest struct {

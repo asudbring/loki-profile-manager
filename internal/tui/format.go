@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/app"
 )
 
 func frame(lines ...string) string {

@@ -7,8 +7,8 @@ import (
 	"os"
 	"sort"
 
-	"github.com/allensu/loki-profile-manager/internal/profile"
-	"github.com/allensu/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/profile"
+	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
 type ProfileCatalogRequest struct {

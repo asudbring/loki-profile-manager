@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/config"
-	diagnostics "github.com/allensu/loki-profile-manager/internal/doctor"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	diagnostics "github.com/asudbring/loki-profile-manager/internal/doctor"
 )
 
 func TestDoctorNoStoreReportsWarning(t *testing.T) {

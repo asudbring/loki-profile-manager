@@ -166,10 +166,20 @@ func extractImportSkillZipFile(file *zip.File, destPath string, remainingBytes u
 	if err != nil {
 		return 0, fmt.Errorf("import-skill: create zip entry %s: %w", destPath, err)
 	}
+	if remainingBytes > uint64(1<<63-2) {
+		_ = writer.Close()
+		_ = os.Remove(destPath)
+		return 0, fmt.Errorf("import-skill: zip archive is too large after extraction (max %d bytes)", importSkillZipMaxUncompressedBytes)
+	}
 	limited := &io.LimitedReader{R: reader, N: int64(remainingBytes) + 1}
 	copied, copyErr := io.Copy(writer, limited)
 	closeErr := writer.Close()
-	if uint64(copied) > remainingBytes {
+	if copied < 0 {
+		_ = os.Remove(destPath)
+		return 0, fmt.Errorf("import-skill: extract zip entry %q: negative byte count", file.Name)
+	}
+	copiedBytes := uint64(copied)
+	if copiedBytes > remainingBytes {
 		_ = os.Remove(destPath)
 		return 0, fmt.Errorf("import-skill: zip archive is too large after extraction (max %d bytes)", importSkillZipMaxUncompressedBytes)
 	}
@@ -181,7 +191,7 @@ func extractImportSkillZipFile(file *zip.File, destPath string, remainingBytes u
 		_ = os.Remove(destPath)
 		return 0, fmt.Errorf("import-skill: close zip entry %s: %w", destPath, closeErr)
 	}
-	return uint64(copied), nil
+	return copiedBytes, nil
 }
 
 func findImportSkillZipRoot(extractRoot, zipPath string) (string, string, error) {

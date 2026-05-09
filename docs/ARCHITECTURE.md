@@ -402,6 +402,36 @@ infisical login
 
 Doctor reports Infisical readiness as a warning when missing or not ready, not a blocking issue unless a render operation later needs secrets.
 
+## Release packaging
+
+Release packaging is script-driven so the same asset set can be produced by GitHub Actions or locally.
+
+```mermaid
+flowchart TB
+    Commit[Git commit]
+    Tag[v* tag]
+    ReleaseWorkflow[.github/workflows/release.yml]
+    LocalScript[scripts/release-local.sh]
+    Validate[tests, vet, mod verify, syntax checks]
+    PackageRelease[scripts/package-release.sh]
+    PackageNpm[scripts/package-npm.sh]
+    Assets[dist/packages assets]
+    Checksums[checksums.txt + release-manifest.json]
+    Smoke[installer + npm smoke tests]
+    GitHubRelease[GitHub Release]
+
+    Commit --> Tag --> ReleaseWorkflow
+    Commit --> LocalScript
+    ReleaseWorkflow --> Validate
+    LocalScript --> Validate
+    Validate --> PackageRelease --> PackageNpm --> Assets
+    Assets --> Checksums
+    ReleaseWorkflow --> Smoke --> GitHubRelease
+    LocalScript -->|optional --upload| GitHubRelease
+```
+
+`package-release.sh` cross-compiles native binaries for Linux, macOS, and Windows on amd64 and arm64, then writes release archives, installer scripts, `release-manifest.json`, and `checksums.txt`. `package-npm.sh` embeds the native binaries into the npm tarball and rewrites the manifest/checksums to include the tarball. `release-local.sh` wraps validation and packaging for the no-Actions path, refuses destructive output directories outside repo `dist/`, and refuses to clobber an existing GitHub Release unless the remote tag points at the current commit.
+
 ## Current limitations
 
 - No setup CLI.

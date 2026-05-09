@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/secrets"
+	"github.com/asudbring/loki-profile-manager/internal/secrets"
 )
 
 type fakeRunner struct {
@@ -299,7 +299,7 @@ func TestClientReadsMachineIdentityFromDefaultEnvFile(t *testing.T) {
 	envFile := "# local Infisical machine auth\n" +
 		"export INFISICAL_AUTH_METHOD=universal-auth\n" +
 		"INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=file-client\n" +
-		"INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET='file-secret'\n" +
+		"INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET='file-x'\n" +
 		"INFISICAL_PROJECT_ID=file-project\n" +
 		"INFISICAL_HOST_URL=\"https://app.infisical.com\" # legacy alias\n"
 	if err := os.WriteFile(envPath, []byte(envFile), 0o600); err != nil {
@@ -311,7 +311,7 @@ func TestClientReadsMachineIdentityFromDefaultEnvFile(t *testing.T) {
 	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
 		t.Fatalf("GetSecrets() error = %v", err)
 	}
-	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "file-client", "--client-secret", "file-secret", "--domain", "https://app.infisical.com", "--plain", "--silent"}
+	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "file-client", "--client-secret", "file-x", "--domain", "https://app.infisical.com", "--plain", "--silent"}
 	wantGet := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "file-project"}
 	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) || !reflect.DeepEqual(runner.commands[1], wantGet) {
 		t.Fatalf("commands = %+v", runner.commands)

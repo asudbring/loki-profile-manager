@@ -8,10 +8,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/activation"
-	"github.com/allensu/loki-profile-manager/internal/config"
-	"github.com/allensu/loki-profile-manager/internal/infisical"
-	"github.com/allensu/loki-profile-manager/internal/manifest"
+	"github.com/asudbring/loki-profile-manager/internal/activation"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/infisical"
+	"github.com/asudbring/loki-profile-manager/internal/manifest"
 )
 
 type layerInfo struct {

@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/secrets"
+	"github.com/asudbring/loki-profile-manager/internal/secrets"
 )
 
 type Runner interface {
@@ -60,7 +60,7 @@ func (ExecRunner) RunInteractive(ctx context.Context, name string, args []string
 	return cmd.Run()
 }
 
-const readinessProbeSecret = "__LOKI_INFISICAL_READINESS_PROBE__"
+const readinessProbeSecret = "__LOKI_INFISICAL_READINESS_PROBE__" // #nosec G101 -- sentinel secret name, not a credential value.
 
 type Client struct {
 	Binary    string

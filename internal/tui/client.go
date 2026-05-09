@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
-	"github.com/allensu/loki-profile-manager/internal/machine"
+	"github.com/asudbring/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/machine"
 )
 
 type Client interface {

@@ -6,14 +6,11 @@ prerequisites:
     version: any
   - tool: go
     version: ">=1.23"
-  - account: github.com
-    permissions:
-      - read access to private repository asudbring/loki-profile-manager
-  - credential: github_auth
-    type: token
+  - account: null
+    permissions: []
 variables:
   - name: REPO_URL
-    description: Git URL for the private repository.
+    description: Git URL for the repository.
     required: false
     default: https://github.com/asudbring/loki-profile-manager.git
     sensitive: false
@@ -45,14 +42,14 @@ This procedure creates a development checkout of `loki-profile-manager`, validat
 
 - `git` available on PATH.
 - `go` 1.23 or later available on PATH.
-- Authenticated Git access to the private repository.
+- Network access to `github.com`.
 - Docker only if native Go validation cannot run.
 
 ## Variables
 
 | Name | Required | Default | Description |
 |---|---|---|---|
-| `REPO_URL` | no | `https://github.com/asudbring/loki-profile-manager.git` | Private repository URL. |
+| `REPO_URL` | no | `https://github.com/asudbring/loki-profile-manager.git` | Repository URL. |
 | `WORKDIR` | yes | `null` | Parent directory for the checkout. |
 | `REPO_DIR` | no | `${WORKDIR}/loki-profile-manager` | Checkout directory. |
 
@@ -62,7 +59,7 @@ Resolve `${WORKDIR}` before Step 1. If `${REPO_DIR}` is not provided, set it to 
 
 ## Step 1 — Verify Git access
 
-**Goal**: confirm Git can reach the private repository.
+**Goal**: confirm Git can reach the repository.
 
 **Command**:
 ```bash
@@ -76,7 +73,7 @@ git ls-remote "${REPO_URL}" HEAD | grep -E '^[0-9a-f]{40}[[:space:]]+HEAD$'
 
 **Expected output**: matches `^[0-9a-f]{40}[[:space:]]+HEAD$`
 
-**On failure**: authenticate to GitHub with `gh auth login` or configure Git credentials, then rerun this step. Do not print tokens.
+**On failure**: verify network access to `github.com` and confirm `${REPO_URL}` is correct. If using a private fork, authenticate with `gh auth login` or configure Git credentials, then rerun this step. Do not print tokens.
 
 **Idempotent**: true
 

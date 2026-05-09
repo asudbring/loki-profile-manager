@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	diagnostics "github.com/allensu/loki-profile-manager/internal/doctor"
+	diagnostics "github.com/asudbring/loki-profile-manager/internal/doctor"
 )
 
 func (m Model) doctorView() string {

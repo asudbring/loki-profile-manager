@@ -13,13 +13,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/allensu/loki-profile-manager/internal/activation"
-	"github.com/allensu/loki-profile-manager/internal/config"
-	"github.com/allensu/loki-profile-manager/internal/db"
-	lokilog "github.com/allensu/loki-profile-manager/internal/log"
-	"github.com/allensu/loki-profile-manager/internal/machine"
-	"github.com/allensu/loki-profile-manager/internal/secrets"
-	"github.com/allensu/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/activation"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/db"
+	lokilog "github.com/asudbring/loki-profile-manager/internal/log"
+	"github.com/asudbring/loki-profile-manager/internal/machine"
+	"github.com/asudbring/loki-profile-manager/internal/secrets"
+	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
 var Version = "dev"

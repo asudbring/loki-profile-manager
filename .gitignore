@@ -12,6 +12,9 @@
 *.sqlite-wal
 /logs/
 
+# Agent/local workspace state
+.pi/
+
 # OS/editor
 .DS_Store
 Thumbs.db

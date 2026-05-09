@@ -5,8 +5,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 
-	"github.com/allensu/loki-profile-manager/internal/activation"
-	"github.com/allensu/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/activation"
+	"github.com/asudbring/loki-profile-manager/internal/app"
 )
 
 type switchFingerprint struct {

@@ -1,4 +1,4 @@
-module github.com/allensu/loki-profile-manager
+module github.com/asudbring/loki-profile-manager
 
 go 1.23.0
 

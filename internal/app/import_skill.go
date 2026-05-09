@@ -10,10 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/allensu/loki-profile-manager/internal/activation"
-	"github.com/allensu/loki-profile-manager/internal/manifest"
-	"github.com/allensu/loki-profile-manager/internal/skills"
-	"github.com/allensu/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/activation"
+	"github.com/asudbring/loki-profile-manager/internal/manifest"
+	"github.com/asudbring/loki-profile-manager/internal/skills"
+	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
 type ImportSkillRequest struct {

@@ -8,9 +8,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
-	"github.com/allensu/loki-profile-manager/internal/config"
-	lokiui "github.com/allensu/loki-profile-manager/internal/tui"
+	"github.com/asudbring/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	lokiui "github.com/asudbring/loki-profile-manager/internal/tui"
 )
 
 func TestHelpPrints(t *testing.T) {

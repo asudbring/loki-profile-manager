@@ -6,12 +6,15 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 
 ## Unreleased
 
+- Prepared the repository for public release with MIT licensing, a public security policy, sanitized current docs, and a module path aligned to `github.com/asudbring/loki-profile-manager`.
+- Added public release documentation, an AI-operator release procedure, and a local release fallback for periods when GitHub Actions is unavailable.
 - Added Windows PowerShell and macOS/Linux shell install/uninstall scripts, release manifests, installer-aware packaging, CI installer smoke jobs, and release workflow smoke-before-upload gates.
 - Added no-args TUI launch: `loki` opens the terminal UI, while commands/flags keep CLI behavior.
 - Added persistent store management with `loki store status|discover|use|init|unset`, plus TUI Store setup and TUI machine registration flows.
 - Added `loki tui` Bubble Tea MVP with dashboard, doctor/machine/secrets/profile views, guarded switch flow, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff.
 - Added `loki sync --dry-run|--yes` MVP for provider conflict-copy detection and deletion with current-machine-wins semantics; TUI/app execution guards now use stable conflict fingerprints and dry-run writes nothing.
 - Added `loki import-skill <source>` folder/zip-import MVP for validated skill folders and safe `.zip` archives into common, profile core, or profile bucket store layers.
+- Added a local no-GitHub-Actions dogfood release script and manual release guide.
 - Added `loki secrets login|status|check` Infisical V1 UX for render-template readiness without storing or printing secret values.
 - Added Infisical machine identity support via `INFISICAL_TOKEN` or Universal Auth environment variables with explicit `--projectId` routing for machine-auth secret reads.
 - Fixed Infisical secret checks to treat existing empty-valued secrets as available, keep non-missing read failures redacted, and retry stale `INFISICAL_TOKEN` values with Universal Auth when configured.
@@ -24,7 +27,7 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 
 ## v0.1.0-doctor.1 — 2026-05-04
 
-First packaged private dogfood prerelease.
+First packaged dogfood prerelease.
 
 - Added `loki doctor [--json]` for read-only environment, store, machine, snapshot, lock, SQLite, conflict-copy, and Infisical CLI diagnostics.
 - Added release packaging workflow for Windows/macOS/Linux amd64/arm64 archives with checksum generation and version injection.
@@ -36,7 +39,7 @@ Validation milestone for the CLI-native full snapshot restore consent gate.
 - Dogfooded full snapshot restore consent on Windows ARM64 using disposable `dogfood-crossos` target only.
 - Verified wrong consent is blocked before restore execution.
 - Verified exact `RESTORE <snapshot-id>` consent executes full restore after matching dry-run guard.
-- Verified target hash before/after stayed unchanged for `C:\Users\allen\loki-dogfood\probe.txt`.
+- Verified target hash before/after stayed unchanged for `%USERPROFILE%\loki-dogfood\probe.txt`.
 - Did not run full restore against real dotfiles.
 - Commit: `b7b3910 docs: record full restore consent dogfood`.
 
@@ -48,15 +51,15 @@ Safety milestone for full snapshot restore UX.
 - Full restore now requires typing exact `RESTORE <snapshot-id>` before service execution.
 - Kept targeted restore behavior unchanged: `--target <path>` still requires a scoped dry-run guard but no full active-state prompt.
 - Added tests for accepted full restore consent, rejected wrong consent, and targeted restore prompt bypass.
-- Updated `README.md`, `docs/USAGE.md`, and `SCRIBE-REPORT.md`.
+- Updated `README.md` and `docs/USAGE.md`.
 - Commit: `34fde0d feat: gate full snapshot restore consent`.
 
 ## real-dotfile-targeted-restore-dogfood — 2026-05-04
 
 Validation milestone for guarded targeted restore on real low-risk dotfiles.
 
-- Dogfooded consent-gated targeted restore on Windows ARM64 for `C:\Users\allen\.config\git\ignore`.
-- Dogfooded consent-gated targeted restore on Windows ARM64 for `C:\Users\allen\.gitconfig`.
+- Dogfooded consent-gated targeted restore on Windows ARM64 for `%USERPROFILE%\.config\git\ignore`.
+- Dogfooded consent-gated targeted restore on Windows ARM64 for `%USERPROFILE%\.gitconfig`.
 - Used `snapshots restore <snapshot-id> --dry-run --target <path>` before each matching `--yes --target <path>`.
 - Verified exact user consent phrase before each real-dotfile targeted restore.
 - Verified before/after hashes matched for both targets.

@@ -5,20 +5,17 @@ Loki Profile Manager can be installed from a release npm tarball, GitHub release
 Requirements for the release npm tarball:
 
 - Node.js 18 or later with npm.
-- Access to the private GitHub release asset.
-- The downloaded `asudbring-loki-profile-manager-<npm-version>.tgz` file.
+- The downloaded `asudbring-loki-profile-manager-<npm-version>.tgz` file from GitHub Releases.
 
 Requirements for release binaries:
 
-- Access to the private GitHub repository.
-- A downloaded release archive for your OS/architecture.
+- A downloaded release archive for your OS/architecture from GitHub Releases.
 - `checksums.txt` from the same release.
 
 Requirements for source builds:
 
 - Git.
 - Go 1.23 or later.
-- Access to the private GitHub repository.
 - Optional: Docker, for validation on machines without Go.
 
 Supported targets:
@@ -59,7 +56,7 @@ npm config get prefix
 $env:PATH
 ```
 
-The user npm global bin is usually `%APPDATA%\npm` (for example, `C:\Users\allen\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`. The bundled native binary remains under the npm package's `vendor\win32-<arch>` directory, but the normal entry point is the npm shim.
+The user npm global bin is usually `%APPDATA%\npm` (for example, `%USERPROFILE%\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`. The bundled native binary remains under the npm package's `vendor\win32-<arch>` directory, but the normal entry point is the npm shim.
 
 Uninstall removes only the npm wrapper and bundled binary. Loki local state, synced stores, and managed targets are not part of the npm package and are preserved:
 
@@ -204,7 +201,7 @@ Npm global installs create a platform shim in the npm global bin directory. If `
    npm config get prefix
    ```
 
-3. Confirm the prefix directory is on `PATH`. For the default per-user prefix, add `%APPDATA%\npm` (for example, `C:\Users\allen\AppData\Roaming\npm`).
+3. Confirm the prefix directory is on `PATH`. For the default per-user prefix, add `%APPDATA%\npm` (for example, `%USERPROFILE%\AppData\Roaming\npm`).
 4. Confirm Node.js is on `PATH` (`C:\Program Files\nodejs` for the standard Windows installer).
 5. Retry `loki --version` in PowerShell and Command Prompt.
 
@@ -325,11 +322,11 @@ Git Bash for Windows from this repository path:
 
 ```bash
 MSYS_NO_PATHCONV=1 docker run --rm \
-  -v "C:/Users/allensu/github/loki-profile-manager:/work" \
+  -v "C:/Users/<user>/github/loki-profile-manager:/work" \
   -w /work golang:1.23 go test ./...
 
 MSYS_NO_PATHCONV=1 docker run --rm \
-  -v "C:/Users/allensu/github/loki-profile-manager:/work" \
+  -v "C:/Users/<user>/github/loki-profile-manager:/work" \
   -w /work golang:1.23 go vet ./...
 ```
 

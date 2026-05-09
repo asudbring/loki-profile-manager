@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/allensu/loki-profile-manager/internal/db"
+	"github.com/asudbring/loki-profile-manager/internal/db"
 )
 
 func TestClassifyTargetSafetyStates(t *testing.T) {

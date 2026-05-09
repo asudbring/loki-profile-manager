@@ -2,7 +2,7 @@
   "name": "@asudbring/loki-profile-manager",
   "version": "0.0.0-dev",
   "description": "Cross-platform installer wrapper for the Loki Profile Manager CLI.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "bin": {
     "loki": "bin/loki.js"
   },

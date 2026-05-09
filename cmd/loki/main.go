@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/allensu/loki-profile-manager/internal/cli"
+	"github.com/asudbring/loki-profile-manager/internal/cli"
 )
 
 func main() {

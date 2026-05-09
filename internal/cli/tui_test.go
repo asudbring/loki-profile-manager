@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/allensu/loki-profile-manager/internal/app"
-	"github.com/allensu/loki-profile-manager/internal/config"
-	lokiui "github.com/allensu/loki-profile-manager/internal/tui"
+	"github.com/asudbring/loki-profile-manager/internal/app"
+	"github.com/asudbring/loki-profile-manager/internal/config"
+	lokiui "github.com/asudbring/loki-profile-manager/internal/tui"
 )
 
 func TestTUIHelpPrints(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
-	"github.com/allensu/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

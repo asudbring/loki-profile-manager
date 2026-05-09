@@ -37,7 +37,7 @@ jobs:
           go vet ./...
           go mod verify
           go build -trimpath -o "$RUNNER_TEMP/loki" ./cmd/loki
-          bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/package-npm.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh
+          bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/package-npm.sh scripts/release-local.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh
           node --check npm/bin/loki.js
           pwsh -NoProfile -Command '
             $allErrors = @()
@@ -169,7 +169,7 @@ jobs:
           cat > "$notes" <<'NOTES'
           ## Loki Profile Manager __VERSION__
 
-          Private dogfood release.
+          Prerelease build.
 
           ### Install
 
@@ -189,7 +189,7 @@ jobs:
           macOS/Linux script install:
 
           ```bash
-          ./install.sh --version __VERSION__ --archive ./loki___VERSION___darwin_arm64.tar.gz --checksums ./checksums.txt
+          ./install.sh --version __VERSION__ --archive ./loki___VERSION___<os>_<arch>.tar.gz --checksums ./checksums.txt
           ```
 
           ### Notes
