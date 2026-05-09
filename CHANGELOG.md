@@ -8,13 +8,18 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
+## v0.1.2 — 2026-05-09
+
+Patch release for tag-based npm publishing.
+
+- Fixed release workflow tarball paths so `npm publish` treats generated `.tgz` files as local files.
+
 ## v0.1.1 — 2026-05-09
 
 Patch release for npm registry distribution.
 
 - Added npm registry publishing to the tag-based release workflow.
 - Added a manual npm publish workflow for republishing or repairing package access.
-- Fixed workflow tarball paths so `npm publish` treats generated `.tgz` files as local files.
 - Updated install and release documentation to prefer `npm install -g @asudbring/loki-profile-manager`.
 - Fixed npm access repair command in the manual publish workflow.
 
