@@ -2,9 +2,15 @@
 
 All notable Loki Profile Manager changes are tracked here.
 
-This project is still pre-release. Tags below are dogfood and safety milestones, not stable semver releases.
+This project uses 0.x semver. Hyphenated tags are dogfood or prerelease milestones; plain semver tags are public releases.
 
 ## Unreleased
+
+- Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
+
+## v0.1.0 — 2026-05-09
+
+First public 0.x release. Validated with public GitHub Actions CI/release workflows and dogfood installs on macOS and Windows.
 
 - Prepared the repository for public release with MIT licensing, a public security policy, sanitized current docs, and a module path aligned to `github.com/asudbring/loki-profile-manager`.
 - Added public release documentation, an AI-operator release procedure, and a local release fallback for periods when GitHub Actions is unavailable.
@@ -23,7 +29,6 @@ This project is still pre-release. Tags below are dogfood and safety milestones,
 - Fixed skill validation for Markdown references with optional titles, UTF-8 BOM-prefixed `SKILL.md` files, and root-relative web paths; missing or escaping relative reference assets now warn instead of blocking migration.
 - Documented dogfood install troubleshooting for GitHub release npm tarballs, Windows npm global PATH, and transient OneDrive locks on `registry\machines.json`.
 - Added pre-switch local-change capture for copied managed targets with `loki switch --capture-local`; render and merge drift are reported but not auto-captured.
-- Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.0-doctor.1 — 2026-05-04
 

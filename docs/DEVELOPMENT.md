@@ -107,8 +107,8 @@ GitHub Actions runs native tests and cross-compilation in `.github/workflows/ci.
 Release tags must be semver-shaped and start with `v`, for example:
 
 ```bash
-git tag v0.1.0-doctor.1
-git push origin v0.1.0-doctor.1
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow validates tests, packages Linux/macOS/Windows amd64/arm64 archives, writes `checksums.txt`, uploads artifacts, runs installer and npm smoke tests, and creates a GitHub Release. Hyphenated versions are marked prerelease.
@@ -116,14 +116,14 @@ Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow valid
 Local fallback release build that does not require GitHub Actions:
 
 ```bash
-./scripts/release-local.sh v0.1.0-doctor.1
+./scripts/release-local.sh v0.1.0
 ```
 
 Package-only lower-level build:
 
 ```bash
-./scripts/package-release.sh v0.1.0-doctor.1
-./scripts/package-npm.sh v0.1.0-doctor.1
+./scripts/package-release.sh v0.1.0
+./scripts/package-npm.sh v0.1.0
 ```
 
 Version injection uses linker flags:
@@ -133,7 +133,7 @@ go build -trimpath -ldflags "-X github.com/asudbring/loki-profile-manager/intern
 ./dist/loki-test --version
 ```
 
-Release archives include the binary, `README.md`, and `CHANGELOG.md`. Verify archives with `checksums.txt` before dogfood.
+Release archives include the binary, `README.md`, and `CHANGELOG.md`. Verify archives with `checksums.txt` before dogfood or stable promotion.
 
 ## Build commands
 

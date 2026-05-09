@@ -31,9 +31,9 @@ OneDrive/Dropbox/iCloud/etc. are the sync transport. Loki must read and write a 
 
 ## npm tarball install
 
-The release npm tarball is the preferred cross-platform installer for dogfood releases. It bundles all supported native Loki binaries and installs a `loki` wrapper on PATH.
+The release npm tarball is the preferred cross-platform installer for GitHub Release assets. It bundles all supported native Loki binaries and installs a `loki` wrapper on PATH.
 
-Download the `.tgz` asset from the GitHub release, then install it. `<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`). This package is currently distributed as a GitHub release asset, not through the public npm registry.
+Download the `.tgz` asset from the GitHub release, then install it. `<npm-version>` is the release version without the leading `v` (for example, tag `v0.1.0` produces `asudbring-loki-profile-manager-0.1.0.tgz`). This package is currently distributed as a GitHub release asset, not through the public npm registry.
 
 ```bash
 npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz

@@ -20,7 +20,7 @@ Before switching, Loki also checks copied managed targets from the currently act
 
 ## Install from release binary
 
-Release assets are published from semver tags such as `v0.1.0-doctor.1`. Download assets from the GitHub Releases page.
+Release assets are published from semver tags such as `v0.1.0`. Download assets from the GitHub Releases page.
 
 Recommended cross-platform install is the release npm tarball. It bundles Loki binaries for Windows, macOS, and Linux on amd64/arm64, and npm uninstall only removes the wrapper/bundled binary.
 
@@ -29,7 +29,7 @@ npm install -g ./asudbring-loki-profile-manager-<npm-version>.tgz
 loki --version
 ```
 
-`<npm-version>` is the release version without the leading `v` (for example, tag `v0.0.0-dogfood.3` produces `asudbring-loki-profile-manager-0.0.0-dogfood.3.tgz`). The package is installed from the downloaded GitHub release tarball; it is not published to the npm registry yet. Script installers remain available for direct archive installs.
+`<npm-version>` is the release version without the leading `v` (for example, tag `v0.1.0` produces `asudbring-loki-profile-manager-0.1.0.tgz`). The package is installed from the downloaded GitHub release tarball; it is not published to the npm registry yet. Script installers remain available for direct archive installs.
 
 On Windows, open a new shell after npm global install and make sure the npm global bin directory is on `PATH` (typically `%APPDATA%\npm`, for example `%USERPROFILE%\AppData\Roaming\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`.
 
@@ -189,7 +189,7 @@ TUI MVP screens cover dashboard diagnostics, persistent store setup, machine reg
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — package map and development workflow.
 - [`docs/RELEASE.md`](docs/RELEASE.md) — public Actions release path and local fallback release process.
 - [`docs/ai-ops/release.ai.md`](docs/ai-ops/release.ai.md) — AI-operator release procedure.
-- [`CHANGELOG.md`](CHANGELOG.md) — pre-release dogfood and safety milestones.
+- [`CHANGELOG.md`](CHANGELOG.md) — release history and safety milestones.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, PR expectations, and safety rules.
 - [`SECURITY.md`](SECURITY.md) — vulnerability reporting and security boundaries.
 - [`docs/ai-ops/install.ai.md`](docs/ai-ops/install.ai.md) — AI-operator install/test procedure.

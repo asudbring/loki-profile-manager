@@ -17,8 +17,8 @@ go test ./...
 go vet ./...
 go mod verify
 
-git tag v0.0.0-dogfood.10
-git push origin v0.0.0-dogfood.10
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow:
@@ -31,12 +31,12 @@ Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow:
 6. Runs npm global install smoke tests on Ubuntu, macOS, and Windows.
 7. Creates or updates the GitHub Release and uploads assets.
 
-Hyphenated versions such as `v0.0.0-dogfood.10` are prereleases.
+Hyphenated versions such as `v0.1.0-beta.1` are prereleases. Plain versions such as `v0.1.0` are stable 0.x releases.
 
 You can also dispatch the workflow manually:
 
 ```bash
-gh workflow run release.yml -f version=v0.0.0-dogfood.10
+gh workflow run release.yml -f version=v0.1.0
 ```
 
 ## Local fallback release
@@ -46,7 +46,7 @@ Use this lane when GitHub Actions is unavailable or when validating a package se
 From a clean working tree:
 
 ```bash
-./scripts/release-local.sh v0.0.0-dogfood.10
+./scripts/release-local.sh v0.1.0
 ```
 
 Default behavior:
@@ -62,21 +62,21 @@ Default behavior:
 4. Verifies `checksums.txt` locally.
 5. Stops without creating tags, pushing tags, or uploading anything.
 
-Output goes to `dist/packages` unless `--out-dir <dir>` is set. The output directory is cleaned by the packaging step, so `release-local.sh` only accepts paths under this repo's `dist/` directory, such as `dist/packages` or `dist/manual/v0.0.0-dogfood.10`.
+Output goes to `dist/packages` unless `--out-dir <dir>` is set. The output directory is cleaned by the packaging step, so `release-local.sh` only accepts paths under this repo's `dist/` directory, such as `dist/packages` or `dist/manual/v0.1.0`.
 
 ## Install local package
 
-The npm tarball is the preferred dogfood installer because it carries every supported native binary.
+The npm tarball is the preferred local installer because it carries every supported native binary.
 
 ```bash
-npm install -g ./dist/packages/asudbring-loki-profile-manager-0.0.0-dogfood.10.tgz
+npm install -g ./dist/packages/asudbring-loki-profile-manager-0.1.0.tgz
 loki --version
 ```
 
 Expected version:
 
 ```text
-v0.0.0-dogfood.10
+v0.1.0
 ```
 
 ## Optional GitHub Release upload from local build
@@ -84,7 +84,7 @@ v0.0.0-dogfood.10
 If a GitHub Release asset set is useful while Actions is unavailable, rebuild from the current commit and upload:
 
 ```bash
-./scripts/release-local.sh v0.0.0-dogfood.10 --skip-validation --upload
+./scripts/release-local.sh v0.1.0 --skip-validation --upload
 ```
 
 `--upload` creates or updates the GitHub Release and uploads `dist/packages/*`. Existing release assets are replaced with `gh release upload --clobber` only if the remote tag for the version points at the current commit. This protects release provenance: assets built from commit A must not replace assets for a tag that points at commit B.
@@ -101,7 +101,7 @@ Notes:
 If the release already exists and you want to replace assets after a validation run from the same commit:
 
 ```bash
-./scripts/release-local.sh v0.0.0-dogfood.10 --skip-validation --upload
+./scripts/release-local.sh v0.1.0 --skip-validation --upload
 ```
 
 The script rebuilds packages from the current commit, checks that the remote tag points at that same commit, then uploads with `--clobber`.
@@ -195,7 +195,7 @@ WINDOWS_ZIP_IMPORT_OK
 
 ## Stable release gate
 
-Do not promote a stable `v0.1.0` until:
+Do not promote a stable tag until:
 
 - Public CI is green on Ubuntu, macOS, and Windows.
 - Release workflow installer and npm smoke tests pass.

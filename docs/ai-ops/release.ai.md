@@ -16,7 +16,7 @@ prerequisites:
     version: any
 variables:
   - name: VERSION
-    description: Release version tag, for example v0.0.0-dogfood.10.
+    description: Release version tag, for example v0.1.0.
     required: true
     default: null
     sensitive: false
@@ -56,7 +56,7 @@ This procedure validates the current checkout, builds a local release asset set,
 
 | Name | Required | Default | Description |
 |---|---|---|---|
-| `VERSION` | yes | `null` | Release version tag, for example `v0.0.0-dogfood.10`. |
+| `VERSION` | yes | `null` | Release version tag, for example `v0.1.0`. |
 | `OUT_DIR` | no | `dist/packages` | Package output directory under repo `dist/`. |
 | `UPLOAD` | no | `false` | Set to `true` to upload assets to GitHub Release. |
 
@@ -98,7 +98,7 @@ case "${VERSION}" in v[0-9]*.[0-9]*.[0-9]*) exit 0 ;; *) echo "invalid VERSION: 
 case "${VERSION}" in v[0-9]*.[0-9]*.[0-9]*) exit 0 ;; *) exit 1 ;; esac
 ```
 
-**On failure**: choose a semver tag such as `v0.0.0-dogfood.10`.
+**On failure**: choose a semver tag such as `v0.1.0`.
 
 **Idempotent**: true
 
