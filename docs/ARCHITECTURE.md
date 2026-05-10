@@ -361,6 +361,7 @@ The overwrite detector uses `os.Lstat`, symlink inspection, target hashes, and `
 | Missing | Safe. |
 | Loki-managed symlink | Safe only when a symlink-mode `managed_targets` record matches the link target. |
 | Loki-managed file/directory hash match | Safe. |
+| Loki-managed render target | Safe for render operations; regenerated from the template. |
 | Obsolete Loki-managed target hash match | Removed after successful switch and deleted from local state. |
 | Obsolete Loki-managed target hash mismatch | Blocks before activation; capture, remove, or adopt manually. |
 | Unmanaged file | Blocked. |
@@ -375,7 +376,7 @@ This is why migration/adoption is required before using Loki on a machine with e
 
 Activation rollback restores target files from the local snapshot. Targets that did not exist before activation are removed only if they still match the Loki-created hash and mode. Prior `managed_targets` rows and active profile/bucket key-value state are restored from snapshot metadata after filesystem rollback succeeds. If filesystem rollback fails, DB state is left unchanged and the snapshot path is reported for manual recovery.
 
-After successful activation, Loki compares local `managed_targets` against the new activation plan. Records absent from the new plan are obsolete. Missing obsolete targets only lose their stale state record. Existing obsolete targets are removed only when their hash still matches the last Loki-applied hash. Changed obsolete targets block before activation so old profile skills and app config cannot silently leak into the newly active profile.
+After successful activation, Loki compares local `managed_targets` against the new activation plan. Records absent from the new plan are obsolete. Missing obsolete targets only lose their stale state record. Existing obsolete targets are removed only when their hash still matches the last Loki-applied hash. Render targets are generated from templates, so obsolete rendered files are removed even if their local hash drifted. Changed obsolete targets in other modes block before activation so old profile skills and app config cannot silently leak into the newly active profile.
 
 Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with local `metadata.json` files and marks stale/missing directories as degraded instead of panicking. `loki snapshots show` reads metadata only: target paths, kinds, hashes, modes, and snapshot entry paths. It never reads or prints snapshot entry contents.
 

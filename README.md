@@ -16,7 +16,7 @@ Loki creates and validates a local store layout, tracks machine identity and mac
 
 Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories. A target must be missing, already managed by Loki, or adopted by migration/adoption commands before activation can overwrite it.
 
-Before switching, Loki also checks copied managed targets from the currently active profile for local edits. If a tool changed a copied settings file, `loki switch` reports the local change and blocks real activation until you either resolve it or rerun with `--capture-local` to write safe copy-mode changes back to the store. Symlinked targets already write directly to the store; rendered outputs are never captured because they can contain secrets.
+Before switching, Loki also checks copied managed targets from the currently active profile for local edits. If a tool changed a copied settings file, `loki switch` reports the local change and blocks real activation until you either resolve it or rerun with `--capture-local` to write safe copy-mode changes back to the store. Symlinked targets already write directly to the store; rendered outputs are never captured because they can contain secrets, and Loki regenerates them from templates during activation.
 
 After a successful switch, Loki prunes obsolete managed targets that are not part of the newly active profile, such as old profile skill directories. Pruning is hash-guarded: unchanged Loki-managed targets are removed and their state records are deleted; changed obsolete targets block and require manual capture, removal, or adoption.
 

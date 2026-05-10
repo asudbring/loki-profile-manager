@@ -57,6 +57,10 @@ func ClassifyTarget(ctx context.Context, database *sql.DB, op Operation) (Safety
 		return SafetyStatus{}, fmt.Errorf("classify target %s: %w", op.TargetPath, err)
 	}
 
+	if found && record.Mode == string(OperationRender) && op.Type == OperationRender && !info.IsDir() && info.Mode()&os.ModeSymlink == 0 {
+		return SafetyStatus{Class: SafetyManagedGenerated, Safe: true, Message: "existing rendered target is managed by Loki and will be regenerated", Managed: true}, nil
+	}
+
 	if info.Mode()&os.ModeSymlink != 0 {
 		linkTarget, err := os.Readlink(op.TargetPath)
 		if err != nil {

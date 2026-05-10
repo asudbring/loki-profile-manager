@@ -88,7 +88,7 @@ func classifyCaptureChange(record ManagedTarget) (CaptureChange, bool, error) {
 	if record.TargetPath == "" || record.ContentHash == "" {
 		return CaptureChange{}, false, nil
 	}
-	if record.Mode == string(OperationSymlink) {
+	if record.Mode == string(OperationSymlink) || record.Mode == string(OperationRender) {
 		return CaptureChange{}, false, nil
 	}
 	info, infoErr := os.Lstat(record.TargetPath)

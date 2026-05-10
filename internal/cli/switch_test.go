@@ -130,6 +130,9 @@ func TestSwitchCLIUnsafeOverwriteReturnsError(t *testing.T) {
 	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unsafe target overwrite") {
 		t.Fatalf("Execute() error = %v output=%s", err, out.String())
 	}
+	if got := out.String(); !strings.Contains(got, "Loki switch failed") || strings.Contains(got, "Loki switch complete") {
+		t.Fatalf("output = %s", got)
+	}
 	if got := string(mustRead(t, target)); got != "local" {
 		t.Fatalf("target changed to %q", got)
 	}

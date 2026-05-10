@@ -221,6 +221,40 @@ func TestSwitchBlocksChangedStaleObsoleteManagedTargets(t *testing.T) {
 	}
 }
 
+func TestSwitchRegeneratesChangedRenderTargets(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}, SecretProvider: fakeAppSecretProvider{values: map[string]string{}}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := renderSwitchStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work", "dev"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	target := filepath.Join(home, ".codex", "config.toml")
+
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work"}); err != nil {
+		t.Fatalf("Switch(work) error = %v", err)
+	}
+	if got := readAppFile(t, target); got != "profile = \"work\"\n" {
+		t.Fatalf("work render target = %q", got)
+	}
+	writeAppFile(t, target, "profile = \"runtime\"\n")
+
+	result, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "dev"})
+	if err != nil {
+		t.Fatalf("Switch(dev) error = %v result=%+v", err, result)
+	}
+	if len(result.CapturePlan.Changes) != 0 {
+		t.Fatalf("capture plan = %+v", result.CapturePlan)
+	}
+	if got := readAppFile(t, target); got != "profile = \"dev\"\n" {
+		t.Fatalf("dev render target = %q", got)
+	}
+}
+
 func TestSwitchFailsWhenStoreOperationLockHeld(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()
@@ -282,6 +316,36 @@ ignore: []
 merge_rules: {}
 targets: {}
 `)
+	return root
+}
+
+func renderSwitchStore(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "loki")
+	if _, err := store.EnsureLayout(root); err != nil {
+		t.Fatalf("EnsureLayout() error = %v", err)
+	}
+	for _, item := range []struct {
+		profile string
+		content string
+	}{
+		{profile: "work", content: "profile = \"work\"\n"},
+		{profile: "dev", content: "profile = \"dev\"\n"},
+	} {
+		writeAppFile(t, filepath.Join(root, "profiles", item.profile, "core", "templates", "config.toml.template"), item.content)
+		writeAppFile(t, filepath.Join(root, "profiles", item.profile, "core", "manifest.yaml"), `version: 1
+name: `+item.profile+`-core
+files:
+  - id: codex-config
+    source: templates/config.toml.template
+    target: "~/.codex/config.toml"
+    mode: render
+skills: []
+ignore: []
+merge_rules: {}
+targets: {}
+`)
+	}
 	return root
 }
 

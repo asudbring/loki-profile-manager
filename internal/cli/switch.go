@@ -30,7 +30,7 @@ func newSwitchCommand(resolver config.PathResolver, globals *globalOptions, fact
 			}
 			defer svc.Close()
 			result, err := svc.Switch(cmd.Context(), app.SwitchRequest{ParentProfile: args[0], Buckets: args[1:], DryRun: dryRun, Yes: yes, CaptureLocal: captureLocal})
-			printSwitchResult(cmd, result, globals.verbose)
+			printSwitchResult(cmd, result, globals.verbose, err)
 			return err
 		},
 	}
@@ -40,10 +40,12 @@ func newSwitchCommand(resolver config.PathResolver, globals *globalOptions, fact
 	return cmd
 }
 
-func printSwitchResult(cmd *cobra.Command, result app.SwitchResult, verbose bool) {
+func printSwitchResult(cmd *cobra.Command, result app.SwitchResult, verbose bool, resultErr error) {
 	out := cmd.OutOrStdout()
 	if result.DryRun {
 		fmt.Fprintln(out, "Loki switch dry-run")
+	} else if result.Plan.Profile != "" && resultErr != nil {
+		fmt.Fprintln(out, "Loki switch failed")
 	} else if result.Plan.Profile != "" {
 		fmt.Fprintln(out, "Loki switch complete")
 	}

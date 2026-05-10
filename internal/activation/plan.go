@@ -19,6 +19,7 @@ const (
 	SafetyMissing             SafetyClass = "missing"
 	SafetyManagedSymlink      SafetyClass = "loki_managed_symlink"
 	SafetyManagedFileHash     SafetyClass = "loki_managed_file_hash"
+	SafetyManagedGenerated    SafetyClass = "loki_managed_generated"
 	SafetyUnmanagedFile       SafetyClass = "unmanaged_file"
 	SafetyUnmanagedDirectory  SafetyClass = "unmanaged_directory"
 	SafetyBrokenSymlink       SafetyClass = "broken_symlink"

@@ -108,6 +108,34 @@ func TestListManagedTargetsSorted(t *testing.T) {
 	}
 }
 
+func TestClassifyTargetAllowsChangedRenderTarget(t *testing.T) {
+	ctx := context.Background()
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	template := filepath.Join(root, "config.toml.template")
+	target := filepath.Join(root, "config.toml")
+	writeFile(t, template, "profile = \"work\"\n")
+	writeFile(t, target, "profile = \"work\"\n")
+	hash, err := HashPath(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := Operation{Type: OperationRender, SourcePath: template, TargetPath: target, LayerKind: "core", LayerName: "work"}
+	if err := UpsertManagedTarget(ctx, database, op, hash, time.Now()); err != nil {
+		t.Fatalf("UpsertManagedTarget() error = %v", err)
+	}
+	writeFile(t, target, "profile = \"runtime\"\n")
+
+	safety, err := ClassifyTarget(ctx, database, op)
+	if err != nil {
+		t.Fatalf("ClassifyTarget() error = %v", err)
+	}
+	if safety.Class != SafetyManagedGenerated || !safety.Safe {
+		t.Fatalf("render safety = %+v", safety)
+	}
+}
+
 func TestClassifyTargetBrokenSymlinkBlocks(t *testing.T) {
 	ctx := context.Background()
 	database := activationDB(t)

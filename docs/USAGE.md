@@ -477,12 +477,12 @@ Behavior:
 - Builds an activation plan from the selected profile layers.
 - Scans the currently active managed targets for local drift before switching.
 - If copied targets changed locally and the store source is unchanged, reports a capture plan. Real switches block until rerun with `--capture-local`; `--capture-local` writes those safe local changes back to the store first.
-- Symlink targets need no capture because app writes already land in the store. Render targets are never captured because rendered output can contain secrets. Merge target capture is detected but manual in this MVP.
+- Symlink targets need no capture because app writes already land in the store. Render targets are never captured because rendered output can contain secrets; Loki regenerates them from templates during activation. Merge target capture is detected but manual in this MVP.
 - If both local target and store source changed since the last switch/adoption, capture blocks as a conflict and requires manual resolution.
 - Classifies target safety before writing.
 - Blocks unmanaged files, unmanaged directories, broken symlinks, managed hash mismatches, and targets outside the configured home root.
 - Creates a local snapshot before real activation writes.
-- Executes symlink, copy, structured merge, and render operations.
+- Executes symlink, copy, structured merge, and render operations. Existing render targets are regenerated even when their local hash drifted, because rendered output is generated and not capturable.
 - Removes obsolete managed targets that are no longer part of the active profile after a successful switch. Cleanup only removes missing or unchanged Loki-managed targets; changed obsolete targets block the switch and require manual capture, removal, or adoption.
 - Rolls back target files, managed-target DB rows, and active local state if activation fails after snapshot creation and filesystem rollback succeeds.
 - Updates local managed target hashes and machine heartbeat after successful activation.
@@ -779,6 +779,7 @@ Supported structured formats:
 | Missing | Safe. |
 | Loki-managed symlink | Safe only when a symlink-mode `managed_targets` record matches the link target. |
 | Loki-managed file or directory with matching hash | Safe. |
+| Loki-managed render target | Safe for render operations; regenerated from the template. |
 | Obsolete Loki-managed target with matching hash | Removed during post-switch cleanup and deleted from local state. |
 | Obsolete Loki-managed target with changed hash | Blocked; capture, remove, or adopt manually. |
 | Unmanaged file | Blocked. |

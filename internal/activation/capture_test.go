@@ -144,38 +144,59 @@ func TestBuildCapturePlanIgnoresSymlinkManagedTargets(t *testing.T) {
 	}
 }
 
-func TestBuildCapturePlanBlocksRenderAndMergeTargets(t *testing.T) {
+func TestBuildCapturePlanIgnoresRenderManagedTargets(t *testing.T) {
 	ctx := context.Background()
 	database := activationDB(t)
 	defer database.Close()
 	root := t.TempDir()
-	for _, mode := range []OperationType{OperationRender, OperationMerge} {
-		source := filepath.Join(root, string(mode), "source")
-		target := filepath.Join(root, string(mode), "target")
-		writeFile(t, source, "old")
-		writeFile(t, target, "old")
-		hash, err := HashPath(target)
-		if err != nil {
-			t.Fatal(err)
-		}
-		op := Operation{Type: mode, SourcePath: source, TargetPath: target, LayerKind: "core", LayerName: "work"}
-		if err := UpsertManagedTarget(ctx, database, op, hash, time.Now()); err != nil {
-			t.Fatalf("UpsertManagedTarget(%s) error = %v", mode, err)
-		}
-		writeFile(t, target, "new")
+	source := filepath.Join(root, "store", "config.toml.template")
+	target := filepath.Join(root, "home", "config.toml")
+	writeFile(t, source, "profile = \"work\"\n")
+	writeFile(t, target, "profile = \"work\"\n")
+	hash, err := HashPath(target)
+	if err != nil {
+		t.Fatal(err)
 	}
+	op := Operation{Type: OperationRender, SourcePath: source, TargetPath: target, LayerKind: "core", LayerName: "work"}
+	if err := UpsertManagedTarget(ctx, database, op, hash, time.Now()); err != nil {
+		t.Fatalf("UpsertManagedTarget() error = %v", err)
+	}
+	writeFile(t, target, "profile = \"runtime\"\n")
 
 	plan, err := BuildCapturePlan(ctx, database)
 	if err != nil {
 		t.Fatalf("BuildCapturePlan() error = %v", err)
 	}
-	if len(plan.Changes) != 2 || !plan.HasBlocking() {
-		t.Fatalf("capture plan = %+v", plan)
+	if len(plan.Changes) != 0 {
+		t.Fatalf("capture plan = %+v, want no render changes", plan)
 	}
-	for _, change := range plan.Changes {
-		if change.Status != CaptureUnsupported {
-			t.Fatalf("change = %+v, want unsupported", change)
-		}
+}
+
+func TestBuildCapturePlanBlocksMergeTargets(t *testing.T) {
+	ctx := context.Background()
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	source := filepath.Join(root, "merge", "source")
+	target := filepath.Join(root, "merge", "target")
+	writeFile(t, source, "old")
+	writeFile(t, target, "old")
+	hash, err := HashPath(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	op := Operation{Type: OperationMerge, SourcePath: source, TargetPath: target, LayerKind: "core", LayerName: "work"}
+	if err := UpsertManagedTarget(ctx, database, op, hash, time.Now()); err != nil {
+		t.Fatalf("UpsertManagedTarget() error = %v", err)
+	}
+	writeFile(t, target, "new")
+
+	plan, err := BuildCapturePlan(ctx, database)
+	if err != nil {
+		t.Fatalf("BuildCapturePlan() error = %v", err)
+	}
+	if len(plan.Changes) != 1 || !plan.HasBlocking() || plan.Changes[0].Status != CaptureUnsupported {
+		t.Fatalf("capture plan = %+v", plan)
 	}
 }
 
