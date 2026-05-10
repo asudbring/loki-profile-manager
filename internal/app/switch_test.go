@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asudbring/loki-profile-manager/internal/activation"
 	"github.com/asudbring/loki-profile-manager/internal/config"
 	"github.com/asudbring/loki-profile-manager/internal/machine"
 	"github.com/asudbring/loki-profile-manager/internal/store"
@@ -108,6 +109,118 @@ func TestSwitchEnforcesPolicyAndUnsafeOverwrite(t *testing.T) {
 	}
 }
 
+func TestSwitchRemovesObsoleteManagedTargets(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := cleanupSwitchStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work", "dev"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	oldTarget := filepath.Join(home, "old-profile.txt")
+	newTarget := filepath.Join(home, "new-profile.txt")
+
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work"}); err != nil {
+		t.Fatalf("Switch(work) error = %v", err)
+	}
+	if got := readAppFile(t, oldTarget); got != "old" {
+		t.Fatalf("old target = %q", got)
+	}
+
+	result, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "dev"})
+	if err != nil {
+		t.Fatalf("Switch(dev) error = %v", err)
+	}
+	if result.Cleaned != 1 || len(result.CleanupPlan.Changes) != 1 {
+		t.Fatalf("cleanup result = %+v", result)
+	}
+	if _, err := os.Stat(oldTarget); !os.IsNotExist(err) {
+		t.Fatalf("old target exists or stat err = %v", err)
+	}
+	if got := readAppFile(t, newTarget); got != "new" {
+		t.Fatalf("new target = %q", got)
+	}
+	if _, found, err := activation.GetManagedTarget(ctx, svc.database, oldTarget); err != nil || found {
+		t.Fatalf("old managed record found=%v err=%v", found, err)
+	}
+}
+
+func TestSwitchBlocksChangedObsoleteManagedTargets(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := cleanupSwitchStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work", "dev"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	oldTarget := filepath.Join(home, "old-profile.txt")
+	newTarget := filepath.Join(home, "new-profile.txt")
+
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work"}); err != nil {
+		t.Fatalf("Switch(work) error = %v", err)
+	}
+	writeAppFile(t, oldTarget, "local edit")
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "dev"}); err == nil || !strings.Contains(err.Error(), "local changes") {
+		t.Fatalf("Switch(dev) error = %v", err)
+	}
+	if got := readAppFile(t, oldTarget); got != "local edit" {
+		t.Fatalf("old target = %q", got)
+	}
+	if _, err := os.Stat(newTarget); !os.IsNotExist(err) {
+		t.Fatalf("new target exists or stat err = %v", err)
+	}
+}
+
+func TestSwitchBlocksChangedStaleObsoleteManagedTargets(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := cleanupSwitchStore(t)
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"dev"}, ActiveProfile: "dev"}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	staleSource := filepath.Join(storePath, "profiles", "work", "core", "files", "stale.txt")
+	staleTarget := filepath.Join(home, "stale.txt")
+	newTarget := filepath.Join(home, "new-profile.txt")
+	writeAppFile(t, staleSource, "store")
+	writeAppFile(t, staleTarget, "store")
+	hash, err := activation.HashPath(staleTarget)
+	if err != nil {
+		t.Fatalf("HashPath() error = %v", err)
+	}
+	staleOp := activation.Operation{ID: "stale", Type: activation.OperationCopy, TargetPath: staleTarget, SourcePath: staleSource, LayerName: "stale", LayerKind: "core"}
+	if err := activation.UpsertManagedTarget(ctx, svc.database, staleOp, hash, time.Now()); err != nil {
+		t.Fatalf("UpsertManagedTarget() error = %v", err)
+	}
+	writeAppFile(t, staleTarget, "local edit")
+
+	result, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "dev"})
+	if err == nil || !strings.Contains(err.Error(), "obsolete managed targets") {
+		t.Fatalf("Switch(dev) error = %v result=%+v", err, result)
+	}
+	if len(result.CleanupPlan.Changes) != 1 || result.CleanupPlan.Changes[0].Status != activation.CleanupBlocked {
+		t.Fatalf("cleanup plan = %+v", result.CleanupPlan)
+	}
+	if got := readAppFile(t, staleTarget); got != "local edit" {
+		t.Fatalf("stale target = %q", got)
+	}
+	if _, err := os.Stat(newTarget); !os.IsNotExist(err) {
+		t.Fatalf("new target exists or stat err = %v", err)
+	}
+}
+
 func TestSwitchFailsWhenStoreOperationLockHeld(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()
@@ -135,6 +248,41 @@ func TestSwitchFailsWhenStoreOperationLockHeld(t *testing.T) {
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("target exists or stat err = %v", err)
 	}
+}
+
+func cleanupSwitchStore(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "loki")
+	if _, err := store.EnsureLayout(root); err != nil {
+		t.Fatalf("EnsureLayout() error = %v", err)
+	}
+	writeAppFile(t, filepath.Join(root, "profiles", "work", "core", "files", "old-profile.txt"), "old")
+	writeAppFile(t, filepath.Join(root, "profiles", "work", "core", "manifest.yaml"), `version: 1
+name: work-core
+files:
+  - id: old-file
+    source: files/old-profile.txt
+    target: "~/old-profile.txt"
+    mode: copy
+skills: []
+ignore: []
+merge_rules: {}
+targets: {}
+`)
+	writeAppFile(t, filepath.Join(root, "profiles", "dev", "core", "files", "new-profile.txt"), "new")
+	writeAppFile(t, filepath.Join(root, "profiles", "dev", "core", "manifest.yaml"), `version: 1
+name: dev-core
+files:
+  - id: new-file
+    source: files/new-profile.txt
+    target: "~/new-profile.txt"
+    mode: copy
+skills: []
+ignore: []
+merge_rules: {}
+targets: {}
+`)
+	return root
 }
 
 func switchStore(t *testing.T, targetName, content string) string {

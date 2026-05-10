@@ -6,6 +6,7 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+- Added hash-guarded cleanup of obsolete managed targets after profile switches so old profile skills and app config do not leak into the newly active profile.
 - Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.2 — 2026-05-09

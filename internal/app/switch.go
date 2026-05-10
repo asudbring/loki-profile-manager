@@ -38,6 +38,8 @@ type SwitchResult struct {
 	Captured        int                    `json:"captured"`
 	CapturePlan     activation.CapturePlan `json:"capture_plan,omitempty"`
 	CaptureRequired bool                   `json:"capture_required,omitempty"`
+	CleanupPlan     activation.CleanupPlan `json:"cleanup_plan,omitempty"`
+	Cleaned         int                    `json:"cleaned,omitempty"`
 	Warnings        []string               `json:"warnings,omitempty"`
 	Execution       activation.Snapshot    `json:"snapshot,omitempty"`
 }
@@ -109,6 +111,15 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 				return err
 			}
 		}
+		cleanupPlan, err := activation.BuildCleanupPlanForPlan(ctx, s.database, plan)
+		if err != nil {
+			return err
+		}
+		if cleanupPlan.HasBlocking() {
+			result = SwitchResult{Plan: plan, DryRun: req.DryRun, Captured: result.Captured, CapturePlan: result.CapturePlan, CaptureRequired: result.CaptureRequired, CleanupPlan: cleanupPlan, Warnings: warnings}
+			return fmt.Errorf("obsolete managed targets cannot be removed safely: %s", strings.Join(cleanupPlan.BlockingMessages(), "; "))
+		}
+
 		execResult, err := activation.Execute(ctx, activation.ExecuteRequest{
 			Database:              s.database,
 			LocalPaths:            s.paths,
@@ -123,7 +134,11 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 		captured := result.Captured
 		captureRequired := result.CaptureRequired
 		capturePlan = result.CapturePlan
-		result = SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Captured: captured, CapturePlan: capturePlan, CaptureRequired: captureRequired, Warnings: warnings, Execution: execResult.Snapshot}
+		cleaned := 0
+		if err == nil && !req.DryRun && cleanupPlan.HasChanges() {
+			cleaned, err = activation.ApplyCleanup(ctx, s.database, cleanupPlan, activation.CleanupKeepTargets(execResult.Plan))
+		}
+		result = SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Captured: captured, CapturePlan: capturePlan, CaptureRequired: captureRequired, CleanupPlan: cleanupPlan, Cleaned: cleaned, Warnings: warnings, Execution: execResult.Snapshot}
 		if execResult.Snapshot.SnapshotID != "" {
 			result.SnapshotID = execResult.Snapshot.SnapshotID
 		}

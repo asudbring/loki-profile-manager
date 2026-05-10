@@ -77,6 +77,21 @@ func printSwitchResult(cmd *cobra.Command, result app.SwitchResult, verbose bool
 	if result.Captured > 0 {
 		fmt.Fprintf(out, "Captured: %d\n", result.Captured)
 	}
+	if len(result.CleanupPlan.Changes) > 0 {
+		fmt.Fprintf(out, "Obsolete managed targets: %d\n", len(result.CleanupPlan.Changes))
+		if result.DryRun || verbose {
+			for _, change := range result.CleanupPlan.Changes {
+				fmt.Fprintf(out, "- cleanup %s [%s]", change.TargetPath, change.Status)
+				if change.Message != "" {
+					fmt.Fprintf(out, " %s", change.Message)
+				}
+				fmt.Fprintln(out)
+			}
+		}
+	}
+	if result.Cleaned > 0 {
+		fmt.Fprintf(out, "Cleaned: %d\n", result.Cleaned)
+	}
 	for _, warning := range result.Warnings {
 		fmt.Fprintf(out, "Warning: %s\n", warning)
 	}

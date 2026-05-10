@@ -82,6 +82,41 @@ func TestSwitchCLICaptureLocalYesWritesBackAndSwitches(t *testing.T) {
 	}
 }
 
+func TestSwitchCLICleanupPrintsObsoleteTargets(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchCleanupStore(t)
+	registerSwitchTestMachineForProfiles(t, home, storePath, "work", "dev")
+	cmd, _, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("initial switch error = %v", err)
+	}
+	oldTarget := filepath.ToSlash(filepath.Join(home, "old-profile.txt"))
+
+	cmd, out, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "dev", "--dry-run"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cleanup dry-run error = %v output=%s", err, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "Obsolete managed targets: 1") || !strings.Contains(got, "cleanup "+oldTarget+" [removable]") {
+		t.Fatalf("dry-run output = %s", got)
+	}
+
+	cmd, out, _ = switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "dev", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("cleanup switch error = %v output=%s", err, out.String())
+	}
+	got = out.String()
+	if !strings.Contains(got, "Obsolete managed targets: 1") || !strings.Contains(got, "Cleaned: 1") {
+		t.Fatalf("switch output = %s", got)
+	}
+	if _, err := os.Stat(oldTarget); !os.IsNotExist(err) {
+		t.Fatalf("old target exists or stat err = %v", err)
+	}
+}
+
 func TestSwitchCLIUnsafeOverwriteReturnsError(t *testing.T) {
 	home := t.TempDir()
 	storePath := cliSwitchStore(t, "unsafe.txt", "new")
@@ -102,8 +137,17 @@ func TestSwitchCLIUnsafeOverwriteReturnsError(t *testing.T) {
 
 func registerSwitchTestMachine(t *testing.T, home, storePath string) {
 	t.Helper()
+	registerSwitchTestMachineForProfiles(t, home, storePath, "work")
+}
+
+func registerSwitchTestMachineForProfiles(t *testing.T, home, storePath string, profiles ...string) {
+	t.Helper()
+	args := []string{"--store", storePath, "machine", "register"}
+	for _, profile := range profiles {
+		args = append(args, "--allow-profile", profile)
+	}
 	cmd, _, _ := switchTestCommand(home)
-	cmd.SetArgs([]string{"--store", storePath, "machine", "register", "--allow-profile", "work"})
+	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("machine register error = %v", err)
 	}
@@ -135,6 +179,37 @@ ignore: []
 merge_rules: {}
 targets: {}
 `)
+	return root
+}
+
+func cliSwitchCleanupStore(t *testing.T) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "loki")
+	if _, err := store.EnsureLayout(root); err != nil {
+		t.Fatalf("EnsureLayout() error = %v", err)
+	}
+	for _, item := range []struct {
+		profile string
+		name    string
+		content string
+	}{
+		{profile: "work", name: "old-profile.txt", content: "old"},
+		{profile: "dev", name: "new-profile.txt", content: "new"},
+	} {
+		cliWrite(t, filepath.Join(root, "profiles", item.profile, "core", "files", item.name), item.content)
+		cliWrite(t, filepath.Join(root, "profiles", item.profile, "core", "manifest.yaml"), `version: 1
+name: `+item.profile+`-core
+files:
+  - id: `+item.profile+`-file
+    source: files/`+item.name+`
+    target: "~/`+item.name+`"
+    mode: copy
+skills: []
+ignore: []
+merge_rules: {}
+targets: {}
+`)
+	}
 	return root
 }
 

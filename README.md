@@ -18,6 +18,8 @@ Activation is guarded by unsafe overwrite protection. Loki refuses to replace un
 
 Before switching, Loki also checks copied managed targets from the currently active profile for local edits. If a tool changed a copied settings file, `loki switch` reports the local change and blocks real activation until you either resolve it or rerun with `--capture-local` to write safe copy-mode changes back to the store. Symlinked targets already write directly to the store; rendered outputs are never captured because they can contain secrets.
 
+After a successful switch, Loki prunes obsolete managed targets that are not part of the newly active profile, such as old profile skill directories. Pruning is hash-guarded: unchanged Loki-managed targets are removed and their state records are deleted; changed obsolete targets block and require manual capture, removal, or adoption.
+
 ## Install from release binary
 
 Release assets are published from semver tags such as `v0.1.0`. Download assets from the GitHub Releases page.
