@@ -28,6 +28,7 @@ type EnvLookup func(key string) (string, bool)
 type Config struct {
 	Token        string
 	ProjectID    string
+	Environment  string
 	AuthMethod   string
 	ClientID     string
 	ClientSecret string
@@ -148,6 +149,14 @@ func defaultInfisicalEnvPath() string {
 	if err != nil || strings.TrimSpace(home) == "" {
 		return ""
 	}
+	return DefaultEnvPathForHome(home)
+}
+
+func DefaultEnvPathForHome(home string) string {
+	home = strings.TrimSpace(home)
+	if home == "" {
+		return ""
+	}
 	return filepath.Join(home, ".config", "infisical", ".env")
 }
 
@@ -206,6 +215,9 @@ func (c Client) resolvedConfig() Config {
 	if cfg.ProjectID == "" {
 		cfg.ProjectID = lookupFirst(c.lookup, "INFISICAL_PROJECT_ID")
 	}
+	if cfg.Environment == "" {
+		cfg.Environment = lookupFirst(c.lookup, "INFISICAL_ENV", "INFISICAL_ENVIRONMENT")
+	}
 	if cfg.AuthMethod == "" {
 		cfg.AuthMethod = lookupFirst(c.lookup, "INFISICAL_AUTH_METHOD")
 	}
@@ -253,6 +265,14 @@ func (cfg Config) projectArgs() []string {
 		return nil
 	}
 	return []string{"--projectId", projectID}
+}
+
+func (cfg Config) environmentArgs() []string {
+	environment := strings.TrimSpace(cfg.Environment)
+	if environment == "" {
+		return nil
+	}
+	return []string{"--env", environment}
 }
 
 func (cfg Config) commandEnv() []string {
@@ -319,6 +339,7 @@ func (c Client) mintMachineToken(ctx context.Context, cfg Config) (string, error
 func (c Client) secretGetArgs(name string, cfg Config) []string {
 	args := []string{"secrets", "get", name, "--plain", "--silent"}
 	args = append(args, cfg.projectArgs()...)
+	args = append(args, cfg.environmentArgs()...)
 	return args
 }
 
@@ -483,6 +504,7 @@ func (c Client) RunWithSecrets(ctx context.Context, command []string, extraEnv [
 	env = append(env, extraEnv...)
 	args := []string{"run"}
 	args = append(args, cfg.projectArgs()...)
+	args = append(args, cfg.environmentArgs()...)
 	args = append(args, "--")
 	args = append(args, command...)
 	out, err := c.Runner.Run(ctx, c.Binary, args, env)
@@ -497,6 +519,7 @@ func (c Client) RunWithSecrets(ctx context.Context, command []string, extraEnv [
 		env = append(env, extraEnv...)
 		args = []string{"run"}
 		args = append(args, cfg.projectArgs()...)
+		args = append(args, cfg.environmentArgs()...)
 		args = append(args, "--")
 		args = append(args, command...)
 		out, err = c.Runner.Run(ctx, c.Binary, args, env)

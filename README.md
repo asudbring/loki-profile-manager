@@ -133,12 +133,15 @@ go run ./cmd/loki --store /path/to/loki import-skill ~/Downloads/my-skill.zip --
 Prepare Infisical-backed render secrets without printing values:
 
 ```bash
+go run ./cmd/loki secrets --infisical
 go run ./cmd/loki secrets login
 go run ./cmd/loki secrets status
 go run ./cmd/loki secrets check OPENAI_API_KEY
 ```
 
-For machine identity auth, set `INFISICAL_TOKEN` or `INFISICAL_AUTH_METHOD=universal-auth` with `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID` in the local environment or in `~/.config/infisical/.env`. Set `INFISICAL_API_URL`, `INFISICAL_HOST`, or legacy `INFISICAL_HOST_URL` when using a non-default Infisical host. Loki mints short-lived tokens only in child processes and never stores secret values in the synced store.
+`loki secrets --infisical` creates or updates `~/.config/infisical/.env` from existing `INFISICAL_*` environment variables and local `.infisical.json` project config, then runs readiness checks. Output lists key names and readiness only, never values.
+
+For machine identity auth, set `INFISICAL_TOKEN` or `INFISICAL_AUTH_METHOD=universal-auth` with `INFISICAL_CLIENT_ID`, `INFISICAL_CLIENT_SECRET`, and `INFISICAL_PROJECT_ID` in the local environment or in `~/.config/infisical/.env`. Set `INFISICAL_ENV` to choose a non-`dev` environment. Set `INFISICAL_API_URL`, `INFISICAL_HOST`, or legacy `INFISICAL_HOST_URL` when using a non-default Infisical host. Loki mints short-lived tokens only in child processes and never stores secret values in the synced store.
 
 Register this machine for a profile and bucket policy:
 

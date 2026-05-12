@@ -111,11 +111,34 @@ func TestSecretsCheckRequiresNames(t *testing.T) {
 	}
 }
 
+func TestSecretsInfisicalConfiguresEnvAndHidesValues(t *testing.T) {
+	env := map[string]string{
+		"INFISICAL_CLIENT_ID":     "dummy-client-id",
+		"INFISICAL_CLIENT_SECRET": "dummy-client-secret",
+		"INFISICAL_PROJECT_ID":    "dummy-project-id",
+	}
+	cmd, out, _ := secretsTestCommandWithResolver(t, app.Options{SecretStatusChecker: fakeCLISecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}}}, config.PathResolver{GOOS: "darwin", HomeDir: t.TempDir(), Env: func(key string) string { return env[key] }})
+	cmd.SetArgs([]string{"secrets", "--infisical"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("secrets --infisical error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Loki Infisical configuration") || !strings.Contains(got, "INFISICAL_CLIENT_SECRET") {
+		t.Fatalf("output = %s", got)
+	}
+	if strings.Contains(got, "dummy-client-secret") || strings.Contains(got, "dummy-client-id") {
+		t.Fatalf("output leaked secret values: %s", got)
+	}
+}
+
 func secretsTestCommand(t *testing.T, appOpts app.Options) (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
+	return secretsTestCommandWithResolver(t, appOpts, config.PathResolver{GOOS: "darwin", HomeDir: t.TempDir()})
+}
+
+func secretsTestCommandWithResolver(t *testing.T, appOpts app.Options, resolver config.PathResolver) (*cobra.Command, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 	out := &bytes.Buffer{}
 	errOut := &bytes.Buffer{}
-	resolver := config.PathResolver{GOOS: "darwin", HomeDir: t.TempDir()}
 	factory := func(ctx context.Context, opts app.Options) (*app.Service, error) {
 		merged := appOpts
 		merged.Resolver = opts.Resolver

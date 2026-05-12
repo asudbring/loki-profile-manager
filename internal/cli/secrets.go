@@ -14,10 +14,36 @@ import (
 )
 
 func newSecretsCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
+	var configureInfisical bool
 	cmd := &cobra.Command{
 		Use:   "secrets",
 		Short: "Manage Infisical-backed secret readiness.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if !configureInfisical {
+				return cmd.Help()
+			}
+			if len(args) > 0 {
+				return fmt.Errorf("secrets --infisical does not accept arguments")
+			}
+			svc, err := factory(cmd.Context(), app.Options{Resolver: resolver, StoreOverride: globals.store, Verbose: globals.verbose, Stderr: cmd.ErrOrStderr()})
+			if err != nil {
+				return err
+			}
+			defer svc.Close()
+			result, err := svc.SecretsConfigureInfisical(cmd.Context(), app.SecretsConfigureInfisicalRequest{})
+			if outputErr := printSecretsConfigureInfisical(cmd.OutOrStdout(), result); outputErr != nil {
+				return outputErr
+			}
+			if err != nil {
+				return err
+			}
+			if len(result.Missing) > 0 || !result.Status.Ready {
+				return fmt.Errorf("secrets infisical: configuration is incomplete or Infisical is not ready")
+			}
+			return nil
+		},
 	}
+	cmd.Flags().BoolVar(&configureInfisical, "infisical", false, "create local Infisical env configuration from safe local inputs and check readiness")
 	cmd.AddCommand(newSecretsLoginCommand(resolver, globals, factory))
 	cmd.AddCommand(newSecretsStatusCommand(resolver, globals, factory))
 	cmd.AddCommand(newSecretsCheckCommand(resolver, globals, factory))
@@ -114,6 +140,32 @@ func printSecretsStatus(out io.Writer, result app.SecretsStatusResult, jsonOutpu
 	fmt.Fprintf(out, "Auth: %s\n", authState(result.Ready))
 	if !result.Ready {
 		if next := nextSecretStep(result.Checks); next != "" {
+			fmt.Fprintf(out, "Next step: %s\n", next)
+		}
+	}
+	return nil
+}
+
+func printSecretsConfigureInfisical(out io.Writer, result app.SecretsConfigureInfisicalResult) error {
+	fmt.Fprintln(out, "Loki Infisical configuration")
+	fmt.Fprintf(out, "Env file: %s\n", result.EnvPath)
+	if result.Created {
+		fmt.Fprintln(out, "Created: yes")
+	} else {
+		fmt.Fprintln(out, "Created: no")
+	}
+	if len(result.Updated) > 0 {
+		fmt.Fprintf(out, "Updated keys: %s\n", strings.Join(result.Updated, ", "))
+	}
+	if len(result.Preserved) > 0 {
+		fmt.Fprintf(out, "Preserved keys: %s\n", strings.Join(result.Preserved, ", "))
+	}
+	if len(result.Missing) > 0 {
+		fmt.Fprintf(out, "Missing keys: %s\n", strings.Join(result.Missing, ", "))
+	}
+	fmt.Fprintf(out, "Auth: %s\n", authState(result.Status.Ready))
+	if !result.Status.Ready {
+		if next := nextSecretStep(result.Status.Checks); next != "" {
 			fmt.Fprintf(out, "Next step: %s\n", next)
 		}
 	}

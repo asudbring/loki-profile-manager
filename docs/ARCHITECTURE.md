@@ -388,7 +388,7 @@ Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with
 
 Render mode uses an injectable secret provider. The V1 provider is Infisical through the Infisical CLI. Secret values are written only to the intended rendered target file. Missing secrets report names only. Loki never stores Infisical tokens or secret values in the synced store or local SQLite.
 
-`loki secrets login` delegates to `infisical login` with inherited terminal I/O, so Loki does not capture login tokens or passwords. `loki secrets status` checks CLI/readiness without printing values. `loki secrets check <NAME...>` fetches only named secrets and reports available/missing names only.
+`loki secrets --infisical` creates or updates the local `~/.config/infisical/.env` from existing `INFISICAL_*` environment variables and local `.infisical.json` project config, then runs readiness checks while reporting key names only. `loki secrets login` delegates to `infisical login` with inherited terminal I/O, so Loki does not capture login tokens or passwords. `loki secrets status` checks CLI/readiness without printing values. `loki secrets check <NAME...>` fetches only named secrets and reports available/missing names only.
 
 The provider seam is intentionally small (`GetSecrets(ctx, names)` plus status/login helpers) so Azure Key Vault and other backends can be added later without changing activation planning or render operations.
 

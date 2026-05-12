@@ -250,12 +250,13 @@ func TestClientReadsMachineIdentityFromEnv(t *testing.T) {
 		"INFISICAL_CLIENT_ID":     "env-client-id",
 		"INFISICAL_CLIENT_SECRET": "env-client-secret",
 		"INFISICAL_PROJECT_ID":    "env-project-id",
+		"INFISICAL_ENV":           "prod",
 		"INFISICAL_API_URL":       "https://app.infisical.com/api",
 	})}
 	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
 		t.Fatalf("GetSecrets() error = %v", err)
 	}
-	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[1], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "env-project-id"}) {
+	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[1], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "env-project-id", "--env", "prod"}) {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
 	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[1], "INFISICAL_API_URL=https://app.infisical.com/api") {
@@ -288,7 +289,7 @@ func TestClientReadsMachineIdentityFromDefaultEnvFile(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	for _, key := range []string{"INFISICAL_TOKEN", "INFISICAL_AUTH_METHOD", "INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_SECRET", "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID", "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET", "INFISICAL_PROJECT_ID", "INFISICAL_API_URL", "INFISICAL_HOST", "INFISICAL_HOST_URL"} {
+	for _, key := range []string{"INFISICAL_TOKEN", "INFISICAL_AUTH_METHOD", "INFISICAL_CLIENT_ID", "INFISICAL_CLIENT_SECRET", "INFISICAL_UNIVERSAL_AUTH_CLIENT_ID", "INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET", "INFISICAL_PROJECT_ID", "INFISICAL_ENV", "INFISICAL_ENVIRONMENT", "INFISICAL_API_URL", "INFISICAL_HOST", "INFISICAL_HOST_URL"} {
 		t.Setenv(key, "")
 	}
 	configDir := filepath.Join(home, ".config", "infisical")
@@ -301,6 +302,7 @@ func TestClientReadsMachineIdentityFromDefaultEnvFile(t *testing.T) {
 		"INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=file-client\n" +
 		"INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET='file-x'\n" +
 		"INFISICAL_PROJECT_ID=file-project\n" +
+		"INFISICAL_ENVIRONMENT=stage\n" +
 		"INFISICAL_HOST_URL=\"https://app.infisical.com\" # legacy alias\n"
 	if err := os.WriteFile(envPath, []byte(envFile), 0o600); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
@@ -312,7 +314,7 @@ func TestClientReadsMachineIdentityFromDefaultEnvFile(t *testing.T) {
 		t.Fatalf("GetSecrets() error = %v", err)
 	}
 	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "file-client", "--client-secret", "file-x", "--domain", "https://app.infisical.com", "--plain", "--silent"}
-	wantGet := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "file-project"}
+	wantGet := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "file-project", "--env", "stage"}
 	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) || !reflect.DeepEqual(runner.commands[1], wantGet) {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
