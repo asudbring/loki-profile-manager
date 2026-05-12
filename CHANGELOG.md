@@ -6,9 +6,14 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+- Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
+
+## v0.1.3 — 2026-05-11
+
+Patch release for profile switching reliability during Windows dogfood.
+
 - Added hash-guarded cleanup of obsolete managed targets after profile switches so old profile skills and app config do not leak into the newly active profile.
 - Render targets are regenerated instead of captured during switches, preventing generated Codex/Pi/Claude config drift from blocking profile changes.
-- Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.2 — 2026-05-09
 
