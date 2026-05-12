@@ -111,6 +111,11 @@ func Restore(ctx context.Context, req RestoreRequest) (RestoreResult, error) {
 			return result, rollbackAfterRestoreFailure(ctx, req.Database, rollbackSnapshot, plan.Snapshot, err)
 		}
 	}
+	if plan.TargetFilter == "" {
+		if err := WriteActiveProfileMarker(req.LocalPaths, plan.Snapshot.PreviousActiveProfile, plan.Snapshot.PreviousActiveBuckets); err != nil {
+			return result, rollbackAfterRestoreFailure(ctx, req.Database, rollbackSnapshot, plan.Snapshot, err)
+		}
+	}
 	return result, nil
 }
 

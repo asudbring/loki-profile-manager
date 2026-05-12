@@ -55,20 +55,36 @@ func (e Expander) ValidateTargetPath(target string) error {
 	if isRootForOS(resolver.GOOS, target) {
 		return fmt.Errorf("target path %q must not be a filesystem root", target)
 	}
+	allowedRoots := []string{}
 	home := config.CleanForOS(resolver.GOOS, resolver.HomeDir)
-	if home == "" {
-		return fmt.Errorf("target path %q cannot be validated without a home directory", target)
+	if home != "" {
+		if isRootForOS(resolver.GOOS, home) {
+			return fmt.Errorf("target policy home root %q is not allowed", home)
+		}
+		if samePathForOS(resolver.GOOS, target, home) {
+			return fmt.Errorf("target path %q must not be the home directory itself", target)
+		}
+		allowedRoots = append(allowedRoots, home)
 	}
-	if isRootForOS(resolver.GOOS, home) {
-		return fmt.Errorf("target policy home root %q is not allowed", home)
+	documents := config.CleanForOS(resolver.GOOS, resolver.DocumentsDir)
+	if documents != "" && !samePathForOS(resolver.GOOS, documents, home) {
+		if isRootForOS(resolver.GOOS, documents) {
+			return fmt.Errorf("target policy documents root %q is not allowed", documents)
+		}
+		if samePathForOS(resolver.GOOS, target, documents) {
+			return fmt.Errorf("target path %q must not be the documents directory itself", target)
+		}
+		allowedRoots = append(allowedRoots, documents)
 	}
-	if samePathForOS(resolver.GOOS, target, home) {
-		return fmt.Errorf("target path %q must not be the home directory itself", target)
+	if len(allowedRoots) == 0 {
+		return fmt.Errorf("target path %q cannot be validated without a home or documents directory", target)
 	}
-	if !pathWithinRootForOS(resolver.GOOS, target, home) {
-		return fmt.Errorf("target path %q is outside allowed home root %q", target, home)
+	for _, root := range allowedRoots {
+		if pathWithinRootForOS(resolver.GOOS, target, root) {
+			return nil
+		}
 	}
-	return nil
+	return fmt.Errorf("target path %q is outside allowed roots %q", target, allowedRoots)
 }
 
 func (e Expander) expand(value string, seen map[string]bool, depth int) (string, error) {
@@ -98,6 +114,9 @@ func (e Expander) expand(value string, seen map[string]bool, depth int) (string,
 		}
 		if name == "LOCALAPPDATA" && resolver.LocalAppData != "" {
 			return resolver.LocalAppData, nil
+		}
+		if (name == "DOCUMENTS" || name == "DOCUMENTS_DIR" || name == "USER_DOCUMENTS") && resolver.DocumentsDir != "" {
+			return resolver.DocumentsDir, nil
 		}
 		if resolver.Env != nil {
 			if got := resolver.Env(name); got != "" {

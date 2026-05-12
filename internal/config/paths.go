@@ -21,20 +21,22 @@ type PathResolver struct {
 	GOOS         string
 	HomeDir      string
 	LocalAppData string
+	DocumentsDir string
 	Env          EnvLookup
 }
 
 // LocalPaths contains all Phase 1 local runtime paths. These paths are machine
 // local and must not be treated as the synced Loki source of truth.
 type LocalPaths struct {
-	StateDir      string `json:"state_dir"`
-	DBPath        string `json:"db_path"`
-	LogDir        string `json:"log_dir"`
-	LogPath       string `json:"log_path"`
-	SnapshotDir   string `json:"snapshot_dir"`
-	LockDir       string `json:"lock_dir"`
-	CacheDir      string `json:"cache_dir"`
-	MachineIDPath string `json:"machine_id_path"`
+	StateDir          string `json:"state_dir"`
+	DBPath            string `json:"db_path"`
+	LogDir            string `json:"log_dir"`
+	LogPath           string `json:"log_path"`
+	SnapshotDir       string `json:"snapshot_dir"`
+	LockDir           string `json:"lock_dir"`
+	CacheDir          string `json:"cache_dir"`
+	MachineIDPath     string `json:"machine_id_path"`
+	ActiveProfilePath string `json:"active_profile_path"`
 }
 
 // NewPathResolverFromEnv builds a resolver from the real process environment.
@@ -45,6 +47,7 @@ func NewPathResolverFromEnv() PathResolver {
 		GOOS:         runtime.GOOS,
 		HomeDir:      home,
 		LocalAppData: os.Getenv("LOCALAPPDATA"),
+		DocumentsDir: firstNonEmpty(os.Getenv("LOKI_DOCUMENTS_DIR"), os.Getenv("DOCUMENTS"), os.Getenv("USER_DOCUMENTS")),
 		Env:          os.Getenv,
 	}
 }
@@ -67,6 +70,12 @@ func (r PathResolver) WithDefaults() PathResolver {
 	}
 	if r.LocalAppData == "" && r.GOOS == "windows" {
 		r.LocalAppData = r.Env("LOCALAPPDATA")
+	}
+	if r.DocumentsDir == "" {
+		r.DocumentsDir = firstNonEmpty(r.Env("LOKI_DOCUMENTS_DIR"), r.Env("DOCUMENTS"), r.Env("USER_DOCUMENTS"))
+	}
+	if r.DocumentsDir == "" {
+		r.DocumentsDir = defaultDocumentsDir(r.HomeDir)
 	}
 	return r
 }
@@ -100,14 +109,15 @@ func (r PathResolver) ResolveLocalPaths() (LocalPaths, error) {
 	}
 
 	return LocalPaths{
-		StateDir:      stateDir,
-		DBPath:        joinForOS(r.GOOS, stateDir, "state.sqlite"),
-		LogDir:        joinForOS(r.GOOS, stateDir, "logs"),
-		LogPath:       joinForOS(r.GOOS, stateDir, "logs", "loki.log"),
-		SnapshotDir:   joinForOS(r.GOOS, stateDir, "snapshots"),
-		LockDir:       joinForOS(r.GOOS, stateDir, "locks"),
-		CacheDir:      joinForOS(r.GOOS, stateDir, "cache"),
-		MachineIDPath: joinForOS(r.GOOS, stateDir, "machine_id"),
+		StateDir:          stateDir,
+		DBPath:            joinForOS(r.GOOS, stateDir, "state.sqlite"),
+		LogDir:            joinForOS(r.GOOS, stateDir, "logs"),
+		LogPath:           joinForOS(r.GOOS, stateDir, "logs", "loki.log"),
+		SnapshotDir:       joinForOS(r.GOOS, stateDir, "snapshots"),
+		LockDir:           joinForOS(r.GOOS, stateDir, "locks"),
+		CacheDir:          joinForOS(r.GOOS, stateDir, "cache"),
+		MachineIDPath:     joinForOS(r.GOOS, stateDir, "machine_id"),
+		ActiveProfilePath: joinForOS(r.GOOS, stateDir, "active_profile.txt"),
 	}, nil
 }
 

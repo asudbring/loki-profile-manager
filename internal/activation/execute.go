@@ -93,6 +93,9 @@ func Execute(ctx context.Context, req ExecuteRequest) (ExecuteResult, error) {
 	if err := SetActiveState(ctx, req.Database, plan.Profile, plan.Buckets); err != nil {
 		return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
 	}
+	if err := WriteActiveProfileMarker(req.LocalPaths, plan.Profile, plan.Buckets); err != nil {
+		return result, rollbackAfterFailure(ctx, req.Database, snapshot, err)
+	}
 	result.Plan = plan
 	return result, nil
 }

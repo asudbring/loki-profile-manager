@@ -159,6 +159,24 @@ func TestRenderToFileUsesSecretProvider(t *testing.T) {
 	}
 }
 
+func TestExecuteWritesActiveProfileMarker(t *testing.T) {
+	ctx := context.Background()
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	source := filepath.Join(root, "source.txt")
+	target := filepath.Join(root, "target.txt")
+	writeFile(t, source, "new")
+	plan := Plan{Profile: "work", Buckets: []string{"content-dev"}, Operations: []Operation{{ID: "copy", Type: OperationCopy, SourcePath: source, TargetPath: target, LayerName: "work", LayerKind: "core"}}}
+	localPaths := config.LocalPaths{StateDir: filepath.Join(root, "state"), ActiveProfilePath: filepath.Join(root, "state", "active_profile.txt"), SnapshotDir: filepath.Join(root, "snapshots")}
+	if _, err := Execute(ctx, ExecuteRequest{Database: database, LocalPaths: localPaths, Plan: plan}); err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if got := readFile(t, localPaths.ActiveProfilePath); got != "work:content-dev\n" {
+		t.Fatalf("active profile marker = %q", got)
+	}
+}
+
 func TestExecuteDryRunAndRollbackOnFailure(t *testing.T) {
 	ctx := context.Background()
 	database := activationDB(t)

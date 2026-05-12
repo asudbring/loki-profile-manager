@@ -63,6 +63,21 @@ func TestExpandTargetLinux(t *testing.T) {
 	}
 }
 
+func TestExpandDocumentsVariableAllowsRedirectedWindowsDocuments(t *testing.T) {
+	expander := Expander{Resolver: config.PathResolver{GOOS: "windows", HomeDir: `C:\Users\alice`, DocumentsDir: `C:\Mac\Home\Documents`}}
+	got, err := expander.ExpandTarget(`${DOCUMENTS}/PowerShell/Microsoft.PowerShell_profile.ps1`)
+	if err != nil {
+		t.Fatalf("ExpandTarget() error = %v", err)
+	}
+	want := `C:\Mac\Home\Documents\PowerShell\Microsoft.PowerShell_profile.ps1`
+	if got != want {
+		t.Fatalf("ExpandTarget() = %q, want %q", got, want)
+	}
+	if err := expander.ValidateTargetPath(got); err != nil {
+		t.Fatalf("ValidateTargetPath(%q) error = %v", got, err)
+	}
+}
+
 func TestExpandUnknownVariableFails(t *testing.T) {
 	expander := Expander{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: "/Users/alice"}}
 	if _, err := expander.ExpandTarget("${MISSING}/file"); err == nil {

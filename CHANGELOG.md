@@ -8,6 +8,14 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
+## v0.1.5 — 2026-05-11
+
+Patch release for Loki-owned shell prompt/profile activation on redirected Windows profile folders.
+
+- Added Windows Known Folder support via `${DOCUMENTS}`/`${DOCUMENTS_DIR}` target expansion so PowerShell profiles land under redirected Documents folders such as Parallels `C:\Mac\Home\Documents`.
+- Added a local active-profile marker at Loki's state directory so shell prompts can read `profile:buckets` without depending on legacy `.dotfiles` repositories.
+- Updated snapshot restore to refresh the active-profile marker after full restores.
+
 ## v0.1.4 — 2026-05-11
 
 Patch release for Infisical setup automation during clean-machine bootstrap.

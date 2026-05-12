@@ -27,6 +27,25 @@ func TestResolveLocalPathsWindowsHomeFallback(t *testing.T) {
 	if paths.StateDir != want {
 		t.Fatalf("StateDir = %q, want %q", paths.StateDir, want)
 	}
+	if paths.ActiveProfilePath != want+`\active_profile.txt` {
+		t.Fatalf("ActiveProfilePath = %q", paths.ActiveProfilePath)
+	}
+}
+
+func TestWithDefaultsUsesRedirectedDocumentsDirectory(t *testing.T) {
+	resolver := PathResolver{
+		GOOS:    "windows",
+		HomeDir: `C:\Users\alice`,
+		Env: func(key string) string {
+			if key == "LOKI_DOCUMENTS_DIR" {
+				return `C:\Mac\Home\Documents`
+			}
+			return ""
+		},
+	}.WithDefaults()
+	if resolver.DocumentsDir != `C:\Mac\Home\Documents` {
+		t.Fatalf("DocumentsDir = %q", resolver.DocumentsDir)
+	}
 }
 
 func TestResolveLocalPathsWindowsMissingBase(t *testing.T) {
