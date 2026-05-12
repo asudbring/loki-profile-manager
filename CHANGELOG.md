@@ -6,8 +6,13 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
-- Added `loki secrets --infisical` to create/update local Infisical machine-auth env config from existing local inputs and run readiness checks without printing secret values.
 - Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
+
+## v0.1.4 — 2026-05-11
+
+Patch release for Infisical setup automation during clean-machine bootstrap.
+
+- Added `loki secrets --infisical` to create/update local Infisical machine-auth env config from existing local inputs and run readiness checks without printing secret values.
 
 ## v0.1.3 — 2026-05-11
 
