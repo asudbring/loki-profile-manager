@@ -297,7 +297,7 @@ App checks:
 - Codex, Pi, Claude/Copilot, Git, and Warp config files exist only if the selected profile manages them.
 - `loki switch <profile> [buckets...] --dry-run` has no unexpected blockers after the real switch.
 
-Recent dogfood validation covered the Windows VM app/manual switch flow with Loki `v0.1.5`, profile marker `work:content-dev`, 231 managed targets, PowerShell/Git Bash/starship startup, VS Code settings, Codex/Pi/Claude/Copilot/Git config files, and a full VM store legacy-reference audit with zero legacy hits.
+Recent dogfood validation covered the Windows VM app/manual switch flow with Loki `v0.1.5`, profile marker `work:content-dev`, 231 managed targets, PowerShell/Git Bash/starship startup, VS Code settings, Codex/Pi/Claude/Copilot/Git config files, and a full VM store legacy-reference audit with zero legacy hits. Release `v0.1.6` adds the interactive Infisical setup wizard and `--backup-unmanaged` first-install remediation on top of that validated path.
 
 ## First-run path: existing machine with profiles not migrated
 
@@ -636,9 +636,9 @@ An empty initialized store has no real profile manifests. `verify smoke` and `sw
 | `store use` refuses path | Existing path is not a valid Loki store layout | Use `store init` on an empty folder or select the correct existing store. |
 | `store init` refuses path | Directory is non-empty but not a valid Loki store | Move contents aside or choose an empty folder. |
 | `machine.record_missing` warning | Machine ID exists locally but registry has no record | Run `loki machine register --allow-profile <profile> ...`. |
-| `switch` blocks unmanaged file | Loki will not overwrite local files it does not manage | Use `migrate local`, `migrate repo`, `adopt`, or move the file aside. |
+| `switch` blocks unmanaged file | Loki will not overwrite local files it does not manage | Use `migrate local`, `migrate repo`, `adopt`, move the file aside, or rerun with `--backup-unmanaged --yes` only when the synced Loki store should win. |
 | `switch` asks for capture | A copied managed target changed locally | Review change, then rerun with `--capture-local --yes` only if safe. |
-| Secret render fails | Infisical not ready or secret missing | Run `loki secrets --infisical`, `loki secrets status`, and `loki secrets check <NAME>`. |
+| Secret render fails | Infisical not ready or secret missing | Run `loki secrets configure infisical` for interactive setup, then `loki secrets status` and `loki secrets check <NAME>`. For automation from existing safe local inputs, run `loki secrets --infisical`. |
 | Operation lock timeout | Another Loki process or stale `.loki-operation.lock` | Confirm no Loki process is active on any synced machine before manual lock removal. |
 
 ## Rollback and recovery

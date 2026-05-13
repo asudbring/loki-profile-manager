@@ -20,7 +20,7 @@ Target: Parallels Windows VM, Windows ARM64 or AMD64.
 ## Variables
 
 ```powershell
-$Version = "v0.1.0-installer.1"
+$Version = "v0.1.6"  # replace with the release tag under test
 $Arch = if ([Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -eq "Arm64") { "arm64" } else { "amd64" }
 $Assets = "$env:USERPROFILE\Downloads\loki-release-test"
 $Archive = Join-Path $Assets "loki_${Version}_windows_${Arch}.zip"

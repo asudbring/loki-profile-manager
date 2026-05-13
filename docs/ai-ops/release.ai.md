@@ -200,3 +200,14 @@ npm install -g "${OUT_DIR}/asudbring-loki-profile-manager-${VERSION#v}.tgz"
 loki --version | grep -F "${VERSION}"
 npm uninstall -g @asudbring/loki-profile-manager
 ```
+
+After the tag-based GitHub Actions release publishes npm, verify the registry package in a disposable environment:
+
+```bash
+npm view @asudbring/loki-profile-manager@"${VERSION#v}" version
+npm install -g @asudbring/loki-profile-manager@"${VERSION#v}"
+loki --version | grep -F "${VERSION}"
+loki secrets configure infisical --help >/dev/null
+loki switch --help | grep -F -- '--backup-unmanaged'
+npm uninstall -g @asudbring/loki-profile-manager
+```

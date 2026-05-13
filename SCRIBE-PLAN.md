@@ -1,118 +1,91 @@
 # Scribe Plan: loki-profile-manager
 
 **Tier**: 3
-**Project type**: Go CLI with npm/release installers, profile-store workflows, migration/adoption flows, TUI, validation scripts, and AI-operator procedures
-**Date**: 2026-05-12
+**Project type**: Go CLI with npm/release installers, synced profile-store workflows, migration/adoption flows, TUI, validation scripts, and AI-operator procedures
+**Date**: 2026-05-13
 
 ## Inventory
 
 ### Documentation artifacts reviewed
-- `README.md` — top-level project description, install links, quick examples, documentation index.
-- `CHANGELOG.md` — release history through `v0.1.5` and unreleased changes.
-- `CONTRIBUTING.md` — contribution workflow.
-- `SECURITY.md` — security reporting and secret-handling guidance.
-- `docs/INSTALL.md` — current install/build/smoke guide.
-- `docs/USAGE.md` — CLI command reference.
-- `docs/ARCHITECTURE.md` — component and data-flow documentation.
-- `docs/DEVELOPMENT.md` — package map, build/test commands, release packaging notes.
-- `docs/RELEASE.md`, `docs/installer-release-plan.md` — release/package procedures and planning notes.
-- `docs/TUI_PLAN.md`, `docs/store-tui-management-plan.md` — implementation plans retained as historical/planning docs.
-- `docs/ai-ops/install.ai.md`, `docs/ai-ops/release.ai.md`, `docs/ai-ops/windows-arm64-vm-test.ai.md` — AI-operator procedures.
-- `docs/test-plans/windows-installer-vm-smoke.md`, `docs/test-plans/windows-vm-infisical-tui-smoke.md` — manual validation plans.
-- `tests/*.ai.md` — Copilot/agent dogfood and restore validation prompts.
+- `README.md` — top-level project description, install path, first-run routing, quick examples, and documentation index.
+- `CHANGELOG.md` — release history and current unreleased/release notes.
+- `docs/INSTALL.md` — install methods, fresh-machine setup, existing-machine migration, smoke checks, and troubleshooting.
+- `docs/USAGE.md` — CLI command and flag reference.
+- `docs/ARCHITECTURE.md` — component model, store/local-state model, switch safety flow, TUI flow, and release packaging.
+- `docs/DEVELOPMENT.md` — package map, test/build commands, release packaging, and implementation phase notes.
+- `docs/RELEASE.md` and `docs/ai-ops/release.ai.md` — tag-based release and local fallback release procedures.
+- `docs/ai-ops/install.ai.md` — AI-operator install/bootstrap procedure.
+- `docs/ai-ops/release.ai.md` — AI-operator local packaging and post-release verification procedure.
+- `docs/ai-ops/windows-arm64-vm-test.ai.md` — AI-operator Windows ARM64 VM validation procedure.
+- `docs/PROFILES.md` — profile/bucket creation and organization guidance.
+- `docs/test-plans/windows-vm-infisical-tui-smoke.md` — manual Windows VM Infisical/TUI smoke plan.
+- `docs/test-plans/windows-installer-vm-smoke.md` — manual Windows installer smoke plan.
+- `CONTRIBUTING.md`, `SECURITY.md`, and root planning/test prompt docs were spot-checked for release, secret, and first-run claims.
 
 ### As-coded picture
 - Entry point: `cmd/loki/main.go`.
-- Go packages: `internal/activation`, `internal/app`, `internal/cli`, `internal/config`, `internal/db`, `internal/doctor`, `internal/infisical`, `internal/machine`, `internal/manifest`, `internal/migration`, `internal/profile`, `internal/secrets`, `internal/skills`, `internal/store`, `internal/storesync`, `internal/tui`, `internal/verify`.
-- Commands exposed by current CLI: `adopt`, `completion`, `doctor`, `help`, `import-skill`, `machine`, `migrate`, `secrets`, `snapshots`, `status`, `store`, `switch`, `sync`, `tui`, `verify`.
-- Current release state: repo head `1b5a20d`, tag `v0.1.5`; local repo clean before this plan rewrite.
-- Install surfaces: Go source build, GitHub release binaries/install scripts, npm wrapper under `npm/bin/loki.js`, Windows PowerShell installer scripts, shell installer scripts, CI/release workflows.
+- CLI commands include `status`, `store`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots`, `machine`, `migrate`, and `adopt`.
+- New first-run setup code since `v0.1.5`:
+  - `internal/cli/secrets_configure.go` adds `loki secrets configure infisical`.
+  - `internal/app/secrets_configure.go` writes local Infisical Universal Auth config and validates host values.
+  - `internal/tui/secrets.go` exposes masked Infisical setup from the TUI Secrets screen.
+  - `internal/app/switch_unmanaged_backup.go` and `internal/cli/switch.go` add `switch --backup-unmanaged --yes`.
+  - `internal/infisical/cli.go` mints Universal Auth tokens through the Infisical API and validates configured hosts.
+- Release state: local tag `v0.1.6`, npm latest `@asudbring/loki-profile-manager@0.1.6`, release workflow passed.
 
 ## Findings
 
-### Wrong (docs contradict code or current behavior)
-- `docs/INSTALL.md` — existing headings are mostly package/build oriented. It does not match the now-validated user workflow: fresh machine bootstrap, then safe profile activation from a Loki store.
-- `docs/INSTALL.md` — no section exists for an existing machine with unmanaged/local profiles that have not been migrated yet, even though the CLI exposes `migrate local`, `migrate repo`, `adopt`, `verify`, `switch --dry-run`, and `switch --capture-local` specifically for that path.
-- `docs/ai-ops/install.ai.md` — describes development checkout validation more than release/npm install and first-run setup. It is not a complete AI-operator companion for the human install guide.
+### Wrong (docs contradict code or current release state)
+- `README.md:Status` — claimed current dogfood release `v0.1.5` as the current release after `v0.1.6` was published to npm.
+- `CHANGELOG.md:Unreleased` — held `v0.1.6` documentation/setup changes under `Unreleased` after the `v0.1.6` release.
 
 ### Stale
-- `README.md` — quick install/routing needs to reflect the current validated release (`v0.1.5`), npm package path, and the two supported first-run paths: fresh machine and existing unmanaged machine.
-- `docs/ai-ops/windows-arm64-vm-test.ai.md` and `docs/test-plans/windows-vm-infisical-tui-smoke.md` — need alignment with the completed app/manual switch validation and the current Loki-managed prompt/app-settings flow.
-- `docs/USAGE.md` — command reference already covers many workflows, but it must be checked against current help output for `switch --capture-local`, `migrate local`, `migrate repo`, `adopt`, `store`, `machine register`, `verify`, `doctor`, `secrets --infisical`, and snapshots.
+- `docs/INSTALL.md:Recent dogfood validation` — referenced only `v0.1.5`; still true as the latest full Windows app/manual dogfood, but needed a `v0.1.6` release-context note for new setup flows.
+- `docs/DEVELOPMENT.md:Current implementation phase` — omitted first-install unmanaged-backup remediation and interactive Infisical configuration from current hardening focus.
 
 ### Missing detail
-- Fresh-machine install path needs OS-specific steps for Windows, macOS, and Linux: install Loki, sign in to sync provider, choose/use/init store, initialize profiles when starting from a blank store, register machine, verify profile, dry-run switch, real switch, inspect status, and run app smoke tests.
-- Blank-store users need explicit guidance for naming profiles/buckets, creating the first profile core, adding settings, importing skills, and registering machine policy.
-- Existing-machine path needs no-data-loss guidance: inventory current dotfiles/settings, back up unmanaged targets, run migration/adoption dry-runs, review generated manifests, verify, switch dry-run, resolve blockers, then use `--yes` or `--capture-local --yes` only when appropriate.
-- Windows notes need current profile-specific details: OneDrive/Parallels redirected Documents, `${DOCUMENTS}` / `${DOCUMENTS_DIR}` expansion, symlink requirements, npm PATH, and OneDrive lock/retry guidance.
-- Shell/app smoke checks need explicit PowerShell, Git Bash, VS Code, Codex/Pi/Claude/Copilot, Git, and Warp expectations without depending on legacy `.dotfiles` repos.
-- `--capture-local` needs a concise explanation in docs: safe managed-target local changes are written back to the store before switching; it does not bypass unmanaged overwrite protection.
+- `docs/INSTALL.md:Troubleshooting quick table` — unmanaged blocker and secret-render troubleshooting did not prefer the new `--backup-unmanaged --yes` / `secrets configure infisical` paths.
+- `docs/ai-ops/install.ai.md` — AI-operator first-run activation could not intentionally use `switch --backup-unmanaged --yes` when the synced Loki store should win, and had no optional Infisical setup step.
+- `docs/test-plans/windows-vm-infisical-tui-smoke.md` — needed an explicit post-release npm registry check for `v0.1.6`.
+- `docs/ai-ops/windows-arm64-vm-test.ai.md` — optional real-profile validation did not document the store-wins `--backup-unmanaged --yes` branch.
+- `docs/ai-ops/release.ai.md` — local tarball verification existed, but post-Actions npm registry verification did not check new `v0.1.6` command surfaces.
+- `docs/test-plans/windows-installer-vm-smoke.md` — example version still used an old installer prerelease tag.
 
 ### Missing docs
-- No new top-level document is required if `docs/INSTALL.md` becomes the detailed guide.
-- `docs/ai-ops/install.ai.md` needs expansion into a true AI-operator companion for both first-run paths.
-- `SCRIBE-REPORT.md` needs regeneration after edits and validation.
+- None. Existing Tier 3 doc set already includes README, install, usage, architecture, development, release, AI-operator install/release, profile guide, changelog, security, and validation plans.
 
 ### Orphans
-- No docs should be deleted in this pass.
-- Planning docs under `docs/*PLAN*.md` are historical/planning material; leave them unless a later cleanup request asks to archive or remove them.
+- Historical planning docs remain intentionally marked/planned artifacts. No orphan requiring removal.
 
-### Fine (no changes needed or only light touch expected)
-- `LICENSE`, `SECURITY.md`, and `CONTRIBUTING.md` appear structurally fine for this docs pass.
-- `docs/ARCHITECTURE.md` is already substantial; update only if the install/switch-flow audit finds stale safety or active-profile-marker details.
-- `docs/ai-ops/release.ai.md` is release-specific; update only if cross-links need adjustment.
+### Fine (no changes needed)
+- `docs/USAGE.md` already documents `secrets configure infisical`, TUI `c`, `switch --backup-unmanaged`, and first-run safety behavior.
+- `docs/ARCHITECTURE.md` already describes Infisical setup/security and unmanaged-backup switch safety.
+- `docs/test-plans/windows-vm-infisical-tui-smoke.md` already covers the wizard and unmanaged backup smoke path; only post-release npm validation was missing.
+- `docs/RELEASE.md` remains accurate for tag-based release and npm publish flow.
+- `CONTRIBUTING.md` and `SECURITY.md` remain accurate; no new secret-handling rule needed.
 
 ## Proposed actions
 
 ### Update in place
-- `README.md` — refresh status/install routing, point to fresh-machine and existing-machine sections, keep quick examples aligned with current CLI flags.
-- `docs/PROFILES.md` — create from-scratch instructions for blank stores, profile naming, bucket naming, settings organization, skill import, and machine registration.
-- `docs/INSTALL.md` — rewrite/expand into the detailed install and first-run guide requested:
-  - Windows / macOS / Linux install sections.
-  - Fresh machine path.
-  - Existing machine with existing profiles not migrated path.
-  - Safe switch/capture workflow.
-  - App/manual smoke checklist based on the successful validation.
-  - Troubleshooting for PATH, symlinks, OneDrive locks, redirected Documents, and stale local profile markers.
-- `docs/USAGE.md` — align command reference and safety notes with the install guide.
-- `docs/ai-ops/install.ai.md` — make a structured AI-operator companion for npm/release/source installs plus fresh/existing-machine first-run paths.
-- `docs/ai-ops/windows-arm64-vm-test.ai.md` — align VM validation procedure with the new install guide and current `v0.1.5` flow.
-- `docs/test-plans/windows-vm-infisical-tui-smoke.md` — update TUI/manual smoke expectations and link to the install guide.
-- `tests/cross-machine-dogfood-copilot.ai.md` — update only stale store/switch/migration wording.
-- `tests/real-dotfile-dogfood-copilot.ai.md` — update only stale real-target safety wording.
-- `tests/real-dotfile-targeted-restore-consent-copilot.ai.md` — update only if restore wording conflicts with install/safety docs.
-- `docs/ARCHITECTURE.md` — light update only if needed for active profile marker, Windows Documents expansion, or switch/capture safety.
-- `docs/DEVELOPMENT.md` — light update only if docs validation commands or test matrix references are stale.
-- `CHANGELOG.md` — add an Unreleased documentation note for the install-guide refresh and completed app/manual switch validation.
-- `SCRIBE-REPORT.md` — regenerate final report after edits and validation.
+- `README.md` — distinguish current npm release `v0.1.6` from latest full Windows app/manual dogfood validation `v0.1.5`.
+- `CHANGELOG.md` — move released setup/remediation notes into a new `v0.1.6 — 2026-05-13` section and reset `Unreleased`.
+- `docs/INSTALL.md` — add `v0.1.6` setup-flow note and update troubleshooting for `--backup-unmanaged --yes` and `secrets configure infisical`.
+- `docs/DEVELOPMENT.md` — mention first-install unmanaged-backup remediation and Infisical configuration in current hardening focus.
+- `docs/ai-ops/install.ai.md` — add `BACKUP_UNMANAGED` variable and guarded activation path for headless first-run remediation; add optional Infisical setup via `RUN_INFISICAL_SETUP` and `INFISICAL_SETUP_METHOD`.
+- `docs/ai-ops/release.ai.md` — add post-Actions npm registry verification for the published version and new command surfaces.
+- `docs/ai-ops/windows-arm64-vm-test.ai.md` — add optional real-profile store-wins unmanaged-backup branch.
+- `docs/test-plans/windows-vm-infisical-tui-smoke.md` — add npm registry release check for `v0.1.6`.
+- `docs/test-plans/windows-installer-vm-smoke.md` — update example version to current release tag under test.
+- `SCRIBE-PLAN.md` — replace stale `v0.1.5` Scribe plan with this audit.
+- `SCRIBE-REPORT.md` — summarize doc updates and validation.
 
 ### Create new
-- `docs/PROFILES.md` — from-scratch guide for profile naming, bucket structure, settings, skills, machine registration, and promotion workflow.
+- None.
 
 ### Diagrams to produce
-- No new diagram planned unless `docs/ARCHITECTURE.md` needs a small switch/capture flow diagram update.
+- None. Existing architecture diagrams remain current; new changes are command/setup flows, not new components.
 
 ### Out of scope
-- No code changes.
-- No deletion of VM or local `.dotfiles` backups.
-- No migration of the local Mac `.dotfiles-work` or `.dotfiles-play` repos.
-- No secret inspection, token printing, or Infisical value output.
-- No real profile switch on the local Mac during docs validation unless separately approved.
-- No release/tag/npm publish.
-
-## Validation plan
-
-After approved doc edits:
-- `go test ./...`
-- `go vet ./...`
-- `go mod verify`
-- `go build -trimpath -o /tmp/loki-doc-audit ./cmd/loki`
-- `bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/package-npm.sh scripts/release-local.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh`
-- `node --check npm/bin/loki.js`
-- PowerShell parser check for `scripts/*.ps1` when `pwsh` is available.
-- Secret-pattern scan across `README.md`, `docs/`, `tests/`, and root docs.
-- Markdown link/command spot checks for every command used in `docs/INSTALL.md`.
-
-## Approval request
-
-Scribe requires plan approval before writing docs. Approve this plan and I will update the documentation files listed above, then run validation and regenerate `SCRIBE-REPORT.md`.
+- Publishing another npm release for documentation-only edits unless user requests it.
+- Reworking historical planning docs (`spec-*`, `plan-*`, `tasks-*`) beyond keeping them clearly listed as planning artifacts.
+- Running real Windows VM/manual smoke checks from this macOS session.

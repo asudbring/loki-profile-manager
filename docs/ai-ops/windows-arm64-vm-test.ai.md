@@ -355,6 +355,15 @@ If the dry-run shows only expected managed targets and no blockers, activate:
 .\bin\loki.exe --store $store switch $profile @buckets --dry-run
 ```
 
+If the only dry-run blockers are unmanaged file/directory targets and the synced Loki store should win, preserve those local blockers outside the store and activate:
+
+```powershell
+.\bin\loki.exe --store $store switch $profile @buckets --backup-unmanaged --yes
+.\bin\loki.exe --store $store status --verbose
+```
+
+Expected output includes `Backed up unmanaged targets` and `Backup root:`. Do not use this branch when local files should become store source of truth, or when blockers include broken symlinks, managed hash mismatches, obsolete changed targets, or render drift.
+
 If activation blocks with safe copied-target local drift that should be preserved, use the capture form:
 
 ```powershell

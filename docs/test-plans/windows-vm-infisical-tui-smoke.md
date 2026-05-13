@@ -1,6 +1,6 @@
 # Windows VM Infisical + TUI Smoke Test Plan
 
-Goal: verify latest Windows ARM64 build, Infisical machine identity auth, real interactive TUI behavior, and the post-install app/manual switch path on the Parallels Windows VM.
+Goal: verify the published Windows package or latest Windows ARM64 build, Infisical machine identity auth, real interactive TUI behavior, and the post-install app/manual switch path on the Parallels Windows VM.
 
 Do not paste or save `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, or secret values into this repo, the synced Loki store, screenshots, logs, or chat. For fresh-machine and existing-machine setup details, see [`../INSTALL.md`](../INSTALL.md).
 
@@ -10,6 +10,24 @@ Do not paste or save `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, or secret val
 - Binary: `%USERPROFILE%\github\loki-profile-manager\bin\loki.exe`
 - Store: `%USERPROFILE%\OneDrive\LokiProfileManager`
 - Plan: `%USERPROFILE%\github\loki-profile-manager\docs\test-plans\windows-vm-infisical-tui-smoke.md`
+
+## Optional npm registry release check
+
+Use this path after a public npm release. Use the source build in section 1 for unreleased `main` validation.
+
+```powershell
+npm install -g @asudbring/loki-profile-manager@0.1.6
+loki --version
+loki secrets configure infisical --help
+loki switch --help | Select-String -SimpleMatch '--backup-unmanaged'
+```
+
+Expected:
+
+- `loki --version` prints `v0.1.6`.
+- Infisical wizard help shows `loki secrets configure infisical`.
+- Switch help lists `--backup-unmanaged`.
+- No secret values printed.
 
 ## 1. Build check
 

@@ -79,6 +79,21 @@ variables:
     required: false
     default: "false"
     sensitive: false
+  - name: BACKUP_UNMANAGED
+    description: move unmanaged switch blockers to machine-local backups during activation; use only when the synced Loki store should win
+    required: false
+    default: "false"
+    sensitive: false
+  - name: RUN_INFISICAL_SETUP
+    description: whether to configure or refresh local Infisical machine auth during install
+    required: false
+    default: "false"
+    sensitive: false
+  - name: INFISICAL_SETUP_METHOD
+    description: Infisical setup method, one of env or wizard; env is headless, wizard is human-attended
+    required: false
+    default: env
+    sensitive: false
 idempotent: true
 estimated_duration: 5-30 minutes
 side_effects:
@@ -88,13 +103,15 @@ side_effects:
   - creates or updates local Loki state
   - creates or updates ${STORE_PATH} when RUN_FIRST_RUN=true and store init/use/register/migrate commands run
   - can capture local profile files into the store when MACHINE_SCENARIO=existing and migration --yes steps run
+  - can move unmanaged local target blockers to machine-local backups when BACKUP_UNMANAGED=true and activation runs
+  - can create or update local Infisical env configuration when RUN_INFISICAL_SETUP=true
 requires_network: true
 requires_sudo: false
 ---
 
 # Install Loki Profile Manager
 
-This procedure installs the `loki` CLI and, when requested, performs a safe first-run setup against a synced Loki store. It supports a fresh machine path and an existing-machine migration path. It never prints secret values. Execute the procedure in one shell session so variables exported in earlier steps remain available to later steps.
+This procedure installs the `loki` CLI and, when requested, performs a safe first-run setup against a synced Loki store. It supports a fresh machine path, an existing-machine migration path, optional local Infisical setup, and explicit unmanaged-target backup remediation when the synced Loki store should win. It never prints secret values. Execute the procedure in one shell session so variables exported in earlier steps remain available to later steps.
 
 ## Prerequisites
 
@@ -120,6 +137,9 @@ This procedure installs the `loki` CLI and, when requested, performs a safe firs
 | `MACHINE_SCENARIO` | no | `fresh` | `fresh` or `existing`. |
 | `LEGACY_REPO` | no | `null` | Optional legacy profile repository path. |
 | `INIT_EMPTY_PROFILE` | no | `false` | Set `true` to create an empty profile core before registration/verify. |
+| `BACKUP_UNMANAGED` | no | `false` | Set `true` only when unmanaged switch blockers are stale/local defaults and the synced Loki store should win. Activation then uses `switch --backup-unmanaged --yes`. |
+| `RUN_INFISICAL_SETUP` | no | `false` | Set `true` to configure or refresh local Infisical machine auth before first-run store work. |
+| `INFISICAL_SETUP_METHOD` | no | `env` | `env` runs noninteractive `loki secrets --infisical` from existing safe local inputs; `wizard` runs human-attended `loki secrets configure infisical`. |
 
 For profile naming, bucket layout, skill organization, and manual manifest examples, see `docs/PROFILES.md`.
 
@@ -140,7 +160,13 @@ case "$MACHINE_SCENARIO" in fresh|existing) ;; *) echo "MACHINE_SCENARIO must be
 if [ "$INSTALL_METHOD" = source ] && [ -z "${WORKDIR:-}" ]; then echo "WORKDIR required for source install" >&2; exit 2; fi
 if [ "$RUN_FIRST_RUN" = true ] && [ -z "${STORE_PATH:-}" ]; then echo "STORE_PATH required when RUN_FIRST_RUN=true" >&2; exit 2; fi
 : "${INIT_EMPTY_PROFILE:=false}"
+: "${BACKUP_UNMANAGED:=false}"
+: "${RUN_INFISICAL_SETUP:=false}"
+: "${INFISICAL_SETUP_METHOD:=env}"
 case "$INIT_EMPTY_PROFILE" in true|false) ;; *) echo "INIT_EMPTY_PROFILE must be true or false" >&2; exit 2 ;; esac
+case "$BACKUP_UNMANAGED" in true|false) ;; *) echo "BACKUP_UNMANAGED must be true or false" >&2; exit 2 ;; esac
+case "$RUN_INFISICAL_SETUP" in true|false) ;; *) echo "RUN_INFISICAL_SETUP must be true or false" >&2; exit 2 ;; esac
+case "$INFISICAL_SETUP_METHOD" in env|wizard) ;; *) echo "INFISICAL_SETUP_METHOD must be env or wizard" >&2; exit 2 ;; esac
 ```
 
 **Command** (Windows / PowerShell):
@@ -154,17 +180,23 @@ if ($env:MACHINE_SCENARIO -notin @('fresh','existing')) { throw 'MACHINE_SCENARI
 if ($env:INSTALL_METHOD -eq 'source' -and -not $env:WORKDIR) { throw 'WORKDIR required for source install' }
 if ($env:RUN_FIRST_RUN -eq 'true' -and -not $env:STORE_PATH) { throw 'STORE_PATH required when RUN_FIRST_RUN=true' }
 if (-not $env:INIT_EMPTY_PROFILE) { $env:INIT_EMPTY_PROFILE = 'false' }
+if (-not $env:BACKUP_UNMANAGED) { $env:BACKUP_UNMANAGED = 'false' }
+if (-not $env:RUN_INFISICAL_SETUP) { $env:RUN_INFISICAL_SETUP = 'false' }
+if (-not $env:INFISICAL_SETUP_METHOD) { $env:INFISICAL_SETUP_METHOD = 'env' }
 if ($env:INIT_EMPTY_PROFILE -notin @('true','false')) { throw 'INIT_EMPTY_PROFILE must be true or false' }
+if ($env:BACKUP_UNMANAGED -notin @('true','false')) { throw 'BACKUP_UNMANAGED must be true or false' }
+if ($env:RUN_INFISICAL_SETUP -notin @('true','false')) { throw 'RUN_INFISICAL_SETUP must be true or false' }
+if ($env:INFISICAL_SETUP_METHOD -notin @('env','wizard')) { throw 'INFISICAL_SETUP_METHOD must be env or wizard' }
 ```
 
 **Verify** (Linux/macOS):
 ```bash
-case "$INSTALL_METHOD/$RUN_FIRST_RUN/$MACHINE_SCENARIO/$INIT_EMPTY_PROFILE" in npm/*/*/*|source/*/*/*) test "$RUN_FIRST_RUN" = true -o "$RUN_FIRST_RUN" = false ;; esac
+case "$INSTALL_METHOD/$RUN_FIRST_RUN/$MACHINE_SCENARIO/$INIT_EMPTY_PROFILE/$BACKUP_UNMANAGED/$RUN_INFISICAL_SETUP/$INFISICAL_SETUP_METHOD" in npm/*/*/*/*/*/*|source/*/*/*/*/*/*) test "$RUN_FIRST_RUN" = true -o "$RUN_FIRST_RUN" = false ;; esac
 ```
 
 **Verify** (Windows / PowerShell):
 ```powershell
-($env:INSTALL_METHOD -in @('npm','source')) -and ($env:RUN_FIRST_RUN -in @('true','false')) -and ($env:MACHINE_SCENARIO -in @('fresh','existing')) -and ($env:INIT_EMPTY_PROFILE -in @('true','false'))
+($env:INSTALL_METHOD -in @('npm','source')) -and ($env:RUN_FIRST_RUN -in @('true','false')) -and ($env:MACHINE_SCENARIO -in @('fresh','existing')) -and ($env:INIT_EMPTY_PROFILE -in @('true','false')) -and ($env:BACKUP_UNMANAGED -in @('true','false')) -and ($env:RUN_INFISICAL_SETUP -in @('true','false')) -and ($env:INFISICAL_SETUP_METHOD -in @('env','wizard'))
 ```
 
 **On failure**: set valid variables and rerun this step. Do not continue with defaults guessed from context.
@@ -279,6 +311,46 @@ Test-Path $env:LOKI_EXE; & $env:LOKI_EXE --version
 **On failure**: rerun Step 2 or Step 3. If npm installed successfully but `loki` is missing, fix PATH and reopen the shell.
 
 **Idempotent**: true
+
+## Step 4a — Optionally configure Infisical
+
+**Goal**: configure or refresh machine-local Infisical auth before first-run render checks. Do not print secret values.
+
+**Command** (Linux/macOS):
+```bash
+if [ "${RUN_INFISICAL_SETUP:-false}" = true ]; then
+  case "${INFISICAL_SETUP_METHOD:-env}" in
+    env) "$LOKI_EXE" secrets --infisical ;;
+    wizard) "$LOKI_EXE" secrets configure infisical ;;
+  esac
+else
+  echo "skip Infisical setup"
+fi
+```
+
+**Command** (Windows / PowerShell):
+```powershell
+if ($env:RUN_INFISICAL_SETUP -eq 'true') {
+  switch ($env:INFISICAL_SETUP_METHOD) {
+    'env' { & $env:LOKI_EXE secrets --infisical }
+    'wizard' { & $env:LOKI_EXE secrets configure infisical }
+  }
+} else { 'skip Infisical setup' }
+```
+
+**Verify** (Linux/macOS):
+```bash
+if [ "${RUN_INFISICAL_SETUP:-false}" = true ]; then "$LOKI_EXE" secrets status; else exit 0; fi
+```
+
+**Verify** (Windows / PowerShell):
+```powershell
+if ($env:RUN_INFISICAL_SETUP -eq 'true') { & $env:LOKI_EXE secrets status } else { $true }
+```
+
+**On failure**: for `env`, ensure `INFISICAL_*` environment variables or local `.infisical.json` project config exist and rerun. For `wizard`, rerun in an attended terminal with secret values from the secure channel only. Never paste Infisical values into logs, docs, chat, or the synced Loki store.
+
+**Idempotent**: true for `env`; wizard overwrites the local Infisical env file with confirmed prompted values.
 
 ## Step 5 — Configure store path
 
@@ -518,7 +590,7 @@ if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" switch "$PROFILE" ${BU
 if ($env:RUN_FIRST_RUN -eq 'true') { $args=@('switch',$env:PROFILE); if($env:BUCKETS){$args += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; $args += '--dry-run'; & $env:LOKI_EXE @args | Select-String -SimpleMatch 'Loki switch dry-run' } else { $true }
 ```
 
-**On failure**: resolve every blocker. Adopt/migrate unmanaged targets, reconcile managed hash drift, or remove conflicting manifest entries. Do not run `switch --yes` until dry-run blockers are gone.
+**On failure**: resolve every blocker. Adopt/migrate unmanaged targets, reconcile managed hash drift, or remove conflicting manifest entries. If dry-run reports only unmanaged file/directory blockers and the synced Loki store should win, set `BACKUP_UNMANAGED=true` and rerun Step 10. Do not run plain `switch --yes` until dry-run blockers are understood.
 
 **Idempotent**: true
 
@@ -529,7 +601,9 @@ if ($env:RUN_FIRST_RUN -eq 'true') { $args=@('switch',$env:PROFILE); if($env:BUC
 **Command** (Linux/macOS):
 ```bash
 if [ "${RUN_FIRST_RUN:-false}" = true ]; then
-  "$LOKI_EXE" switch "$PROFILE" ${BUCKETS:-} --yes
+  backup_args=""
+  if [ "${BACKUP_UNMANAGED:-false}" = true ]; then backup_args="--backup-unmanaged"; fi
+  "$LOKI_EXE" switch "$PROFILE" ${BUCKETS:-} $backup_args --yes
 else
   echo "skip activation"
 fi
@@ -538,7 +612,7 @@ fi
 **Command** (Windows / PowerShell):
 ```powershell
 if ($env:RUN_FIRST_RUN -eq 'true') {
-  $args=@('switch',$env:PROFILE); if($env:BUCKETS){$args += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; $args += '--yes'; & $env:LOKI_EXE @args
+  $args=@('switch',$env:PROFILE); if($env:BUCKETS){$args += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; if($env:BACKUP_UNMANAGED -eq 'true'){$args += '--backup-unmanaged'}; $args += '--yes'; & $env:LOKI_EXE @args
 } else { 'skip activation' }
 ```
 
@@ -552,7 +626,7 @@ if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" status --verbose | gre
 if ($env:RUN_FIRST_RUN -eq 'true') { & $env:LOKI_EXE status --verbose | Select-String -Pattern "Active profile: $env:PROFILE" } else { $true }
 ```
 
-**On failure**: if output says capture is required and the change is safe copy-mode drift, rerun with `switch <profile> [buckets...] --capture-local --yes`. If output reports unmanaged overwrite protection, return to migration/adoption. Do not delete local files automatically.
+**On failure**: if output says capture is required and the change is safe copy-mode drift, rerun with `switch <profile> [buckets...] --capture-local --yes`. If output reports unmanaged overwrite protection, return to migration/adoption, or set `BACKUP_UNMANAGED=true` only when the synced Loki store should win and local blockers should be preserved outside the store. Do not delete local files automatically.
 
 **Idempotent**: true when targets remain unchanged between runs
 

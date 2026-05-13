@@ -218,7 +218,7 @@ For Infisical-related tests:
 
 ## Current implementation phase
 
-Phases 1-7 are implemented through the TUI MVP. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, skill folder import, Infisical-backed secrets readiness, and guarded Bubble Tea TUI flows. Sensitive-looking restore targets remain blocked/redacted by default, and TUI snapshot restore writes remain deferred to the existing CLI flow.
+Phases 1-7 are implemented through the TUI MVP. Current hardening focuses on real low-risk dotfile dogfood, machine registration, status audit, snapshot reporting, restore dry-run preview, guarded manual restore, scoped `--target` restore, `doctor` diagnostics, release packaging, sync conflict-copy cleanup, skill folder import, Infisical-backed secrets readiness/configuration, first-install unmanaged-backup remediation, and guarded Bubble Tea TUI flows. Sensitive-looking restore targets remain blocked/redacted by default, and TUI snapshot restore writes remain deferred to the existing CLI flow.
 
 Historical handoff artifacts are not part of the public documentation set.
 

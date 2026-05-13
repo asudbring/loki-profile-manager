@@ -6,10 +6,19 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
-- Documentation: refreshed README, install, usage, AI-operator, and Windows VM smoke docs around the validated Loki `v0.1.5` clean-machine/app switch workflow.
+- No unreleased changes.
+
+## v0.1.6 — 2026-05-13
+
+Feature release for first-run setup remediation and safer Infisical configuration.
+
+- Added `loki secrets configure infisical`, an interactive local-only Infisical Universal Auth setup wizard that prompts for project ID, environment, client ID, masked client secret/key, and optional host/API URL.
+- Added TUI Secrets-screen Infisical configuration on `c`, with masked secret input and form scrubbing after submit/cancel.
+- Added `loki switch <profile> [buckets...] --backup-unmanaged --yes` to move unmanaged file/directory blockers into machine-local backups, write a backup `manifest.json`, re-run safety checks, and then activate when the synced Loki store should win.
+- Hardened Infisical configuration and runtime auth: no persisted minted tokens from noninteractive setup when Universal Auth is configured, stale host/token values cleared on explicit configure, plain HTTP hosts rejected except loopback/local dev, runtime host validation added, and Universal Auth token minting moved to the Infisical API instead of `infisical login --client-secret` process args.
+- Documentation: refreshed README, install, usage, architecture, AI-operator, and Windows VM smoke docs for the new Infisical wizard and unmanaged-backup first-run flow.
 - Documentation: added `docs/PROFILES.md` for starting from a blank store, naming profiles/buckets, registering machines, adding settings, and organizing skills.
-- Documentation: added detailed first-run guidance for fresh machines and existing machines with unmanaged profiles/settings that need `migrate local`, `migrate repo`, `adopt`, `verify`, `switch --dry-run`, and optional `switch --capture-local --yes` before activation.
-- Validation note: Windows VM app/manual switch dogfood passed with Loki-owned shell prompt state and app settings after legacy profile repositories were removed from active paths.
+- Validation note: Windows VM app/manual switch dogfood passed with Loki-owned shell prompt state and app settings after legacy profile repositories were removed from active paths. Release workflow and npm smoke validation passed for `v0.1.6`.
 - Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.5 — 2026-05-11
