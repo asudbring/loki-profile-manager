@@ -6,7 +6,7 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 
 - Repository visibility: public.
 - Current release validated in dogfood: `v0.1.5`.
-- Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, Infisical readiness UX, and Bubble Tea TUI MVP.
+- Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, Infisical readiness/setup UX, and Bubble Tea TUI MVP.
 - Current commands: `status`, `store status`, `store discover`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `import-skill` markdown conversion and Azure Key Vault/other secret providers.
 - License: MIT.
@@ -15,7 +15,7 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 
 Loki treats a synced filesystem folder as profile source of truth. The store contains YAML manifests, profile files, templates, skills, and a machine registry. Each machine keeps local SQLite state for the configured store path, active profile/buckets, managed target hashes, snapshots, and recovery guards.
 
-Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories. A target must be missing, already managed by Loki, or adopted/migrated before activation can overwrite it.
+Activation is guarded by unsafe overwrite protection. Loki refuses to replace unmanaged local files or directories unless you explicitly move those blockers to a machine-local backup with `switch --backup-unmanaged --yes`. A target must be missing, already managed by Loki, adopted/migrated, or backed up before activation can overwrite it.
 
 Before switching, Loki checks copied managed targets from the currently active profile for local edits. If a tool changed a copied settings file, `loki switch` reports the local change and blocks real activation until you resolve it or rerun with `--capture-local` to write safe copy-mode changes back to the store. Symlink targets already write directly to the store. Render outputs are never captured because they can contain secrets.
 
@@ -87,7 +87,7 @@ When switching away from a profile after a managed copy target changed locally a
 loki switch work content-dev --capture-local --yes
 ```
 
-`--capture-local` writes safe managed copy-mode local changes back to the store before switching. It does not bypass unmanaged overwrite protection.
+`--capture-local` writes safe managed copy-mode local changes back to the store before switching. If a fresh install blocks on unmanaged files and the Loki store should win, use `loki switch work content-dev --backup-unmanaged --yes` to move those blockers to a local backup directory and switch.
 
 ## Quick command examples
 
@@ -129,6 +129,7 @@ Dry-run and activate a profile:
 loki switch work content-dev --dry-run
 loki switch work content-dev --yes
 loki switch work content-dev --capture-local --yes
+loki switch work content-dev --backup-unmanaged --yes
 ```
 
 Migrate or adopt existing local files before the first real switch:
@@ -144,13 +145,14 @@ loki adopt ~/.gitconfig --profile work --yes
 Prepare Infisical-backed render secrets without printing values:
 
 ```bash
+loki secrets configure infisical
 loki secrets --infisical
 loki secrets login
 loki secrets status
 loki secrets check OPENAI_API_KEY
 ```
 
-`loki secrets --infisical` creates or updates `~/.config/infisical/.env` from existing safe local inputs and runs readiness checks. Output lists key names/readiness only, never values.
+`loki secrets configure infisical` prompts for Infisical Universal Auth details and writes only local `~/.config/infisical/.env` config; run `loki secrets status` afterward to verify readiness. `loki secrets --infisical` remains noninteractive for automation from existing safe local inputs. Output lists key names/readiness only, never values.
 
 Inspect and restore local activation snapshots:
 
@@ -172,7 +174,7 @@ loki tui
 loki --store /path/to/LokiProfileManager tui
 ```
 
-The TUI MVP covers dashboard diagnostics, persistent store setup, machine registration, secrets/profile views, guarded profile switching, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff. Restore writes still happen only through the guarded CLI restore flow.
+The TUI MVP covers dashboard diagnostics, persistent store setup, machine registration, Infisical setup/status, profile views, guarded profile switching, guarded sync conflict cleanup, and snapshot list/show/restore dry-run handoff. Restore writes still happen only through the guarded CLI restore flow.
 
 ## Documentation
 

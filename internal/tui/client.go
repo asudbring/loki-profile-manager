@@ -20,6 +20,7 @@ type Client interface {
 	MachineStatus(context.Context) (app.MachineStatusResult, error)
 	RegisterMachine(context.Context, app.RegisterMachineRequest) (machine.Record, error)
 	SecretsStatus(context.Context) (app.SecretsStatusResult, error)
+	SecretsConfigureInfisical(context.Context, app.SecretsConfigureInfisicalRequest) (app.SecretsConfigureInfisicalResult, error)
 	ListSnapshots(context.Context) (app.SnapshotListResult, error)
 	ShowSnapshot(context.Context, app.SnapshotShowRequest) (app.SnapshotShowResult, error)
 	RestoreSnapshotDryRun(context.Context, app.SnapshotRestoreDryRunRequest) (app.SnapshotRestoreDryRunResult, error)
@@ -114,6 +115,13 @@ func (c ServiceClient) SecretsStatus(ctx context.Context) (app.SecretsStatusResu
 		return app.SecretsStatusResult{}, fmt.Errorf("tui client: service is nil")
 	}
 	return c.Service.SecretsStatus(ctx, app.SecretsStatusRequest{})
+}
+
+func (c ServiceClient) SecretsConfigureInfisical(ctx context.Context, req app.SecretsConfigureInfisicalRequest) (app.SecretsConfigureInfisicalResult, error) {
+	if c.Service == nil {
+		return app.SecretsConfigureInfisicalResult{}, fmt.Errorf("tui client: service is nil")
+	}
+	return c.Service.SecretsConfigureInfisical(ctx, req)
 }
 
 func (c ServiceClient) ListSnapshots(ctx context.Context) (app.SnapshotListResult, error) {

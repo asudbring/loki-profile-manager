@@ -44,6 +44,7 @@ func newSecretsCommand(resolver config.PathResolver, globals *globalOptions, fac
 		},
 	}
 	cmd.Flags().BoolVar(&configureInfisical, "infisical", false, "create local Infisical env configuration from safe local inputs and check readiness")
+	cmd.AddCommand(newSecretsConfigureCommand(resolver, globals, factory))
 	cmd.AddCommand(newSecretsLoginCommand(resolver, globals, factory))
 	cmd.AddCommand(newSecretsStatusCommand(resolver, globals, factory))
 	cmd.AddCommand(newSecretsCheckCommand(resolver, globals, factory))
@@ -163,11 +164,15 @@ func printSecretsConfigureInfisical(out io.Writer, result app.SecretsConfigureIn
 	if len(result.Missing) > 0 {
 		fmt.Fprintf(out, "Missing keys: %s\n", strings.Join(result.Missing, ", "))
 	}
-	fmt.Fprintf(out, "Auth: %s\n", authState(result.Status.Ready))
-	if !result.Status.Ready {
-		if next := nextSecretStep(result.Status.Checks); next != "" {
-			fmt.Fprintf(out, "Next step: %s\n", next)
+	if result.Verified {
+		fmt.Fprintf(out, "Auth: %s\n", authState(result.Status.Ready))
+		if !result.Status.Ready {
+			if next := nextSecretStep(result.Status.Checks); next != "" {
+				fmt.Fprintf(out, "Next step: %s\n", next)
+			}
 		}
+	} else {
+		fmt.Fprintln(out, "Verification: skipped; run `loki secrets status` when ready to check Infisical auth.")
 	}
 	return nil
 }

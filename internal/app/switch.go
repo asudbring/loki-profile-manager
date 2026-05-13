@@ -21,27 +21,38 @@ const (
 )
 
 type SwitchRequest struct {
-	StorePath     string
-	ParentProfile string
-	Buckets       []string
-	DryRun        bool
-	Yes           bool
-	CaptureLocal  bool
-	FailAfter     int
+	StorePath       string
+	ParentProfile   string
+	Buckets         []string
+	DryRun          bool
+	Yes             bool
+	CaptureLocal    bool
+	BackupUnmanaged bool
+	FailAfter       int
+}
+
+// UnmanagedBackup records one pre-switch unmanaged target moved aside before activation.
+// The backup is local machine state only; it is not written to the synced Loki store.
+type UnmanagedBackup struct {
+	TargetPath  string                 `json:"target_path"`
+	BackupPath  string                 `json:"backup_path"`
+	SafetyClass activation.SafetyClass `json:"safety_class"`
 }
 
 type SwitchResult struct {
-	Plan            activation.Plan        `json:"plan"`
-	SnapshotID      string                 `json:"snapshot_id,omitempty"`
-	DryRun          bool                   `json:"dry_run"`
-	Changed         int                    `json:"changed"`
-	Captured        int                    `json:"captured"`
-	CapturePlan     activation.CapturePlan `json:"capture_plan,omitempty"`
-	CaptureRequired bool                   `json:"capture_required,omitempty"`
-	CleanupPlan     activation.CleanupPlan `json:"cleanup_plan,omitempty"`
-	Cleaned         int                    `json:"cleaned,omitempty"`
-	Warnings        []string               `json:"warnings,omitempty"`
-	Execution       activation.Snapshot    `json:"snapshot,omitempty"`
+	Plan                activation.Plan        `json:"plan"`
+	SnapshotID          string                 `json:"snapshot_id,omitempty"`
+	DryRun              bool                   `json:"dry_run"`
+	Changed             int                    `json:"changed"`
+	Captured            int                    `json:"captured"`
+	CapturePlan         activation.CapturePlan `json:"capture_plan,omitempty"`
+	CaptureRequired     bool                   `json:"capture_required,omitempty"`
+	CleanupPlan         activation.CleanupPlan `json:"cleanup_plan,omitempty"`
+	Cleaned             int                    `json:"cleaned,omitempty"`
+	UnmanagedBackupRoot string                 `json:"unmanaged_backup_root,omitempty"`
+	UnmanagedBackups    []UnmanagedBackup      `json:"unmanaged_backups,omitempty"`
+	Warnings            []string               `json:"warnings,omitempty"`
+	Execution           activation.Snapshot    `json:"snapshot,omitempty"`
 }
 
 func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, error) {
@@ -54,6 +65,9 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 	}
 	if validation := store.ValidateLayout(storePath); !validation.Valid {
 		return SwitchResult{}, fmt.Errorf("switch: invalid store layout: missing %v", validation.Missing)
+	}
+	if req.BackupUnmanaged && !req.Yes {
+		return SwitchResult{}, fmt.Errorf("switch: --backup-unmanaged requires --yes")
 	}
 
 	var result SwitchResult
@@ -120,6 +134,14 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 			return fmt.Errorf("obsolete managed targets cannot be removed safely: %s", strings.Join(cleanupPlan.BlockingMessages(), "; "))
 		}
 
+		var backupRoot string
+		var backups []UnmanagedBackup
+		plan, backupRoot, backups, err = s.backupUnmanagedTargetsIfRequested(ctx, plan, req)
+		if err != nil {
+			result = SwitchResult{Plan: plan, DryRun: req.DryRun, Captured: result.Captured, CapturePlan: result.CapturePlan, CaptureRequired: result.CaptureRequired, CleanupPlan: cleanupPlan, UnmanagedBackupRoot: backupRoot, UnmanagedBackups: backups, Warnings: warnings}
+			return err
+		}
+
 		execResult, err := activation.Execute(ctx, activation.ExecuteRequest{
 			Database:              s.database,
 			LocalPaths:            s.paths,
@@ -138,7 +160,7 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 		if err == nil && !req.DryRun && cleanupPlan.HasChanges() {
 			cleaned, err = activation.ApplyCleanup(ctx, s.database, cleanupPlan, activation.CleanupKeepTargets(execResult.Plan))
 		}
-		result = SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Captured: captured, CapturePlan: capturePlan, CaptureRequired: captureRequired, CleanupPlan: cleanupPlan, Cleaned: cleaned, Warnings: warnings, Execution: execResult.Snapshot}
+		result = SwitchResult{Plan: execResult.Plan, DryRun: req.DryRun, Changed: execResult.Changed, Captured: captured, CapturePlan: capturePlan, CaptureRequired: captureRequired, CleanupPlan: cleanupPlan, Cleaned: cleaned, UnmanagedBackupRoot: backupRoot, UnmanagedBackups: backups, Warnings: warnings, Execution: execResult.Snapshot}
 		if execResult.Snapshot.SnapshotID != "" {
 			result.SnapshotID = execResult.Snapshot.SnapshotID
 		}

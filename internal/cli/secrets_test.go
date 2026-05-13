@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -108,6 +110,49 @@ func TestSecretsCheckRequiresNames(t *testing.T) {
 	cmd.SetArgs([]string{"secrets", "check"})
 	if err := cmd.Execute(); err == nil {
 		t.Fatal("secrets check error = nil, want arg error")
+	}
+}
+
+func TestSecretsConfigureInfisicalWizardPromptsWritesConfigAndHidesValues(t *testing.T) {
+	home := t.TempDir()
+	cmd, out, errOut := secretsTestCommandWithResolver(t,
+		app.Options{SecretStatusChecker: fakeCLISecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}}},
+		config.PathResolver{GOOS: "darwin", HomeDir: home},
+	)
+	cmd.SetArgs([]string{"secrets", "configure", "infisical"})
+	cmd.SetIn(strings.NewReader("project-123\n\nclient-123\ndummy-client-secret\nhttps://infisical.example\ny\n"))
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("secrets configure infisical error = %v", err)
+	}
+	combined := out.String() + errOut.String()
+	if !strings.Contains(combined, "Loki Infisical configuration") || !strings.Contains(combined, "INFISICAL_CLIENT_SECRET") || !strings.Contains(combined, "Verification: skipped") {
+		t.Fatalf("wizard output = %s", combined)
+	}
+	for _, leak := range []string{"dummy-client-secret", "client-123", "project-123"} {
+		if strings.Contains(combined, leak) {
+			t.Fatalf("wizard output leaked value %q: %s", leak, combined)
+		}
+	}
+	content, err := os.ReadFile(filepath.Join(home, ".config", "infisical", ".env"))
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	text := string(content)
+	for _, want := range []string{"INFISICAL_PROJECT_ID=project-123", "INFISICAL_ENV=dev", "INFISICAL_CLIENT_ID=client-123", "INFISICAL_CLIENT_SECRET=dummy-client-secret", "INFISICAL_HOST_URL=https://infisical.example"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("env file missing %q:\n%s", want, text)
+		}
+	}
+}
+
+func TestSecretsConfigureInfisicalCommandAppearsInHelp(t *testing.T) {
+	cmd, out, _ := secretsTestCommand(t, app.Options{})
+	cmd.SetArgs([]string{"secrets", "configure", "--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("secrets configure --help error = %v", err)
+	}
+	if got := out.String(); !strings.Contains(got, "infisical") || !strings.Contains(got, "interactive") {
+		t.Fatalf("help output = %s", got)
 	}
 }
 

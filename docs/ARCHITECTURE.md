@@ -251,7 +251,7 @@ sequenceDiagram
     end
 ```
 
-Safety validation happens before snapshots and before any target writes. `--capture-local` writes only safe copied managed-target drift back to store sources before activation and then rechecks safety. Render outputs are regenerated from templates and are not captured. Rollback runs for failures after snapshot creation.
+Safety validation happens before snapshots and before any target writes. `--capture-local` writes only safe copied managed-target drift back to store sources before activation and then rechecks safety. `--backup-unmanaged --yes` is the explicit first-install remediation path when the synced store should win: Loki classifies blockers, moves only unmanaged file/directory blockers to machine-local state under `unmanaged-backups/<timestamp>/`, writes a backup manifest, rechecks safety, then activates. Render outputs are regenerated from templates and are not captured. Rollback runs for failures after snapshot creation; unmanaged pre-switch backups are preserved separately for manual recovery.
 
 ## Sync MVP flow
 
@@ -381,7 +381,7 @@ The overwrite detector uses `os.Lstat`, symlink inspection, target hashes, and `
 | Managed hash mismatch | Blocked. |
 | Target outside configured home root | Blocked during manifest validation. |
 
-This is why migration/adoption is required before using Loki on a machine with existing config files.
+This is why migration/adoption or explicit unmanaged backup remediation is required before using Loki on a machine with existing config files. `--backup-unmanaged --yes` handles only unmanaged file/directory blockers; broken symlinks, managed hash mismatches, obsolete changed targets, and other unsafe states still require manual repair, capture, migration, or adoption.
 
 ## Rollback and snapshot reporting
 
@@ -399,7 +399,9 @@ Snapshot reporting is read-only. `loki snapshots list` combines SQLite rows with
 
 Render mode uses an injectable secret provider. The V1 provider is Infisical through the Infisical CLI. Secret values are written only to the intended rendered target file. Missing secrets report names only. Loki never stores Infisical tokens or secret values in the synced store or local SQLite.
 
-`loki secrets --infisical` creates or updates the local `~/.config/infisical/.env` from existing `INFISICAL_*` environment variables and local `.infisical.json` project config, then runs readiness checks while reporting key names only. `loki secrets login` delegates to `infisical login` with inherited terminal I/O, so Loki does not capture login tokens or passwords. `loki secrets status` checks CLI/readiness without printing values. `loki secrets check <NAME...>` fetches only named secrets and reports available/missing names only.
+`loki secrets configure infisical` is the interactive setup path. The CLI prompts for project ID, environment, client ID, masked client secret/key, and optional host URL; the TUI Secrets screen exposes the same app service behind `c`. Both paths write only the machine-local `~/.config/infisical/.env` file with restricted local permissions where supported, store Universal Auth config only, and do not run profile activation. The wizard does not persist minted `INFISICAL_TOKEN` values; readiness verification happens through `loki secrets status`.
+
+`loki secrets --infisical` remains the noninteractive automation path: it creates or updates local `~/.config/infisical/.env` from existing `INFISICAL_*` environment variables and local `.infisical.json` project config, then runs readiness checks while reporting key names only. `loki secrets login` delegates to `infisical login` with inherited terminal I/O, so Loki does not capture login tokens or passwords. `loki secrets status` checks CLI/readiness without printing values. `loki secrets check <NAME...>` fetches only named secrets and reports available/missing names only.
 
 The provider seam is intentionally small (`GetSecrets(ctx, names)` plus status/login helpers) so Azure Key Vault and other backends can be added later without changing activation planning or render operations.
 
@@ -410,12 +412,11 @@ Supported placeholders:
 ${SECRET_NAME}
 ```
 
-Current CLI strategies:
+Current provider strategy:
 
-```text
-infisical secrets get SECRET_NAME --plain --silent
-infisical login
-```
+- Secret reads call the Infisical CLI internally and return values only to render operations.
+- Universal Auth token minting uses the Infisical API so the client secret is not passed in a child-process argument list.
+- Interactive user login still delegates to `infisical login` with inherited terminal I/O.
 
 Doctor reports Infisical readiness as a warning when missing or not ready, not a blocking issue unless a render operation later needs secrets.
 

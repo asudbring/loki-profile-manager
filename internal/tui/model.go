@@ -116,6 +116,13 @@ type Model struct {
 	machineRegisterRecord machine.Record
 	machineBusy           bool
 
+	secretsConfigure        bool
+	secretsConfigureField   int
+	secretsConfigureInputs  []string
+	secretsConfigureErr     error
+	secretsConfigureMessage string
+	secretsConfigureBusy    bool
+
 	spinner spinner.Model
 }
 
@@ -280,6 +287,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.screen = ScreenMachine
 		return m, nil
+	case secretsConfigureMsg:
+		m.secretsConfigureBusy = false
+		m.secretsConfigureErr = msg.err
+		m.scrubSecretsConfigureInputs()
+		if msg.err == nil {
+			m.secretsConfigure = false
+			m.secretsConfigureMessage = "Infisical configuration saved. Run secrets status to verify readiness."
+			if msg.result.Verified {
+				m.secrets = msg.result.Status
+				m.secretsErr = nil
+			}
+		}
+		m.screen = ScreenSecrets
+		return m, nil
 	}
 	return m, nil
 }
@@ -302,6 +323,9 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	if m.screen == ScreenSnapshots {
 		return m.updateSnapshotsKey(msg)
+	}
+	if m.screen == ScreenSecrets {
+		return m.updateSecretsKey(msg)
 	}
 	switch msg.String() {
 	case "q", "ctrl+c":

@@ -117,6 +117,50 @@ func TestSwitchCLICleanupPrintsObsoleteTargets(t *testing.T) {
 	}
 }
 
+func TestSwitchCLIUnsafeOverwritePrintsBackupRemediation(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "unsafe-remediate.txt", "new")
+	registerSwitchTestMachine(t, home, storePath)
+	target := filepath.ToSlash(filepath.Join(home, "unsafe-remediate.txt"))
+	if err := os.WriteFile(target, []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	cmd, out, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--dry-run"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "unsafe target overwrite") {
+		t.Fatalf("Execute() error = %v output=%s", err, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "Unmanaged blockers: 1") || !strings.Contains(got, "--backup-unmanaged --yes") || !strings.Contains(got, "loki adopt") {
+		t.Fatalf("output missing remediation guidance:\n%s", got)
+	}
+	if got := string(mustRead(t, target)); got != "local" {
+		t.Fatalf("target changed to %q", got)
+	}
+}
+
+func TestSwitchCLIBackupUnmanagedYesMovesBlockerAndSwitches(t *testing.T) {
+	home := t.TempDir()
+	storePath := cliSwitchStore(t, "unsafe-backup.txt", "new")
+	registerSwitchTestMachine(t, home, storePath)
+	target := filepath.ToSlash(filepath.Join(home, "unsafe-backup.txt"))
+	if err := os.WriteFile(target, []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	cmd, out, _ := switchTestCommand(home)
+	cmd.SetArgs([]string{"--store", storePath, "switch", "work", "--backup-unmanaged", "--yes"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute() error = %v output=%s", err, out.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "Loki switch complete") || !strings.Contains(got, "Backed up unmanaged targets: 1") || !strings.Contains(got, "Backup root:") {
+		t.Fatalf("output = %s", got)
+	}
+	if got := string(mustRead(t, target)); got != "new" {
+		t.Fatalf("target = %q", got)
+	}
+}
+
 func TestSwitchCLIUnsafeOverwriteReturnsError(t *testing.T) {
 	home := t.TempDir()
 	storePath := cliSwitchStore(t, "unsafe.txt", "new")

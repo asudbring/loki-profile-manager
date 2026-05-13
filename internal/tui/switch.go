@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/asudbring/loki-profile-manager/internal/activation"
 	"github.com/asudbring/loki-profile-manager/internal/app"
 )
 
@@ -344,6 +345,10 @@ func appendSwitchPlan(lines []string, m Model) []string {
 		lines = append(lines, switchResultSummary(m.switchDryRun)...)
 		if m.switchDryRunErr != nil {
 			lines = append(lines, errorStyle.Render("Blocker: "+m.switchDryRunErr.Error()))
+			if blockers := tuiUnmanagedSwitchBlockers(m.switchDryRun.Plan); len(blockers) > 0 {
+				lines = append(lines, fmt.Sprintf("Unmanaged blockers: %d", len(blockers)))
+				lines = append(lines, "Fix in CLI: rerun this switch with --backup-unmanaged --yes")
+			}
 		} else {
 			lines = append(lines, "Ready to execute after confirmation.")
 		}
@@ -358,6 +363,20 @@ func appendSwitchPlan(lines []string, m Model) []string {
 		}
 	}
 	return lines
+}
+
+func tuiUnmanagedSwitchBlockers(plan activation.Plan) []string {
+	var blockers []string
+	for _, op := range plan.Operations {
+		if op.Safety.Safe {
+			continue
+		}
+		switch op.Safety.Class {
+		case activation.SafetyUnmanagedFile, activation.SafetyUnmanagedDirectory:
+			blockers = append(blockers, op.TargetPath)
+		}
+	}
+	return blockers
 }
 
 func switchResultSummary(result app.SwitchResult) []string {

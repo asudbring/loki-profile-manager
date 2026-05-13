@@ -1,9 +1,14 @@
 package infisical
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +26,10 @@ type Runner interface {
 
 type InteractiveRunner interface {
 	RunInteractive(ctx context.Context, name string, args []string, env []string) error
+}
+
+type MachineTokenMinter interface {
+	MintMachineToken(ctx context.Context, cfg Config) (string, error)
 }
 
 type EnvLookup func(key string) (string, bool)
@@ -192,19 +201,68 @@ func parseEnvLine(line string) (string, string, bool) {
 		return "", "", false
 	}
 	value := strings.TrimSpace(line[idx+1:])
-	if len(value) >= 2 {
-		quote := value[0]
-		if quote == '\'' || quote == '"' {
-			if end := strings.LastIndexByte(value[1:], quote); end >= 0 {
-				value = value[1 : end+1]
-				return key, value, true
-			}
-		}
+	if quoted, ok := parseQuotedEnvValue(value); ok {
+		return key, quoted, true
 	}
 	if idx := strings.Index(value, " #"); idx >= 0 {
 		value = strings.TrimSpace(value[:idx])
 	}
 	return key, value, true
+}
+
+func parseQuotedEnvValue(value string) (string, bool) {
+	if len(value) < 2 {
+		return "", false
+	}
+	quote := value[0]
+	if quote != '\'' && quote != '"' {
+		return "", false
+	}
+	escaped := false
+	for i := 1; i < len(value); i++ {
+		ch := value[i]
+		if quote == '"' && escaped {
+			escaped = false
+			continue
+		}
+		if quote == '"' && ch == '\\' {
+			escaped = true
+			continue
+		}
+		if ch == quote {
+			quoted := value[1:i]
+			if quote == '"' {
+				quoted = unescapeDoubleQuotedEnvValue(quoted)
+			}
+			return quoted, true
+		}
+	}
+	return "", false
+}
+
+func unescapeDoubleQuotedEnvValue(value string) string {
+	var b strings.Builder
+	for i := 0; i < len(value); i++ {
+		if value[i] != '\\' || i+1 >= len(value) {
+			b.WriteByte(value[i])
+			continue
+		}
+		i++
+		switch value[i] {
+		case 'n':
+			b.WriteByte('\n')
+		case 'r':
+			b.WriteByte('\r')
+		case 't':
+			b.WriteByte('\t')
+		case '\\', '"':
+			b.WriteByte(value[i])
+		default:
+			b.WriteByte('\\')
+			b.WriteByte(value[i])
+		}
+	}
+	return b.String()
 }
 
 func (c Client) resolvedConfig() Config {
@@ -232,6 +290,9 @@ func (c Client) resolvedConfig() Config {
 	}
 	if cfg.Host == "" {
 		cfg.Host = lookupFirst(c.lookup, "INFISICAL_HOST", "INFISICAL_HOST_URL")
+	}
+	if strings.TrimSpace(cfg.Host) != "" {
+		cfg.APIURL = cfg.Host
 	}
 	return cfg
 }
@@ -275,6 +336,19 @@ func (cfg Config) environmentArgs() []string {
 	return []string{"--env", environment}
 }
 
+func (cfg Config) validateHostURLs() error {
+	for _, value := range []string{cfg.APIURL, cfg.Host} {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, err := universalAuthLoginEndpoint(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (cfg Config) commandEnv() []string {
 	var env []string
 	appendEnv := func(key, value string) {
@@ -296,6 +370,9 @@ func (cfg Config) loginDomain() string {
 }
 
 func (c Client) commandEnv(ctx context.Context, cfg Config) ([]string, Config, error) {
+	if err := cfg.validateHostURLs(); err != nil {
+		return nil, cfg, err
+	}
 	if strings.TrimSpace(cfg.Token) != "" {
 		return cfg.commandEnv(), cfg, nil
 	}
@@ -320,20 +397,86 @@ func (c Client) shouldRetryWithMachineToken(cfg Config) bool {
 }
 
 func (c Client) mintMachineToken(ctx context.Context, cfg Config) (string, error) {
-	args := []string{"login", "--method=universal-auth", "--client-id", cfg.ClientID, "--client-secret", cfg.ClientSecret}
-	if domain := cfg.loginDomain(); domain != "" {
-		args = append(args, "--domain", domain)
+	if minter, ok := c.Runner.(MachineTokenMinter); ok {
+		token, err := minter.MintMachineToken(ctx, cfg)
+		if err != nil || strings.TrimSpace(token) == "" {
+			return "", MachineAuthError{}
+		}
+		return strings.TrimSpace(token), nil
 	}
-	args = append(args, "--plain", "--silent")
-	out, err := c.Runner.Run(ctx, c.Binary, args, cfg.commandEnv())
+	return mintMachineTokenHTTP(ctx, cfg)
+}
+
+func mintMachineTokenHTTP(ctx context.Context, cfg Config) (string, error) {
+	endpoint, err := universalAuthLoginEndpoint(cfg.loginDomain())
 	if err != nil {
 		return "", MachineAuthError{}
 	}
-	token := strings.TrimSpace(string(out))
+	body, err := json.Marshal(map[string]string{"clientId": cfg.ClientID, "clientSecret": cfg.ClientSecret})
+	if err != nil {
+		return "", MachineAuthError{}
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return "", MachineAuthError{}
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", MachineAuthError{}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return "", MachineAuthError{}
+	}
+	var decoded struct {
+		AccessToken string `json:"accessToken"`
+		Token       string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
+		return "", MachineAuthError{}
+	}
+	token := strings.TrimSpace(firstNonEmpty(decoded.AccessToken, decoded.Token))
 	if token == "" {
 		return "", MachineAuthError{}
 	}
 	return token, nil
+}
+
+func universalAuthLoginEndpoint(domain string) (string, error) {
+	domain = strings.TrimRight(strings.TrimSpace(domain), "/")
+	if domain == "" {
+		domain = "https://app.infisical.com/api"
+	}
+	parsed, err := url.Parse(domain)
+	if err != nil || parsed == nil || parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return "", fmt.Errorf("invalid Infisical domain")
+	}
+	if parsed.Scheme != "https" && !(parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())) {
+		return "", fmt.Errorf("Infisical domain must use HTTPS unless it points to localhost")
+	}
+	if strings.HasSuffix(domain, "/api") {
+		return domain + "/v1/auth/universal-auth/login", nil
+	}
+	return domain + "/api/v1/auth/universal-auth/login", nil
+}
+
+func isLoopbackHost(host string) bool {
+	host = strings.TrimSpace(strings.ToLower(host))
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (c Client) secretGetArgs(name string, cfg Config) []string {

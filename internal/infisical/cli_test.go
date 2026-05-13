@@ -22,6 +22,7 @@ type fakeRunner struct {
 	interactiveErr      error
 	commands            [][]string
 	envs                [][]string
+	mintedConfigs       []Config
 	interactiveCommands [][]string
 }
 
@@ -70,6 +71,18 @@ func (f *fakeRunner) Run(ctx context.Context, name string, args []string, env []
 func (f *fakeRunner) RunInteractive(ctx context.Context, name string, args []string, env []string) error {
 	f.interactiveCommands = append(f.interactiveCommands, append([]string{name}, args...))
 	return f.interactiveErr
+}
+
+func (f *fakeRunner) MintMachineToken(ctx context.Context, cfg Config) (string, error) {
+	_ = ctx
+	f.mintedConfigs = append(f.mintedConfigs, cfg)
+	if f.runErr != nil {
+		return "", f.runErr
+	}
+	if f.machineToken != "" {
+		return f.machineToken, nil
+	}
+	return "machine-token\n", nil
 }
 
 func testClient(runner *fakeRunner) Client {
@@ -233,13 +246,15 @@ func TestClientMintsUniversalAuthTokenAndPassesProjectID(t *testing.T) {
 	if values["TOKEN"] != "secret-value" {
 		t.Fatalf("values = %+v", values)
 	}
-	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "client-id", "--client-secret", "client-secret", "--domain", "https://app.infisical.com/api", "--plain", "--silent"}
 	wantGet := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}
-	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) || !reflect.DeepEqual(runner.commands[1], wantGet) {
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], wantGet) {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
-	if len(runner.envs) != 2 || hasEnv(runner.envs[0], "INFISICAL_TOKEN=minted-token") || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=minted-token") {
+	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=minted-token") {
 		t.Fatalf("envs = %+v", runner.envs)
+	}
+	if len(runner.mintedConfigs) != 1 || runner.mintedConfigs[0].ClientSecret != "client-secret" {
+		t.Fatalf("minted configs = %+v", runner.mintedConfigs)
 	}
 }
 
@@ -256,11 +271,26 @@ func TestClientReadsMachineIdentityFromEnv(t *testing.T) {
 	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
 		t.Fatalf("GetSecrets() error = %v", err)
 	}
-	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[1], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "env-project-id", "--env", "prod"}) {
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "env-project-id", "--env", "prod"}) {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
-	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[1], "INFISICAL_API_URL=https://app.infisical.com/api") {
+	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[0], "INFISICAL_API_URL=https://app.infisical.com/api") {
 		t.Fatalf("envs = %+v", runner.envs)
+	}
+}
+
+func TestClientRejectsPlainHTTPHostAtRuntime(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}}
+	client := Client{Runner: runner, LookupEnv: mapLookup(map[string]string{
+		"INFISICAL_TOKEN": "token",
+		"INFISICAL_HOST":  "http://infisical.example",
+	})}
+	_, err := client.GetSecrets(context.Background(), []string{"TOKEN"})
+	if err == nil {
+		t.Fatal("GetSecrets() error = nil, want invalid host error")
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("commands = %+v, want none", runner.commands)
 	}
 }
 
@@ -276,12 +306,60 @@ func TestClientReadsInfisicalHostURLAliasFromEnv(t *testing.T) {
 	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
 		t.Fatalf("GetSecrets() error = %v", err)
 	}
-	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "env-client-id", "--client-secret", "env-client-secret", "--domain", "https://app.infisical.com", "--plain", "--silent"}
-	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) {
-		t.Fatalf("commands = %+v, want first command %+v", runner.commands, wantLogin)
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "env-project-id"}) {
+		t.Fatalf("commands = %+v", runner.commands)
 	}
-	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[1], "INFISICAL_HOST=https://app.infisical.com") {
+	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=env-token") || !hasEnv(runner.envs[0], "INFISICAL_HOST=https://app.infisical.com") {
 		t.Fatalf("envs = %+v", runner.envs)
+	}
+	if len(runner.mintedConfigs) != 1 || runner.mintedConfigs[0].Host != "https://app.infisical.com" {
+		t.Fatalf("minted configs = %+v", runner.mintedConfigs)
+	}
+}
+
+func TestParseEnvLineStopsAtQuotedValueBeforeComment(t *testing.T) {
+	_, got, ok := parseEnvLine(`INFISICAL_CLIENT_SECRET="abc" # note "prod"`)
+	if !ok || got != "abc" {
+		t.Fatalf("parseEnvLine() got %q ok=%v, want abc/true", got, ok)
+	}
+}
+
+func TestReadInfisicalEnvFileUnescapesDoubleQuotedValues(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	want := `has 'single' "double" # hash \path`
+	if err := os.WriteFile(path, []byte("INFISICAL_CLIENT_SECRET=\"has 'single' \\\"double\\\" # hash \\path\"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	values, err := readInfisicalEnvFile(path)
+	if err != nil {
+		t.Fatalf("readInfisicalEnvFile() error = %v", err)
+	}
+	if got := values["INFISICAL_CLIENT_SECRET"]; got != want {
+		t.Fatalf("INFISICAL_CLIENT_SECRET = %q, want %q", got, want)
+	}
+}
+
+func TestClientHostOverridesStaleAPIURL(t *testing.T) {
+	runner := &fakeRunner{values: map[string]string{"TOKEN": "secret-value"}, machineToken: "env-token\n"}
+	client := Client{Runner: runner, LookupEnv: mapLookup(map[string]string{
+		"INFISICAL_AUTH_METHOD":   "universal-auth",
+		"INFISICAL_CLIENT_ID":     "env-client-id",
+		"INFISICAL_CLIENT_SECRET": "env-client-secret",
+		"INFISICAL_PROJECT_ID":    "env-project-id",
+		"INFISICAL_API_URL":       "https://old-api.example",
+		"INFISICAL_HOST":          "https://new-host.example",
+	})}
+	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
+		t.Fatalf("GetSecrets() error = %v", err)
+	}
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "env-project-id"}) {
+		t.Fatalf("commands = %+v", runner.commands)
+	}
+	if len(runner.envs) != 1 || hasEnv(runner.envs[0], "INFISICAL_API_URL=https://old-api.example") || !hasEnv(runner.envs[0], "INFISICAL_API_URL=https://new-host.example") || !hasEnv(runner.envs[0], "INFISICAL_HOST=https://new-host.example") {
+		t.Fatalf("envs = %+v", runner.envs)
+	}
+	if len(runner.mintedConfigs) != 1 || runner.mintedConfigs[0].APIURL != "https://new-host.example" {
+		t.Fatalf("minted configs = %+v", runner.mintedConfigs)
 	}
 }
 
@@ -313,12 +391,11 @@ func TestClientReadsMachineIdentityFromDefaultEnvFile(t *testing.T) {
 	if _, err := client.GetSecrets(context.Background(), []string{"TOKEN"}); err != nil {
 		t.Fatalf("GetSecrets() error = %v", err)
 	}
-	wantLogin := []string{"infisical", "login", "--method=universal-auth", "--client-id", "file-client", "--client-secret", "file-x", "--domain", "https://app.infisical.com", "--plain", "--silent"}
 	wantGet := []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "file-project", "--env", "stage"}
-	if len(runner.commands) != 2 || !reflect.DeepEqual(runner.commands[0], wantLogin) || !reflect.DeepEqual(runner.commands[1], wantGet) {
+	if len(runner.commands) != 1 || !reflect.DeepEqual(runner.commands[0], wantGet) {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
-	if len(runner.envs) != 2 || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=file-token") || !hasEnv(runner.envs[1], "INFISICAL_HOST=https://app.infisical.com") {
+	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=file-token") || !hasEnv(runner.envs[0], "INFISICAL_HOST=https://app.infisical.com") {
 		t.Fatalf("envs = %+v", runner.envs)
 	}
 }
@@ -334,13 +411,13 @@ func TestClientRetriesStaleTokenWithUniversalAuth(t *testing.T) {
 	if values["TOKEN"] != "secret-value" {
 		t.Fatalf("values = %+v", values)
 	}
-	if len(runner.commands) != 3 {
+	if len(runner.commands) != 2 {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
-	if !reflect.DeepEqual(runner.commands[0], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}) || runner.commands[1][1] != "login" || !reflect.DeepEqual(runner.commands[2], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}) {
+	if !reflect.DeepEqual(runner.commands[0], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}) || !reflect.DeepEqual(runner.commands[1], []string{"infisical", "secrets", "get", "TOKEN", "--plain", "--silent", "--projectId", "project-id"}) {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
-	if !hasEnv(runner.envs[0], "INFISICAL_TOKEN=stale-token") || hasEnv(runner.envs[1], "INFISICAL_TOKEN=fresh-token") || !hasEnv(runner.envs[2], "INFISICAL_TOKEN=fresh-token") {
+	if !hasEnv(runner.envs[0], "INFISICAL_TOKEN=stale-token") || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=fresh-token") {
 		t.Fatalf("envs = %+v", runner.envs)
 	}
 }
@@ -352,7 +429,7 @@ func TestClientCheckAuthenticatedRetriesStaleTokenWithUniversalAuth(t *testing.T
 	if err := client.CheckAuthenticated(context.Background()); err != nil {
 		t.Fatalf("CheckAuthenticated() error = %v", err)
 	}
-	if len(runner.commands) != 3 || runner.commands[0][1] != "secrets" || runner.commands[1][1] != "login" || runner.commands[2][1] != "secrets" {
+	if len(runner.commands) != 2 || runner.commands[0][1] != "secrets" || runner.commands[1][1] != "secrets" {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
 }
@@ -403,10 +480,10 @@ func TestClientRunWithSecretsRetriesStaleToken(t *testing.T) {
 	if string(out) != "ok\n" {
 		t.Fatalf("out = %q", out)
 	}
-	if len(runner.commands) != 3 || runner.commands[0][1] != "run" || runner.commands[1][1] != "login" || runner.commands[2][1] != "run" {
+	if len(runner.commands) != 2 || runner.commands[0][1] != "run" || runner.commands[1][1] != "run" {
 		t.Fatalf("commands = %+v", runner.commands)
 	}
-	if !hasEnv(runner.envs[0], "INFISICAL_TOKEN=stale-token") || !hasEnv(runner.envs[2], "INFISICAL_TOKEN=fresh-token") {
+	if !hasEnv(runner.envs[0], "INFISICAL_TOKEN=stale-token") || !hasEnv(runner.envs[1], "INFISICAL_TOKEN=fresh-token") {
 		t.Fatalf("envs = %+v", runner.envs)
 	}
 }

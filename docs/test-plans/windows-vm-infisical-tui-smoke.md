@@ -41,13 +41,22 @@ Expected:
 - Build succeeds.
 - `status` shows configured OneDrive store or clear setup message. No secret values printed.
 
-## 2. Infisical environment check
+## 2. Infisical setup wizard or environment check
 
-Run in same Windows Terminal. This checks presence only; it does not print values.
+Preferred fresh setup path:
+
+```powershell
+.\bin\loki.exe secrets configure infisical
+```
+
+When prompted, enter the project ID, environment, client ID, client secret/key, and optional host URL from the secure channel. Do not paste these values into the repo, screenshots, logs, or chat.
+
+If the machine was already configured, run this presence-only check instead. It does not print values.
 
 ```powershell
 'INFISICAL_API_URL',
 'INFISICAL_HOST',
+'INFISICAL_HOST_URL',
 'INFISICAL_AUTH_METHOD',
 'INFISICAL_CLIENT_ID',
 'INFISICAL_CLIENT_SECRET',
@@ -60,8 +69,9 @@ Run in same Windows Terminal. This checks presence only; it does not print value
 
 Expected:
 
-- All six report `set` on a configured test machine.
-- If any are missing, configure from secure channel, then open a new Windows Terminal.
+- Wizard output lists env path and key names only; no secret values or minted token. Run `secrets status` in the next section for readiness.
+- The local Infisical env file exists under the user profile and is not in the synced Loki store.
+- On a preconfigured machine, Universal Auth keys and project ID report `set`; one host key may be `missing` if the default Infisical host is used.
 
 ## 3. Infisical readiness through Loki
 
@@ -80,27 +90,19 @@ Expected:
 - `secrets check __LOKI_INFISICAL_READINESS_PROBE__` either reports the probe name as available or missing. If missing, nonzero exit is acceptable; missing probe still proves auth/project routing when `secrets status` is ready.
 - Any error must not include `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, or returned secret values.
 
-## 4. Optional direct machine-token mint check
+## 4. Optional Loki-only readiness recheck
 
-Only if debugging. This writes token to current process env and does not print it.
+Only if debugging. Do not run direct `infisical login --client-secret ...` commands because client secrets can appear in process arguments. Use Loki readiness commands instead.
 
 ```powershell
-$env:INFISICAL_TOKEN = infisical login `
-  --method=universal-auth `
-  --client-id $env:INFISICAL_CLIENT_ID `
-  --client-secret $env:INFISICAL_CLIENT_SECRET `
-  --domain $env:INFISICAL_API_URL `
-  --plain `
-  --silent
-
-if ($env:INFISICAL_TOKEN) { 'INFISICAL_TOKEN: set' } else { 'INFISICAL_TOKEN: missing' }
 .\bin\loki.exe secrets status
+.\bin\loki.exe secrets check __LOKI_INFISICAL_READINESS_PROBE__
 ```
 
 Expected:
 
-- Token presence prints only `set`/`missing`, never value.
-- Loki status still ready.
+- Loki status still ready or reports a safe remediation.
+- Output contains names/status only, never token, client secret, or secret values.
 
 ## 5. TUI launch and dashboard
 
@@ -126,11 +128,11 @@ From dashboard:
 | `r` | Refresh completes; no stuck spinner. |
 | `d` | Doctor screen renders. `esc` returns. |
 | `m` | Machine screen renders. `esc` returns. |
-| `s` | Secrets screen renders readiness. No secret values. `esc` returns. |
+| `s` | Secrets screen renders readiness. Press `c` to open the Infisical wizard; secret field is masked. `esc` cancels/returns. No secret values. |
 | `p` | Profiles screen renders profile catalog. `esc` returns. |
 | `n` | Snapshots screen renders. `enter` shows selected snapshot if present. `d` runs full restore dry-run preview only. `t` runs targeted dry-run after snapshot loaded/target selected. `esc` returns. |
 
-Pass criteria: all screens readable, footer/help visible, no panic, no layout corruption, no leaked secrets.
+Pass criteria: all screens readable, footer/help visible, no panic, no layout corruption, no leaked secrets. The TUI Infisical wizard must not run profile switch, sync, or activation.
 
 ## 7. TUI sync dry-run
 
@@ -179,7 +181,7 @@ $Buckets = @("content-dev")
 Expected:
 
 - Dry-run shows the expected managed target count.
-- No unexpected unmanaged overwrite blockers.
+- If unmanaged overwrite blockers appear, output recommends `--backup-unmanaged --yes` and/or `loki adopt`.
 - Any copied-target local drift is understood before proceeding.
 
 If the dry-run is clean:
@@ -189,6 +191,15 @@ If the dry-run is clean:
 .\bin\loki.exe --store $Store status --verbose
 .\bin\loki.exe --store $Store switch $Profile @Buckets --dry-run
 ```
+
+If the only blockers are unmanaged local files and the synced Loki store should win:
+
+```powershell
+.\bin\loki.exe --store $Store switch $Profile @Buckets --backup-unmanaged --yes
+.\bin\loki.exe --store $Store status --verbose
+```
+
+Expected: output prints `Backed up unmanaged targets` and `Backup root:`. Backup root stays in local Loki state, not the synced store.
 
 If the only blocker is safe copied-target drift that should be written back to the store before switching:
 

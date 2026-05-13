@@ -42,36 +42,43 @@ type fakeMachineRegisterResult struct {
 	err    error
 }
 
+type fakeSecretsConfigureResult struct {
+	result app.SecretsConfigureInfisicalResult
+	err    error
+}
+
 type fakeClient struct {
-	status                 app.StatusResult
-	storeStatus            app.StoreStatusResult
-	storeCandidates        app.DiscoverStoresResult
-	catalog                app.ProfileCatalogResult
-	doctor                 app.DoctorResult
-	machine                app.MachineStatusResult
-	secrets                app.SecretsStatusResult
-	snapshots              app.SnapshotListResult
-	statusErr              error
-	storeStatusErr         error
-	storeDiscoverErr       error
-	catalogErr             error
-	doctorErr              error
-	machineErr             error
-	secretsErr             error
-	snapshotsErr           error
-	switchResults          []fakeSwitchResult
-	switchCalls            *[]app.SwitchRequest
-	syncResults            []fakeSyncResult
-	syncCalls              *[]app.SyncRequest
-	snapshotShowResults    []fakeSnapshotShowResult
-	snapshotShowCalls      *[]app.SnapshotShowRequest
-	snapshotRestoreResults []fakeSnapshotRestoreResult
-	snapshotRestoreCalls   *[]app.SnapshotRestoreDryRunRequest
-	storeUseCalls          *[]app.UseStoreRequest
-	storeEnsureCalls       *[]app.EnsureStoreRequest
-	storeForgetCalls       *[]app.ForgetStoreRequest
-	machineRegisterResults []fakeMachineRegisterResult
-	machineRegisterCalls   *[]app.RegisterMachineRequest
+	status                  app.StatusResult
+	storeStatus             app.StoreStatusResult
+	storeCandidates         app.DiscoverStoresResult
+	catalog                 app.ProfileCatalogResult
+	doctor                  app.DoctorResult
+	machine                 app.MachineStatusResult
+	secrets                 app.SecretsStatusResult
+	snapshots               app.SnapshotListResult
+	statusErr               error
+	storeStatusErr          error
+	storeDiscoverErr        error
+	catalogErr              error
+	doctorErr               error
+	machineErr              error
+	secretsErr              error
+	snapshotsErr            error
+	switchResults           []fakeSwitchResult
+	switchCalls             *[]app.SwitchRequest
+	syncResults             []fakeSyncResult
+	syncCalls               *[]app.SyncRequest
+	snapshotShowResults     []fakeSnapshotShowResult
+	snapshotShowCalls       *[]app.SnapshotShowRequest
+	snapshotRestoreResults  []fakeSnapshotRestoreResult
+	snapshotRestoreCalls    *[]app.SnapshotRestoreDryRunRequest
+	storeUseCalls           *[]app.UseStoreRequest
+	storeEnsureCalls        *[]app.EnsureStoreRequest
+	storeForgetCalls        *[]app.ForgetStoreRequest
+	machineRegisterResults  []fakeMachineRegisterResult
+	machineRegisterCalls    *[]app.RegisterMachineRequest
+	secretsConfigureResults []fakeSecretsConfigureResult
+	secretsConfigureCalls   *[]app.SecretsConfigureInfisicalRequest
 }
 
 func (f fakeClient) Status(context.Context) (app.StatusResult, error) {
@@ -137,6 +144,19 @@ func (f fakeClient) RegisterMachine(ctx context.Context, req app.RegisterMachine
 
 func (f fakeClient) SecretsStatus(context.Context) (app.SecretsStatusResult, error) {
 	return f.secrets, f.secretsErr
+}
+
+func (f fakeClient) SecretsConfigureInfisical(ctx context.Context, req app.SecretsConfigureInfisicalRequest) (app.SecretsConfigureInfisicalResult, error) {
+	_ = ctx
+	idx := 0
+	if f.secretsConfigureCalls != nil {
+		idx = len(*f.secretsConfigureCalls)
+		*f.secretsConfigureCalls = append(*f.secretsConfigureCalls, req)
+	}
+	if idx < len(f.secretsConfigureResults) {
+		return f.secretsConfigureResults[idx].result, f.secretsConfigureResults[idx].err
+	}
+	return app.SecretsConfigureInfisicalResult{Status: f.secrets}, nil
 }
 
 func (f fakeClient) ListSnapshots(context.Context) (app.SnapshotListResult, error) {
@@ -295,6 +315,67 @@ func TestDetailScreensRenderReadOnlyData(t *testing.T) {
 		if !strings.Contains(got.View(), want) {
 			t.Fatalf("screen %c missing %q:\n%s", key, want, got.View())
 		}
+	}
+}
+
+func TestSecretsConfigureWizardSubmitsAndNeverRendersSecret(t *testing.T) {
+	calls := []app.SecretsConfigureInfisicalRequest{}
+	client := populatedFakeClient()
+	client.secretsConfigureCalls = &calls
+	client.secretsConfigureResults = []fakeSecretsConfigureResult{{result: app.SecretsConfigureInfisicalResult{Status: app.SecretsStatusResult{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}}}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	model = updated.(Model)
+	if !model.secretsConfigure || !strings.Contains(model.View(), "Configure Infisical") {
+		t.Fatalf("configure wizard not opened: %+v\n%s", model, model.View())
+	}
+	for _, r := range "project-123" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	for i := 0; i < 2; i++ {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+		model = updated.(Model)
+	}
+	for _, r := range "client-123" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
+	for _, r := range "dummy-client-secret" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	if strings.Contains(model.View(), "dummy-client-secret") {
+		t.Fatalf("wizard rendered raw secret before submit:\n%s", model.View())
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = updated.(Model)
+	for _, r := range "https://infisical.example" {
+		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		model = updated.(Model)
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = updated.(Model)
+	if !model.secretsConfigureBusy || cmd == nil {
+		t.Fatalf("configure submit not started: %+v cmd nil=%v", model, cmd == nil)
+	}
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if len(calls) != 1 {
+		t.Fatalf("configure calls = %+v", calls)
+	}
+	if calls[0].ProjectID != "project-123" || calls[0].Environment != "dev" || calls[0].ClientID != "client-123" || calls[0].ClientSecret != "dummy-client-secret" || calls[0].HostURL != "https://infisical.example" || !calls[0].OverwriteExisting {
+		t.Fatalf("configure request = %+v", calls[0])
+	}
+	if strings.Contains(model.View(), "dummy-client-secret") || strings.Contains(model.View(), "client-123") {
+		t.Fatalf("wizard rendered configured values after submit:\n%s", model.View())
+	}
+	if len(model.secretsConfigureInputs) > secretsConfigureClientSecretIndex && model.secretsConfigureInputs[secretsConfigureClientSecretIndex] != "" {
+		t.Fatalf("secret input not scrubbed: %+v", model.secretsConfigureInputs)
 	}
 }
 
@@ -480,7 +561,9 @@ func TestSwitchDryRunAndConfirmExecute(t *testing.T) {
 
 func TestSwitchDryRunBlockerDisablesExecute(t *testing.T) {
 	client := populatedFakeClient()
-	client.switchResults = []fakeSwitchResult{{result: switchResult("work", []string{"azure"}, true, 1), err: errors.New("unsafe target overwrite blocked")}}
+	blockedResult := switchResult("work;rm", []string{"azure & bad"}, true, 1)
+	blockedResult.Plan.Operations[0].Safety = activation.SafetyStatus{Class: activation.SafetyUnmanagedFile, Safe: false, Message: "existing file is not managed by Loki"}
+	client.switchResults = []fakeSwitchResult{{result: blockedResult, err: errors.New("unsafe target overwrite blocked")}}
 	model := loadedModel(client)
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
 	model = updated.(Model)
@@ -488,7 +571,8 @@ func TestSwitchDryRunBlockerDisablesExecute(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(cmd())
 	model = updated.(Model)
-	if model.switchDryRunErr == nil || model.canExecuteSwitch() || !strings.Contains(model.View(), "Blocker:") {
+	view := model.View()
+	if model.switchDryRunErr == nil || model.canExecuteSwitch() || !strings.Contains(view, "Blocker:") || !strings.Contains(view, "--backup-unmanaged --yes") || strings.Contains(view, "'work;rm'") || strings.Contains(view, "'azure & bad'") {
 		t.Fatalf("blocked dry-run model/view = %+v\n%s", model, model.View())
 	}
 	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})

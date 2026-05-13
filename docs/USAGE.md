@@ -30,6 +30,7 @@ Current commands:
 | `sync` | Implemented |
 | `tui` | Implemented Bubble Tea MVP |
 | `import-skill` | Implemented folder and zip-import MVP |
+| `secrets configure infisical` | Implemented interactive Infisical setup wizard |
 | `secrets login` | Implemented Infisical CLI wrapper |
 | `secrets status` | Implemented Infisical readiness check |
 | `secrets check` | Implemented named-secret presence check |
@@ -97,9 +98,9 @@ loki switch work content-dev --yes
 Safety rules:
 
 - Run `switch --dry-run` before `switch --yes`.
-- `--yes` does not bypass unmanaged overwrite protection.
+- `--yes` does not bypass unmanaged overwrite protection by itself.
 - Create at least one profile core before `verify <profile>` or `switch <profile>` on a new empty store.
-- Use `migrate local`, `migrate repo`, or `adopt` before first activation on a machine with existing unmanaged files.
+- Use `migrate local`, `migrate repo`, `adopt`, or `switch --backup-unmanaged --yes` before first activation on a machine with existing unmanaged files.
 - Use `switch --capture-local --yes` only for safe copy-mode local changes from the currently active Loki-managed profile.
 - Render outputs are regenerated from templates and are not captured.
 - Merge drift is detected but manual in this MVP.
@@ -125,7 +126,7 @@ Behavior:
 - Switch screen runs `Switch(DryRun:true)`, requires exact `SWITCH <profile> [bucket...]` confirmation, rechecks the dry-run fingerprint, then calls app-owned `Switch(Yes:true)`.
 - Sync screen runs `Sync(DryRun:true)`, requires exact `DELETE <n> CONFLICTS` confirmation, rechecks the conflict fingerprint, then calls app-owned `Sync(Yes:true)`.
 - Snapshot screen lists and shows metadata only, runs restore dry-runs, and displays the guarded CLI restore command. It does not execute restore writes in the TUI MVP.
-- Secrets screen renders provider/readiness/check names and status only. It never renders secret values.
+- Secrets screen renders provider/readiness/check names and status only. Press `c` to configure Infisical through a masked local-only wizard. It never renders secret values.
 - Snapshot views do not read or print snapshot entry file contents; sensitive paths are redacted where app APIs mark them redacted.
 
 Keys:
@@ -139,6 +140,7 @@ Keys:
 | `g` | Open Store screen from dashboard. |
 | `d` | Dry-run switch/sync/snapshot restore on action screens; rediscover store candidates on Store screen. |
 | `x` | Switch execute confirmation or sync confirmation reset. Snapshot restore has no execute key. |
+| `c` | Open Infisical configuration wizard on the Secrets screen. |
 | Arrow keys / `hjkl` | Navigate lists, profile/bucket selection, and snapshot targets. |
 
 Example smoke:
@@ -440,6 +442,7 @@ loki --store /path/to/loki import-skill ~/Downloads/my-skill.zip --common --over
 Manage Infisical-backed secret readiness for render templates.
 
 ```bash
+loki secrets configure infisical
 loki secrets --infisical
 loki secrets login [--domain <url>]
 loki secrets status [--json]
@@ -450,7 +453,8 @@ Flags:
 
 | Command | Flag | Description |
 |---|---|---|
-| `secrets` | `--infisical` | Create/update local Infisical env config from existing safe local inputs, then check readiness. |
+| `configure infisical` | none | Interactive local-only Universal Auth setup wizard; prompts for project ID, environment, client ID, client secret/key, and optional host URL. |
+| `secrets` | `--infisical` | Noninteractive create/update local Infisical env config from existing safe local inputs, then check readiness. |
 | `login` | `--domain <url>` | Optional Infisical domain URL for EU Cloud or self-hosted instances. |
 | `status` | `--json` | Emit machine-readable JSON. |
 | `check` | `--json` | Emit machine-readable JSON. |
@@ -458,13 +462,14 @@ Flags:
 Behavior:
 
 - V1 supports Infisical only. Azure Key Vault and other providers are deferred.
-- `--infisical` creates or updates `~/.config/infisical/.env` from existing `INFISICAL_*` environment variables and local `.infisical.json` project config, then runs readiness checks. It reports key names only and never prints values.
+- `configure infisical` prompts for Infisical Universal Auth values and writes `~/.config/infisical/.env` with local-only permissions where supported. It stores Universal Auth config only, does not persist minted `INFISICAL_TOKEN` values, and then tells you to run `loki secrets status` for readiness verification.
+- `--infisical` creates or updates `~/.config/infisical/.env` from existing `INFISICAL_*` environment variables and local `.infisical.json` project config, then runs readiness checks. It remains noninteractive for automation, reports key names only, and never prints values.
 - `login` delegates to `infisical login` using inherited terminal I/O. Loki does not capture tokens, passwords, or login output.
 - `status` checks that the Infisical CLI is installed and ready for render templates. It does not list or print secret values.
 - `check` fetches only the named secrets and reports available or missing names. It never prints values.
-- Loki does not store Infisical tokens or secret values in the synced store or local SQLite.
+- Loki does not store Infisical tokens or secret values in the synced store or local SQLite. The only wizard-written secret-bearing file is the machine-local Infisical env file.
 - Render mode reads secret values only during real `switch` execution for files that use `render` mode.
-- Machine identity auth is supported through environment variables or `~/.config/infisical/.env`. If `INFISICAL_TOKEN` is set, Loki passes it only to Infisical child processes. If `INFISICAL_AUTH_METHOD=universal-auth` plus `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` are set, Loki mints a short-lived token with `infisical login --method=universal-auth --plain --silent` and uses it only for the current operation.
+- Machine identity auth is supported through environment variables or `~/.config/infisical/.env`. If `INFISICAL_TOKEN` is set, Loki passes it only to Infisical child processes. If `INFISICAL_AUTH_METHOD=universal-auth` plus `INFISICAL_CLIENT_ID` and `INFISICAL_CLIENT_SECRET` are set, Loki mints a short-lived token through the Infisical Universal Auth API and uses it only for the current operation.
 - When machine auth is active and `INFISICAL_PROJECT_ID` is set, Loki passes `--projectId <id>` to Infisical secret reads and `infisical run` calls. This avoids relying on ambient project detection for machine identities.
 - Set `INFISICAL_ENV` or `INFISICAL_ENVIRONMENT` to choose a non-`dev` environment. Loki passes `--env <name>` to Infisical secret reads and `infisical run` calls.
 - For non-default Infisical hosts, set `INFISICAL_API_URL`, `INFISICAL_HOST`, or legacy `INFISICAL_HOST_URL`. Loki maps `INFISICAL_HOST_URL` to the CLI-supported `INFISICAL_HOST` environment variable for child processes.
@@ -472,6 +477,7 @@ Behavior:
 Examples:
 
 ```bash
+loki secrets configure infisical
 loki secrets --infisical
 loki secrets login
 loki secrets login --domain https://eu.infisical.com
@@ -531,7 +537,7 @@ loki --store /path/to/loki doctor --json
 Activate a profile and optional buckets.
 
 ```bash
-loki switch <profile> [buckets...] [--dry-run] [--yes] [--capture-local]
+loki switch <profile> [buckets...] [--dry-run] [--yes] [--capture-local] [--backup-unmanaged]
 ```
 
 Flags:
@@ -539,8 +545,9 @@ Flags:
 | Flag | Description |
 |---|---|
 | `--dry-run` | Build and safety-check the activation plan without writing target files. |
-| `--yes` | Reserve confirmation behavior for future prompts. Does not bypass unsafe overwrite protection. |
+| `--yes` | Reserve confirmation behavior for future prompts. Does not bypass unsafe overwrite protection by itself. |
 | `--capture-local` | Write safe local changes from copied managed targets back to the Loki store before switching. |
+| `--backup-unmanaged` | Move unmanaged blocker targets to a machine-local backup directory before switching. Requires `--yes`; does not write those files into the synced store. |
 
 Behavior:
 
@@ -555,6 +562,7 @@ Behavior:
 - If both local target and store source changed since the last switch/adoption, capture blocks as a conflict and requires manual resolution.
 - Classifies target safety before writing.
 - Blocks unmanaged files, unmanaged directories, broken symlinks, managed hash mismatches, and targets outside the configured home root.
+- When unmanaged files/directories are the only blockers and the Loki store should become source of truth, rerun with `--backup-unmanaged --yes`. Loki moves each unmanaged blocker to local state under `unmanaged-backups/<timestamp>/`, writes a `manifest.json`, then switches. Use `loki adopt` instead when the local file should become the store source of truth. Do not adopt rendered secret-bearing files; back them up and let Loki render fresh.
 - Creates a local snapshot before real activation writes.
 - Executes symlink, copy, structured merge, and render operations. Existing render targets are regenerated even when their local hash drifted, because rendered output is generated and not capturable.
 - Removes obsolete managed targets that are no longer part of the active profile after a successful switch. Cleanup only removes missing or unchanged Loki-managed targets; changed obsolete targets block the switch and require manual capture, removal, or adoption.
@@ -577,6 +585,7 @@ Activate:
 loki --store /path/to/loki switch work --yes
 loki --store /path/to/loki switch work content-dev azure --yes
 loki --store /path/to/loki switch work content-dev azure --capture-local --yes
+loki --store /path/to/loki switch work content-dev azure --backup-unmanaged --yes
 ```
 
 ## `loki snapshots list`
@@ -862,7 +871,7 @@ Supported structured formats:
 | Loki-managed file or directory with changed hash | Blocked. |
 | Target outside configured home root | Blocked during manifest validation. |
 
-Use `loki adopt`, `loki migrate local`, or `loki migrate repo` to capture existing local targets before switching. Real machines with unmanaged dotfiles or settings will block activation until those targets are adopted, migrated, or moved aside. See [`docs/INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated`](INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated) for the full safe migration sequence.
+Use `loki adopt`, `loki migrate local`, or `loki migrate repo` to capture existing local targets before switching. If the synced store should win and local unmanaged targets are only stale/default install files, use `loki switch <profile> [buckets...] --backup-unmanaged --yes` to move blockers to a local backup and switch in one guarded operation. Real machines with unmanaged dotfiles or settings will block activation until those targets are adopted, migrated, or moved aside/backed up. See [`docs/INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated`](INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated) for the full safe migration sequence.
 
 ## Template rendering
 

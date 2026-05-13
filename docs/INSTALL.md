@@ -157,7 +157,9 @@ If the store has no profiles yet, create the first profile core before running `
 - If `store init` creates a new empty store, create/import/migrate profile manifests before `verify <profile>` or `switch <profile>`; an empty store has no activatable profiles. Use [`PROFILES.md`](PROFILES.md) when starting from nothing.
 - Register the machine before `verify` or `switch`.
 - Run `loki switch ... --dry-run` before `--yes`.
-- `--yes` does not bypass unmanaged overwrite protection.
+- `--yes` does not bypass unmanaged overwrite protection by itself.
+- If dry-run reports unmanaged blockers and the Loki store should win, run `loki switch ... --backup-unmanaged --yes` to move those blockers to a local backup directory before activation.
+- If an unmanaged local file should become source of truth, use `loki adopt` or `loki migrate local` instead of `--backup-unmanaged`.
 - Do not put secret values in the store. Render templates should reference secret names only.
 
 ### Windows fresh machine
@@ -191,7 +193,11 @@ loki verify work content-dev
 # Preview activation. Review every target and blocker before writing.
 loki switch work content-dev --dry-run
 
-# Activate only when the dry-run shows the expected operations.
+# If the only blockers are unmanaged local files and the synced Loki store should win,
+# move those blockers to a local backup and activate in one guarded operation.
+loki switch work content-dev --backup-unmanaged --yes
+
+# Otherwise activate only when the dry-run shows no blockers.
 loki switch work content-dev --yes
 
 # Confirm state.
@@ -444,10 +450,12 @@ loki status --verbose
 Check manifest targets for the expected profile. Do not paste secret values into manifests. Use template placeholders and Infisical readiness checks instead:
 
 ```bash
-loki secrets --infisical
+loki secrets configure infisical  # interactive local-only setup, if Infisical is not configured yet
 loki secrets status
 loki secrets check SECRET_NAME
 ```
+
+For automation that already has safe `INFISICAL_*` environment variables or `.infisical.json` project config, use noninteractive `loki secrets --infisical` instead of the wizard.
 
 ### Step 7 — Dry-run and resolve blockers
 
@@ -459,7 +467,7 @@ Common blockers and actions:
 
 | Blocker | Action |
 |---|---|
-| Unmanaged file/directory | Adopt it, migrate it, move it aside, or intentionally leave it unmanaged and remove the conflicting manifest target. |
+| Unmanaged file/directory | If the local file should become store truth, adopt or migrate it. If the synced Loki store should win, rerun switch with `--backup-unmanaged --yes` to move the local blocker to a local backup before activation. Or manually move it aside/remove the conflicting manifest target. |
 | Managed hash mismatch | Review local change. If safe copy-mode drift, use `--capture-local`; otherwise manually reconcile. |
 | Render target drift | Do not capture generated output. Update the template/source secret, then switch again. |
 | Merge conflict | Resolve the store source or local target manually. Merge capture is manual in this MVP. |

@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/asudbring/loki-profile-manager/internal/activation"
 	"github.com/asudbring/loki-profile-manager/internal/app"
 	"github.com/asudbring/loki-profile-manager/internal/config"
 )
@@ -14,6 +15,7 @@ func newSwitchCommand(resolver config.PathResolver, globals *globalOptions, fact
 	var dryRun bool
 	var yes bool
 	var captureLocal bool
+	var backupUnmanaged bool
 	cmd := &cobra.Command{
 		Use:   "switch <profile> [buckets...]",
 		Short: "Activate a Loki profile and optional buckets.",
@@ -29,7 +31,7 @@ func newSwitchCommand(resolver config.PathResolver, globals *globalOptions, fact
 				return err
 			}
 			defer svc.Close()
-			result, err := svc.Switch(cmd.Context(), app.SwitchRequest{ParentProfile: args[0], Buckets: args[1:], DryRun: dryRun, Yes: yes, CaptureLocal: captureLocal})
+			result, err := svc.Switch(cmd.Context(), app.SwitchRequest{ParentProfile: args[0], Buckets: args[1:], DryRun: dryRun, Yes: yes, CaptureLocal: captureLocal, BackupUnmanaged: backupUnmanaged})
 			printSwitchResult(cmd, result, globals.verbose, err)
 			return err
 		},
@@ -37,7 +39,22 @@ func newSwitchCommand(resolver config.PathResolver, globals *globalOptions, fact
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "validate and show activation plan without writing files")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm safe prompts; does not bypass unmanaged overwrite protection")
 	cmd.Flags().BoolVar(&captureLocal, "capture-local", false, "write safe local managed-target changes back to the store before switching")
+	cmd.Flags().BoolVar(&backupUnmanaged, "backup-unmanaged", false, "move unmanaged blocker targets to a local backup before switching; requires --yes")
 	return cmd
+}
+
+func unmanagedSwitchBlockers(plan activation.Plan) []string {
+	var blockers []string
+	for _, op := range plan.Operations {
+		if op.Safety.Safe {
+			continue
+		}
+		switch op.Safety.Class {
+		case activation.SafetyUnmanagedFile, activation.SafetyUnmanagedDirectory:
+			blockers = append(blockers, op.TargetPath)
+		}
+	}
+	return blockers
 }
 
 func printSwitchResult(cmd *cobra.Command, result app.SwitchResult, verbose bool, resultErr error) {
@@ -93,6 +110,19 @@ func printSwitchResult(cmd *cobra.Command, result app.SwitchResult, verbose bool
 	}
 	if result.Cleaned > 0 {
 		fmt.Fprintf(out, "Cleaned: %d\n", result.Cleaned)
+	}
+	if len(result.UnmanagedBackups) > 0 {
+		fmt.Fprintf(out, "Backed up unmanaged targets: %d\n", len(result.UnmanagedBackups))
+		if result.UnmanagedBackupRoot != "" {
+			fmt.Fprintf(out, "Backup root: %s\n", result.UnmanagedBackupRoot)
+		}
+		for _, backup := range result.UnmanagedBackups {
+			fmt.Fprintf(out, "- backup %s -> %s [%s]\n", backup.TargetPath, backup.BackupPath, backup.SafetyClass)
+		}
+	}
+	if blockers := unmanagedSwitchBlockers(result.Plan); len(blockers) > 0 && resultErr != nil && len(result.UnmanagedBackups) == 0 {
+		fmt.Fprintf(out, "Unmanaged blockers: %d\n", len(blockers))
+		fmt.Fprintln(out, "Remediation: rerun with `--backup-unmanaged --yes` to move blockers to a local backup before switching, or use `loki adopt <target> --profile <profile> [--bucket <bucket>] --yes` for local files that should become store source of truth.")
 	}
 	for _, warning := range result.Warnings {
 		fmt.Fprintf(out, "Warning: %s\n", warning)

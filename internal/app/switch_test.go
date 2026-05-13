@@ -109,6 +109,153 @@ func TestSwitchEnforcesPolicyAndUnsafeOverwrite(t *testing.T) {
 	}
 }
 
+func TestSwitchBackupUnmanagedMovesBlockersThenSwitches(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := switchStore(t, "blocked.txt", "store")
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	target := filepath.ToSlash(filepath.Join(home, "blocked.txt"))
+	if err := os.WriteFile(target, []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	result, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", BackupUnmanaged: true, Yes: true})
+	if err != nil {
+		t.Fatalf("Switch(backup unmanaged) error = %v", err)
+	}
+	if result.Changed != 1 || len(result.UnmanagedBackups) != 1 || result.UnmanagedBackupRoot == "" {
+		t.Fatalf("result = %+v", result)
+	}
+	backup := result.UnmanagedBackups[0]
+	if backup.TargetPath != target || backup.BackupPath == "" || backup.SafetyClass != activation.SafetyUnmanagedFile {
+		t.Fatalf("backup = %+v", backup)
+	}
+	if got := readAppFile(t, backup.BackupPath); got != "local" {
+		t.Fatalf("backup content = %q", got)
+	}
+	if got := readAppFile(t, target); got != "store" {
+		t.Fatalf("target content = %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(result.UnmanagedBackupRoot, "manifest.json")); err != nil {
+		t.Fatalf("backup manifest missing: %v", err)
+	}
+}
+
+func TestBackupUnmanagedCreatesUniqueRoots(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	first := filepath.Join(home, "first.txt")
+	second := filepath.Join(home, "second.txt")
+	if err := os.WriteFile(first, []byte("first"), 0o644); err != nil {
+		t.Fatalf("WriteFile(first) error = %v", err)
+	}
+	if err := os.WriteFile(second, []byte("second"), 0o644); err != nil {
+		t.Fatalf("WriteFile(second) error = %v", err)
+	}
+	firstOp := activation.Operation{TargetPath: first, Safety: activation.SafetyStatus{Class: activation.SafetyUnmanagedFile, Safe: false}}
+	secondOp := activation.Operation{TargetPath: second, Safety: activation.SafetyStatus{Class: activation.SafetyUnmanagedFile, Safe: false}}
+	firstRoot, _, err := svc.backupUnmanagedTargets(activation.Plan{Profile: "work"}, []activation.Operation{firstOp})
+	if err != nil {
+		t.Fatalf("first backup error = %v", err)
+	}
+	secondRoot, _, err := svc.backupUnmanagedTargets(activation.Plan{Profile: "work"}, []activation.Operation{secondOp})
+	if err != nil {
+		t.Fatalf("second backup error = %v", err)
+	}
+	if firstRoot == secondRoot {
+		t.Fatalf("backup roots collided: %s", firstRoot)
+	}
+}
+
+func TestBackupUnmanagedRefusesTargetContainingLocalState(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	target := filepath.Join(home, "Library", "Application Support")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(target, "keep.txt"), []byte("keep"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	op := activation.Operation{TargetPath: target, Safety: activation.SafetyStatus{Class: activation.SafetyUnmanagedDirectory, Safe: false}}
+	_, _, err = svc.backupUnmanagedTargets(activation.Plan{Profile: "work"}, []activation.Operation{op})
+	if err == nil || !strings.Contains(err.Error(), "contains Loki local state") {
+		t.Fatalf("backupUnmanagedTargets() error = %v", err)
+	}
+	if got := readAppFile(t, filepath.Join(target, "keep.txt")); got != "keep" {
+		t.Fatalf("target content changed to %q", got)
+	}
+}
+
+func TestPathContainsOrEqualIsCaseInsensitiveOnDarwinWindows(t *testing.T) {
+	parent := filepath.Join("/Users", "Allen", "Library", "Application Support")
+	child := filepath.Join("/users", "allen", "library", "application support", "loki-profile-manager", "state.sqlite")
+	if !pathContainsOrEqual(parent, child, "darwin") {
+		t.Fatalf("pathContainsOrEqual(%q, %q, darwin) = false, want true", parent, child)
+	}
+}
+
+func TestBackupUnmanagedRefusesTargetInsideLocalState(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	target := svc.paths.DBPath
+	op := activation.Operation{TargetPath: target, Safety: activation.SafetyStatus{Class: activation.SafetyUnmanagedFile, Safe: false}}
+	_, _, err = svc.backupUnmanagedTargets(activation.Plan{Profile: "work"}, []activation.Operation{op})
+	if err == nil || !strings.Contains(err.Error(), "inside Loki local state") {
+		t.Fatalf("backupUnmanagedTargets() error = %v", err)
+	}
+	if _, err := os.Stat(target); err != nil {
+		t.Fatalf("local state target changed: %v", err)
+	}
+}
+
+func TestSwitchBackupUnmanagedRequiresYes(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	svc, err := NewService(ctx, Options{Resolver: config.PathResolver{GOOS: "darwin", HomeDir: home}})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+	storePath := switchStore(t, "blocked.txt", "store")
+	if _, err := svc.RegisterMachine(ctx, RegisterMachineRequest{StorePath: storePath, AllowedParentProfiles: []string{"work"}}); err != nil {
+		t.Fatalf("RegisterMachine() error = %v", err)
+	}
+	target := filepath.ToSlash(filepath.Join(home, "blocked.txt"))
+	if err := os.WriteFile(target, []byte("local"), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if _, err := svc.Switch(ctx, SwitchRequest{StorePath: storePath, ParentProfile: "work", BackupUnmanaged: true}); err == nil || !strings.Contains(err.Error(), "--backup-unmanaged requires --yes") {
+		t.Fatalf("Switch() error = %v", err)
+	}
+	if got := readAppFile(t, target); got != "local" {
+		t.Fatalf("target changed to %q", got)
+	}
+}
+
 func TestSwitchRemovesObsoleteManagedTargets(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()
