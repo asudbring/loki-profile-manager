@@ -49,6 +49,7 @@ Use one of these workflows after installing the binary.
 
 | Scenario | Start here |
 |---|---|
+| No profiles yet; starting from a blank store | [`docs/PROFILES.md`](docs/PROFILES.md) |
 | Fresh machine or already-migrated store | [`docs/INSTALL.md#first-run-path-fresh-machine`](docs/INSTALL.md#first-run-path-fresh-machine) |
 | Existing machine with local profiles/settings not migrated | [`docs/INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated`](docs/INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated) |
 | AI/operator install and validation | [`docs/ai-ops/install.ai.md`](docs/ai-ops/install.ai.md) |
@@ -176,6 +177,7 @@ The TUI MVP covers dashboard diagnostics, persistent store setup, machine regist
 ## Documentation
 
 - [`docs/INSTALL.md`](docs/INSTALL.md) — install, fresh-machine setup, existing-machine migration, app smoke checks, and troubleshooting.
+- [`docs/PROFILES.md`](docs/PROFILES.md) — create first profiles/buckets from scratch, organize settings/skills, and register machines.
 - [`docs/USAGE.md`](docs/USAGE.md) — CLI commands, flags, behavior, and safety rules.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — components, data ownership, switch flow, TUI flow, and safety model.
 - [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md) — package map, build/test commands, release packaging, and validation rules.

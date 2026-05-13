@@ -74,6 +74,11 @@ variables:
     required: false
     default: null
     sensitive: false
+  - name: INIT_EMPTY_PROFILE
+    description: create a minimal empty profile manifest when the store has no profile core yet
+    required: false
+    default: "false"
+    sensitive: false
 idempotent: true
 estimated_duration: 5-30 minutes
 side_effects:
@@ -114,6 +119,9 @@ This procedure installs the `loki` CLI and, when requested, performs a safe firs
 | `LOKI_EXE` | no | `loki` | Resolved Loki executable path. Step 4 sets this for source installs. |
 | `MACHINE_SCENARIO` | no | `fresh` | `fresh` or `existing`. |
 | `LEGACY_REPO` | no | `null` | Optional legacy profile repository path. |
+| `INIT_EMPTY_PROFILE` | no | `false` | Set `true` to create an empty profile core before registration/verify. |
+
+For profile naming, bucket layout, skill organization, and manual manifest examples, see `docs/PROFILES.md`.
 
 ## Procedure
 
@@ -131,6 +139,8 @@ case "$RUN_FIRST_RUN" in true|false) ;; *) echo "RUN_FIRST_RUN must be true or f
 case "$MACHINE_SCENARIO" in fresh|existing) ;; *) echo "MACHINE_SCENARIO must be fresh or existing" >&2; exit 2 ;; esac
 if [ "$INSTALL_METHOD" = source ] && [ -z "${WORKDIR:-}" ]; then echo "WORKDIR required for source install" >&2; exit 2; fi
 if [ "$RUN_FIRST_RUN" = true ] && [ -z "${STORE_PATH:-}" ]; then echo "STORE_PATH required when RUN_FIRST_RUN=true" >&2; exit 2; fi
+: "${INIT_EMPTY_PROFILE:=false}"
+case "$INIT_EMPTY_PROFILE" in true|false) ;; *) echo "INIT_EMPTY_PROFILE must be true or false" >&2; exit 2 ;; esac
 ```
 
 **Command** (Windows / PowerShell):
@@ -143,16 +153,18 @@ if ($env:RUN_FIRST_RUN -notin @('true','false')) { throw 'RUN_FIRST_RUN must be 
 if ($env:MACHINE_SCENARIO -notin @('fresh','existing')) { throw 'MACHINE_SCENARIO must be fresh or existing' }
 if ($env:INSTALL_METHOD -eq 'source' -and -not $env:WORKDIR) { throw 'WORKDIR required for source install' }
 if ($env:RUN_FIRST_RUN -eq 'true' -and -not $env:STORE_PATH) { throw 'STORE_PATH required when RUN_FIRST_RUN=true' }
+if (-not $env:INIT_EMPTY_PROFILE) { $env:INIT_EMPTY_PROFILE = 'false' }
+if ($env:INIT_EMPTY_PROFILE -notin @('true','false')) { throw 'INIT_EMPTY_PROFILE must be true or false' }
 ```
 
 **Verify** (Linux/macOS):
 ```bash
-case "$INSTALL_METHOD/$RUN_FIRST_RUN/$MACHINE_SCENARIO" in npm/*/*|source/*/*) test "$RUN_FIRST_RUN" = true -o "$RUN_FIRST_RUN" = false ;; esac
+case "$INSTALL_METHOD/$RUN_FIRST_RUN/$MACHINE_SCENARIO/$INIT_EMPTY_PROFILE" in npm/*/*/*|source/*/*/*) test "$RUN_FIRST_RUN" = true -o "$RUN_FIRST_RUN" = false ;; esac
 ```
 
 **Verify** (Windows / PowerShell):
 ```powershell
-($env:INSTALL_METHOD -in @('npm','source')) -and ($env:RUN_FIRST_RUN -in @('true','false')) -and ($env:MACHINE_SCENARIO -in @('fresh','existing'))
+($env:INSTALL_METHOD -in @('npm','source')) -and ($env:RUN_FIRST_RUN -in @('true','false')) -and ($env:MACHINE_SCENARIO -in @('fresh','existing')) -and ($env:INIT_EMPTY_PROFILE -in @('true','false'))
 ```
 
 **On failure**: set valid variables and rerun this step. Do not continue with defaults guessed from context.
@@ -312,7 +324,68 @@ if ($env:RUN_FIRST_RUN -eq 'true') { & $env:LOKI_EXE store status | Select-Strin
 
 **Idempotent**: true
 
-## Step 6 — Register machine
+## Step 6 — Initialize an empty profile core
+
+**Goal**: create a minimal profile core manifest when `${INIT_EMPTY_PROFILE}` is `true`.
+
+**Command** (Linux/macOS):
+```bash
+if [ "${RUN_FIRST_RUN:-false}" = true ] && [ "${INIT_EMPTY_PROFILE:-false}" = true ]; then
+  : "${PROFILE:=work}"
+  root="$STORE_PATH/profiles/$PROFILE/core"
+  mkdir -p "$root/files" "$root/skills" "$root/templates"
+  if [ ! -f "$root/manifest.yaml" ]; then
+    cat > "$root/manifest.yaml" <<YAML
+version: 1
+name: ${PROFILE}-core
+files: []
+skills: []
+ignore: []
+merge_rules: {}
+targets: {}
+YAML
+  fi
+else
+  echo "skip empty profile initialization"
+fi
+```
+
+**Command** (Windows / PowerShell):
+```powershell
+if ($env:RUN_FIRST_RUN -eq 'true' -and $env:INIT_EMPTY_PROFILE -eq 'true') {
+  if (-not $env:PROFILE) { $env:PROFILE = 'work' }
+  $root = Join-Path $env:STORE_PATH "profiles\$env:PROFILE\core"
+  New-Item -ItemType Directory -Force (Join-Path $root 'files'), (Join-Path $root 'skills'), (Join-Path $root 'templates') | Out-Null
+  $manifest = Join-Path $root 'manifest.yaml'
+  if (-not (Test-Path $manifest)) {
+    @"
+version: 1
+name: $($env:PROFILE)-core
+files: []
+skills: []
+ignore: []
+merge_rules: {}
+targets: {}
+"@ | Set-Content -Encoding UTF8 $manifest
+  }
+} else { 'skip empty profile initialization' }
+```
+
+**Verify** (Linux/macOS):
+```bash
+if [ "${RUN_FIRST_RUN:-false}" = true ] && [ "${INIT_EMPTY_PROFILE:-false}" = true ]; then test -f "$STORE_PATH/profiles/$PROFILE/core/manifest.yaml"; else exit 0; fi
+```
+
+**Verify** (Windows / PowerShell):
+```powershell
+if ($env:RUN_FIRST_RUN -eq 'true' -and $env:INIT_EMPTY_PROFILE -eq 'true') { Test-Path (Join-Path $env:STORE_PATH "profiles\$env:PROFILE\core\manifest.yaml") } else { $true }
+```
+
+**On failure**: create the profile core with `adopt`, `migrate local`, `migrate repo`, or the manual manifest shape documented in `docs/PROFILES.md`.
+
+**Idempotent**: true
+
+## Step 7 — Register machine
 
 **Goal**: create or update the machine registry record when `${RUN_FIRST_RUN}` is `true`.
 
@@ -354,7 +427,7 @@ if ($env:RUN_FIRST_RUN -eq 'true') { & $env:LOKI_EXE machine status | Select-Str
 
 **Idempotent**: true
 
-## Step 7 — Migrate existing local profiles
+## Step 8 — Migrate existing local profiles
 
 **Goal**: when `${MACHINE_SCENARIO}` is `existing`, capture known local settings into the store before switching.
 
@@ -411,7 +484,7 @@ if ($env:RUN_FIRST_RUN -eq 'true') { $args=@('verify',$env:PROFILE); if($env:BUC
 
 **Idempotent**: false (real migration writes store files and local managed-target records; reruns update the same layer but may reflect current local file changes)
 
-## Step 8 — Verify and dry-run switch
+## Step 9 — Verify and dry-run switch
 
 **Goal**: prove the selected profile can activate safely without writing target files.
 
@@ -449,7 +522,7 @@ if ($env:RUN_FIRST_RUN -eq 'true') { $args=@('switch',$env:PROFILE); if($env:BUC
 
 **Idempotent**: true
 
-## Step 9 — Activate profile
+## Step 10 — Activate profile
 
 **Goal**: activate the selected profile only after a successful dry-run.
 
@@ -483,7 +556,7 @@ if ($env:RUN_FIRST_RUN -eq 'true') { & $env:LOKI_EXE status --verbose | Select-S
 
 **Idempotent**: true when targets remain unchanged between runs
 
-## Step 10 — Final smoke
+## Step 11 — Final smoke
 
 **Goal**: confirm Loki can report state and dry-run the active profile after activation.
 

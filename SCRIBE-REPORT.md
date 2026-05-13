@@ -4,8 +4,9 @@
 
 - `SCRIBE-PLAN.md` — refreshed Scribe inventory, as-coded model, findings, scope, and validation plan for the install-doc pass.
 - `README.md` — refreshed project status, install route, first-run route table, quick examples, `--capture-local` guidance, and documentation index.
+- `docs/PROFILES.md` — added from-scratch instructions for blank stores, profile and bucket naming, profile initialization, machine registration, settings modes, skill import, and promotion workflow.
 - `docs/INSTALL.md` — rewrote the install guide into detailed cross-platform install, fresh-machine first-run, existing-machine migration/adoption, safe switch/capture, app smoke, OS-specific troubleshooting, source build, Docker validation, and rollback guidance.
-- `docs/USAGE.md` — added first-run workflow summaries and linked the existing-machine safety path; updated switch behavior to include active-profile marker writes.
+- `docs/USAGE.md` — added first-run workflow summaries, blank-store profile notes, and linked the existing-machine safety path; updated switch behavior to include active-profile marker writes.
 - `docs/ARCHITECTURE.md` — documented `active_profile.txt`, Windows Known Folder target expansion, and switch/capture flow updates.
 - `docs/DEVELOPMENT.md` — added validation rules for install-doc changes and real app/manual switch dogfood.
 - `CHANGELOG.md` — added Unreleased documentation and validation notes for the install guide refresh and Loki-owned app/manual switch validation.
@@ -18,7 +19,7 @@
 
 ## Files created
 
-- None.
+- `docs/PROFILES.md` — from-scratch guide for profile/bucket creation and organization.
 
 ## Files removed
 
@@ -40,8 +41,10 @@ Passed:
 - `bash -n scripts/install.sh scripts/uninstall.sh scripts/package-release.sh scripts/package-npm.sh scripts/release-local.sh scripts/validate-cross.sh scripts/parallels-windows-admin-probe.sh`
 - `node --check npm/bin/loki.js`
 - PowerShell parser check for `scripts/install.ps1`, `scripts/uninstall.ps1`, `scripts/windows-installer-smoke.ps1`, `scripts/validate-local.ps1`, and `scripts/windows-onedrive-smoke.ps1`
+- Disposable blank-store/profile smoke: `store init`, manual empty profile manifest, `machine register`, `verify personal`, and `switch personal --dry-run`
 - `git diff --check`
 - Markdown link path check across updated docs, excluding fenced code blocks
+- AI-operator variable reference check for `docs/ai-ops/install.ai.md`
 
 ## Security and privacy scan summary
 

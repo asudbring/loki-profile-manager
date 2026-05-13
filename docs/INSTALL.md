@@ -147,12 +147,14 @@ if ($Actual -ne $Expected) { throw "checksum mismatch" }
 
 Use this path when the machine has no important local profile files, or when you are joining an already-migrated Loki store and want Loki to become the source of truth for this machine.
 
+If the store has no profiles yet, create the first profile core before running `verify <profile>` or `switch <profile>`. See [`PROFILES.md`](PROFILES.md) for profile naming, bucket design, settings organization, skill import, and machine registration from scratch.
+
 ### Fresh machine safety rules
 
 - Sign in to the sync provider first and wait until the Loki store is available locally.
 - Use `loki store use` for an existing valid store.
 - Use `loki store init` only for a new empty store or an empty folder you want Loki to initialize.
-- If `store init` creates a new empty store, create/import/migrate profile manifests before `verify <profile>` or `switch <profile>`; an empty store has no activatable profiles.
+- If `store init` creates a new empty store, create/import/migrate profile manifests before `verify <profile>` or `switch <profile>`; an empty store has no activatable profiles. Use [`PROFILES.md`](PROFILES.md) when starting from nothing.
 - Register the machine before `verify` or `switch`.
 - Run `loki switch ... --dry-run` before `--yes`.
 - `--yes` does not bypass unmanaged overwrite protection.
@@ -293,7 +295,7 @@ Recent dogfood validation covered the Windows VM app/manual switch flow with Lok
 
 ## First-run path: existing machine with profiles not migrated
 
-Use this path when the machine already has dotfiles, shell profiles, app settings, AI-tool config, or legacy profile repositories that Loki does not manage yet.
+Use this path when the machine already has dotfiles, shell profiles, app settings, AI-tool config, or legacy profile repositories that Loki does not manage yet. If you need to decide profile names, bucket names, or where skills/settings belong before migration, read [`PROFILES.md`](PROFILES.md) first.
 
 ### Existing-machine safety rules
 

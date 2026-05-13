@@ -53,7 +53,19 @@ Planned but not implemented:
 
 ## First-run workflows
 
-For full install and first-run procedures, see [`docs/INSTALL.md`](INSTALL.md).
+For full install and first-run procedures, see [`docs/INSTALL.md`](INSTALL.md). For a blank store with no profiles yet, see [`docs/PROFILES.md`](PROFILES.md).
+
+Blank store from scratch:
+
+```bash
+STORE="$HOME/OneDrive/LokiProfileManager"
+loki store init "$STORE"
+loki adopt ~/.gitconfig --profile personal --dry-run
+loki adopt ~/.gitconfig --profile personal --yes
+loki machine register --allow-profile personal
+loki verify personal
+loki switch personal --dry-run
+```
 
 Fresh machine or already-migrated store:
 
@@ -86,6 +98,7 @@ Safety rules:
 
 - Run `switch --dry-run` before `switch --yes`.
 - `--yes` does not bypass unmanaged overwrite protection.
+- Create at least one profile core before `verify <profile>` or `switch <profile>` on a new empty store.
 - Use `migrate local`, `migrate repo`, or `adopt` before first activation on a machine with existing unmanaged files.
 - Use `switch --capture-local --yes` only for safe copy-mode local changes from the currently active Loki-managed profile.
 - Render outputs are regenerated from templates and are not captured.
@@ -224,6 +237,20 @@ loki store status
 loki store use ~/OneDrive/loki
 loki store unset
 ```
+
+## Profiles, buckets, settings, and skills
+
+Profiles and buckets are store layers, not separate command objects.
+
+- A profile core lives at `profiles/<profile>/core`.
+- A bucket lives at `profiles/<profile>/buckets/<bucket>`.
+- The first `adopt`, `migrate local`, `migrate repo`, or profile-level `import-skill` into a profile can initialize that layer and write its manifest.
+- `import-skill --profile <profile> --bucket <bucket>` requires the parent profile core manifest to exist first.
+- An empty profile can also be created manually with `files/`, `skills/`, `templates/`, and `manifest.yaml` containing `files: []` and `skills: []`.
+- Machine registration controls allowed activation: `loki machine register --allow-profile <profile> --allow-bucket <bucket>`.
+- Skills imported into a layer are validated store assets. Runtime tools see them only when managed settings/files point those tools at the relevant Loki-managed skill directories.
+
+See [`docs/PROFILES.md`](PROFILES.md) for complete from-scratch examples and organization guidance.
 
 ## `loki machine register`
 

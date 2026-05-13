@@ -41,7 +41,8 @@
 - `docs/USAGE.md` — command reference already covers many workflows, but it must be checked against current help output for `switch --capture-local`, `migrate local`, `migrate repo`, `adopt`, `store`, `machine register`, `verify`, `doctor`, `secrets --infisical`, and snapshots.
 
 ### Missing detail
-- Fresh-machine install path needs OS-specific steps for Windows, macOS, and Linux: install Loki, sign in to sync provider, choose/use/init store, register machine, verify profile, dry-run switch, real switch, inspect status, and run app smoke tests.
+- Fresh-machine install path needs OS-specific steps for Windows, macOS, and Linux: install Loki, sign in to sync provider, choose/use/init store, initialize profiles when starting from a blank store, register machine, verify profile, dry-run switch, real switch, inspect status, and run app smoke tests.
+- Blank-store users need explicit guidance for naming profiles/buckets, creating the first profile core, adding settings, importing skills, and registering machine policy.
 - Existing-machine path needs no-data-loss guidance: inventory current dotfiles/settings, back up unmanaged targets, run migration/adoption dry-runs, review generated manifests, verify, switch dry-run, resolve blockers, then use `--yes` or `--capture-local --yes` only when appropriate.
 - Windows notes need current profile-specific details: OneDrive/Parallels redirected Documents, `${DOCUMENTS}` / `${DOCUMENTS_DIR}` expansion, symlink requirements, npm PATH, and OneDrive lock/retry guidance.
 - Shell/app smoke checks need explicit PowerShell, Git Bash, VS Code, Codex/Pi/Claude/Copilot, Git, and Warp expectations without depending on legacy `.dotfiles` repos.
@@ -65,6 +66,7 @@
 
 ### Update in place
 - `README.md` — refresh status/install routing, point to fresh-machine and existing-machine sections, keep quick examples aligned with current CLI flags.
+- `docs/PROFILES.md` — create from-scratch instructions for blank stores, profile naming, bucket naming, settings organization, skill import, and machine registration.
 - `docs/INSTALL.md` — rewrite/expand into the detailed install and first-run guide requested:
   - Windows / macOS / Linux install sections.
   - Fresh machine path.
@@ -85,7 +87,7 @@
 - `SCRIBE-REPORT.md` — regenerate final report after edits and validation.
 
 ### Create new
-- None planned. Use existing `docs/INSTALL.md` and `docs/ai-ops/install.ai.md`.
+- `docs/PROFILES.md` — from-scratch guide for profile naming, bucket structure, settings, skills, machine registration, and promotion workflow.
 
 ### Diagrams to produce
 - No new diagram planned unless `docs/ARCHITECTURE.md` needs a small switch/capture flow diagram update.
