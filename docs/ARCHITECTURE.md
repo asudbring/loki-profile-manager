@@ -166,7 +166,10 @@ snapshots/
 locks/
 cache/
 machine_id
+active_profile.txt
 ```
+
+`active_profile.txt` mirrors the local active profile and buckets in `profile:bucket,bucket` form. Shell prompts and terminal startup files can read this marker without depending on legacy profile repositories or the synced machine registry being immediately available.
 
 ## SQLite schema
 
@@ -183,7 +186,9 @@ machine_id
 
 ## Manifest model
 
-Manifests are YAML v1 files. Current file modes:
+Manifests are YAML v1 files. Target expansion is OS-aware through `internal/config` and `internal/manifest`. On Windows, `${DOCUMENTS}`, `${DOCUMENTS_DIR}`, and `${USER_DOCUMENTS}` resolve through the Windows Known Folder API when available so PowerShell profiles land under redirected Documents folders such as Parallels `C:\Mac\Home\Documents` instead of assuming `C:\Users\<user>\Documents`.
+
+Current file modes:
 
 | Mode | Responsibility |
 |---|---|
@@ -223,9 +228,14 @@ sequenceDiagram
     App->>Planner: BuildPlan(store, profile, buckets)
     Planner->>Store: Read manifests and sources
     Planner-->>App: activation plan
-    App->>Safety: ValidateSafety(plan, DB)
+    App->>Safety: Check copied target drift and ValidateSafety(plan, DB)
     Safety->>DB: Read managed_targets
-    Safety-->>App: safe plan or blocking error
+    Safety-->>App: safe plan, capture requirement, or blocking error
+    opt capture-local requested for safe copy-mode drift
+        App->>Store: Write safe local changes back to store sources
+        App->>Planner: RebuildPlan(store, profile, buckets)
+        App->>Safety: Recheck plan and target safety
+    end
     alt dry-run
         App-->>CLI: plan only
     else activate
@@ -234,13 +244,14 @@ sequenceDiagram
         App->>Exec: Execute operations
         Exec->>DB: Upsert managed target hashes
         Exec->>DB: Set active profile/buckets
+        Exec->>App: Write active_profile.txt marker
         App->>DB: Remove obsolete unchanged managed targets
         App->>Machine: Update heartbeat
         App-->>CLI: switch result
     end
 ```
 
-Safety validation happens before snapshots and before any target writes. Rollback runs for failures after snapshot creation.
+Safety validation happens before snapshots and before any target writes. `--capture-local` writes only safe copied managed-target drift back to store sources before activation and then rechecks safety. Render outputs are regenerated from templates and are not captured. Rollback runs for failures after snapshot creation.
 
 ## Sync MVP flow
 

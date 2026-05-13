@@ -2,6 +2,8 @@
 
 You are Copilot CLI running inside the Windows 11 ARM64 VM. Validate the first real, low-risk Loki dotfile profile that was adopted on the Mac and synced through OneDrive.
 
+For full fresh-machine or existing-machine migration/switch workflows, use `docs/INSTALL.md`. This prompt remains a narrow low-risk restore/switch dogfood, not a full app-profile migration.
+
 ## Operating rules
 
 - Use Windows PowerShell commands.
@@ -12,6 +14,7 @@ You are Copilot CLI running inside the Windows 11 ARM64 VM. Validate the first r
 - Use only profile `work` and targets `%USERPROFILE%\.config\git\ignore` and `%USERPROFILE%\.gitconfig`.
 - Always run `switch --dry-run` before `switch --yes`.
 - Run `switch --yes` only if dry-run succeeds and mentions only expected targets.
+- If a copied managed target changed locally and the operator explicitly wants to preserve it, the general command is `loki switch <profile> [buckets...] --capture-local --yes`; do not use it in this narrow prompt unless instructed.
 - If dry-run blocks with `unsafe target overwrite blocked` for expected targets, treat that as a safety pass and do not run `switch --yes`.
 - Stop on first unexpected failure and report the failing command plus last 40 lines of output.
 - Do not remove `.loki-operation.lock` unless no `loki` process is active and the lock is clearly stale.

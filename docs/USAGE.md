@@ -51,6 +51,46 @@ Planned but not implemented:
 | `import-skill` markdown import | Convert a standalone markdown skill file into a skill folder. |
 | Azure Key Vault/other secret providers | Additional render-secret backends beyond Infisical V1. |
 
+## First-run workflows
+
+For full install and first-run procedures, see [`docs/INSTALL.md`](INSTALL.md).
+
+Fresh machine or already-migrated store:
+
+```bash
+STORE="$HOME/OneDrive/LokiProfileManager"
+loki store discover --manual "$STORE"
+loki store use "$STORE"        # existing valid store with profiles
+# or: loki store init "$STORE" # new empty store; add/migrate/import profiles before verify/switch
+loki machine register --allow-profile work --allow-bucket content-dev
+loki verify work content-dev
+loki switch work content-dev --dry-run
+loki switch work content-dev --yes
+loki status --verbose
+```
+
+Existing machine with local profiles/settings not migrated:
+
+```bash
+STORE="$HOME/OneDrive/LokiProfileManager"
+loki store use "$STORE"
+loki machine register --allow-profile work --allow-bucket content-dev
+loki migrate local --profile work --dry-run
+loki migrate local --profile work --yes
+loki verify work content-dev
+loki switch work content-dev --dry-run
+loki switch work content-dev --yes
+```
+
+Safety rules:
+
+- Run `switch --dry-run` before `switch --yes`.
+- `--yes` does not bypass unmanaged overwrite protection.
+- Use `migrate local`, `migrate repo`, or `adopt` before first activation on a machine with existing unmanaged files.
+- Use `switch --capture-local --yes` only for safe copy-mode local changes from the currently active Loki-managed profile.
+- Render outputs are regenerated from templates and are not captured.
+- Merge drift is detected but manual in this MVP.
+
 ## `loki tui`
 
 Launch the interactive terminal UI.
@@ -492,7 +532,7 @@ Behavior:
 - Executes symlink, copy, structured merge, and render operations. Existing render targets are regenerated even when their local hash drifted, because rendered output is generated and not capturable.
 - Removes obsolete managed targets that are no longer part of the active profile after a successful switch. Cleanup only removes missing or unchanged Loki-managed targets; changed obsolete targets block the switch and require manual capture, removal, or adoption.
 - Rolls back target files, managed-target DB rows, and active local state if activation fails after snapshot creation and filesystem rollback succeeds.
-- Updates local managed target hashes and machine heartbeat after successful activation.
+- Updates local managed target hashes, active profile/buckets, Loki active-profile marker, and machine heartbeat after successful activation.
 
 Examples:
 
@@ -795,7 +835,7 @@ Supported structured formats:
 | Loki-managed file or directory with changed hash | Blocked. |
 | Target outside configured home root | Blocked during manifest validation. |
 
-Use `loki adopt` or `loki migrate local` to capture existing local targets before switching. Real machines with unmanaged dotfiles or settings will block activation until those targets are adopted or moved aside.
+Use `loki adopt`, `loki migrate local`, or `loki migrate repo` to capture existing local targets before switching. Real machines with unmanaged dotfiles or settings will block activation until those targets are adopted, migrated, or moved aside. See [`docs/INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated`](INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated) for the full safe migration sequence.
 
 ## Template rendering
 

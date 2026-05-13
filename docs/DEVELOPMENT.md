@@ -164,6 +164,8 @@ go build -o loki.exe ./cmd/loki
 - Test release packages with `loki --version` and `loki doctor` before tagging stable releases.
 - For rollback hardening, validate `loki snapshots list`, `loki snapshots show <id>`, `loki snapshots restore <id> --dry-run`, guarded `loki snapshots restore <id> --yes`, and `--target <path>` scoped restore on disposable targets before real dotfile recovery.
 - For TUI hardening, validate `loki tui --help` in automation and `loki tui` manually in an interactive terminal. Smoke the dashboard, `q` quit, switch dry-run/confirmation, sync dry-run/confirmation, and snapshot dry-run command handoff against a disposable store before dogfood.
+- For install-doc changes, validate the fresh-machine and existing-machine command paths in `docs/INSTALL.md` against current CLI help. Existing-machine docs must preserve the order: backup/inventory, `migrate`/`adopt --dry-run`, `verify`, `switch --dry-run`, then `switch --yes` or `switch --capture-local --yes` only when safe.
+- For real app/manual switch dogfood, verify fresh shell startup, Loki active-profile marker, PowerShell/Git Bash Starship prompts, VS Code settings, AI-tool config files, and a final `switch --dry-run` with no unexpected blockers.
 
 ## Local state during tests
 

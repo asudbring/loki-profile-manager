@@ -2,6 +2,8 @@
 
 You are Copilot CLI running inside the Windows 11 ARM64 VM. Validate a harmless Loki profile that was adopted on the source machine and synced through OneDrive.
 
+For full fresh-machine or existing-machine migration/switch workflows, use `docs/INSTALL.md`. This prompt stays limited to a disposable cross-machine target.
+
 ## Operating rules
 
 - Use Windows PowerShell commands.

@@ -6,6 +6,9 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+- Documentation: refreshed README, install, usage, AI-operator, and Windows VM smoke docs around the validated Loki `v0.1.5` clean-machine/app switch workflow.
+- Documentation: added detailed first-run guidance for fresh machines and existing machines with unmanaged profiles/settings that need `migrate local`, `migrate repo`, `adopt`, `verify`, `switch --dry-run`, and optional `switch --capture-local --yes` before activation.
+- Validation note: Windows VM app/manual switch dogfood passed with Loki-owned shell prompt state and app settings after legacy profile repositories were removed from active paths.
 - Planned: `import-skill` markdown conversion and Azure Key Vault/other secret providers remain unimplemented.
 
 ## v0.1.5 — 2026-05-11

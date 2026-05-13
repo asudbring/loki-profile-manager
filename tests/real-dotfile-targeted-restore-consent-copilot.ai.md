@@ -2,6 +2,8 @@
 
 You are Copilot CLI running inside the Windows 11 ARM64 VM. Prepare and, only with explicit human consent, execute a targeted Loki snapshot restore for one low-risk real dotfile synced through OneDrive.
 
+For install, migration, adoption, and first real activation workflows, use `docs/INSTALL.md`. This prompt covers targeted restore only.
+
 This prompt is intentionally two-phase:
 
 1. Phase 1 is dry-run only and always safe to run.

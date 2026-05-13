@@ -1,8 +1,8 @@
 # Windows VM Infisical + TUI Smoke Test Plan
 
-Goal: verify latest Windows ARM64 build, Infisical machine identity auth, and real interactive TUI behavior on the Parallels Windows VM.
+Goal: verify latest Windows ARM64 build, Infisical machine identity auth, real interactive TUI behavior, and the post-install app/manual switch path on the Parallels Windows VM.
 
-Do not paste or save `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, or secret values into this repo, the synced Loki store, screenshots, logs, or chat.
+Do not paste or save `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, or secret values into this repo, the synced Loki store, screenshots, logs, or chat. For fresh-machine and existing-machine setup details, see [`../INSTALL.md`](../INSTALL.md).
 
 ## Paths
 
@@ -162,7 +162,48 @@ Expected:
 - No real switch unless you press `x`, type exact `SWITCH <profile> [buckets...]`, and press `enter`.
 - For this smoke, stop after dry-run unless intentionally testing real activation.
 
-## 9. Exit and cleanup check
+## 9. Optional real app/manual switch check
+
+Run only when the OneDrive store already has migrated/adopted real profiles and you intend to validate a real switch.
+
+```powershell
+$Store = "$env:OneDrive\LokiProfileManager"
+$Profile = "work"
+$Buckets = @("content-dev")
+
+.\bin\loki.exe --store $Store machine register --allow-profile $Profile --allow-bucket $Buckets
+.\bin\loki.exe --store $Store verify $Profile @Buckets
+.\bin\loki.exe --store $Store switch $Profile @Buckets --dry-run
+```
+
+Expected:
+
+- Dry-run shows the expected managed target count.
+- No unexpected unmanaged overwrite blockers.
+- Any copied-target local drift is understood before proceeding.
+
+If the dry-run is clean:
+
+```powershell
+.\bin\loki.exe --store $Store switch $Profile @Buckets --yes
+.\bin\loki.exe --store $Store status --verbose
+.\bin\loki.exe --store $Store switch $Profile @Buckets --dry-run
+```
+
+If the only blocker is safe copied-target drift that should be written back to the store before switching:
+
+```powershell
+.\bin\loki.exe --store $Store switch $Profile @Buckets --capture-local --yes
+```
+
+Manual app checks:
+
+- Open a fresh Windows Terminal PowerShell tab. Confirm the Loki profile line/prompt state matches the active profile/buckets.
+- Run `echo $env:STARSHIP_CONFIG`, `echo $env:LOKI_PROFILE`, and `starship prompt`. No legacy profile-repo errors should appear.
+- Open Git Bash and run `echo $LOKI_PROFILE` plus `starship prompt`.
+- Check VS Code, Codex, Pi, Claude/Copilot, Git, and Warp config paths for stale legacy references without printing secret values or full config files.
+
+## 10. Exit and cleanup check
 
 Press `q`, then run:
 
@@ -186,4 +227,5 @@ Expected:
 - `secrets status` not ready with configured env.
 - `secrets get`/`run` errors mention raw tokens, client secrets, or secret values.
 - Real switch/sync/restore happens without explicit confirmation.
+- App/manual switch check shows stale legacy profile-repo references after activation.
 - Repo becomes dirty after smoke.

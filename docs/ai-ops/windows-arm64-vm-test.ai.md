@@ -44,16 +44,17 @@ requires_sudo: false
 
 # Windows ARM64 VM Test Procedure
 
-Purpose: validate the latest `main` checkout on a Windows 11 ARM64 VM and prove Loki can use a OneDrive-backed store safely.
+Purpose: validate the latest `main` checkout on a Windows 11 ARM64 VM, prove Loki can use a OneDrive-backed store safely, and provide a safe bridge to the real-profile app/manual switch validation described in [`docs/INSTALL.md`](../INSTALL.md).
 
 Audience: AI coding agent or human operator running inside the Windows VM.
 
 ## Safety rules
 
 - Do not print secrets or GitHub tokens.
-- Do not run commands against real dotfiles except the disposable test paths created by the smoke script.
+- Do not run commands against real dotfiles except the disposable test paths created by the smoke script or a separately approved real-profile dogfood pass.
 - Do not manually remove `.loki-operation.lock` unless you verified no Loki process is active on any synced machine.
 - Treat `unsafe target overwrite blocked` during the smoke test as expected. The script intentionally triggers that safety block.
+- For existing machines, run migration/adoption dry-runs and `switch --dry-run` before any `switch --yes`. See [`docs/INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated`](../INSTALL.md#first-run-path-existing-machine-with-profiles-not-migrated).
 
 ## What success means
 
@@ -66,6 +67,7 @@ The run succeeds only when all are true:
 - `$env:OneDrive\LokiProfileManager\sync-probe-vm.txt` exists.
 - Smoke output includes a unique `Profile:  vm-smoke-...` line and `Bucket:   vm-bucket-...` line.
 - The source machine later sees the same `sync-probe-vm.txt` through OneDrive.
+- Optional real-profile validation, when explicitly approved, ends with `loki status --verbose` showing the requested profile/buckets and a repeat `loki switch <profile> [buckets...] --dry-run` with no unexpected blockers.
 
 ## Fast path: run this in Windows PowerShell
 
@@ -311,7 +313,7 @@ If the source machine does not see the probe, wait for OneDrive sync and check O
 
 ## Optional dogfood verification
 
-Run only after the source machine has adopted a harmless dogfood bucket into the same OneDrive store.
+Run only after the source machine has adopted a harmless dogfood bucket into the same OneDrive store. For real profile/app validation, prefer the fresh-machine or existing-machine procedures in [`docs/INSTALL.md`](../INSTALL.md) and keep the same dry-run-before-write rule.
 
 ```powershell
 Set-Location $env:USERPROFILE\github\loki-profile-manager
@@ -330,6 +332,41 @@ Get-Content "$env:USERPROFILE\loki-dogfood\probe.txt"
 ```
 
 Do not use this optional section for real dotfiles until the dry-run plan has been reviewed.
+
+## Optional real-profile app/manual switch validation
+
+Use this only after the Loki store already contains migrated/adopted real profiles and the operator has approved a real switch.
+
+```powershell
+$store = Join-Path $env:OneDrive "LokiProfileManager"
+$profile = "work"
+$buckets = @("content-dev")
+
+.\bin\loki.exe --store $store machine register --allow-profile $profile --allow-bucket $buckets
+.\bin\loki.exe --store $store verify $profile @buckets
+.\bin\loki.exe --store $store switch $profile @buckets --dry-run
+```
+
+If the dry-run shows only expected managed targets and no blockers, activate:
+
+```powershell
+.\bin\loki.exe --store $store switch $profile @buckets --yes
+.\bin\loki.exe --store $store status --verbose
+.\bin\loki.exe --store $store switch $profile @buckets --dry-run
+```
+
+If activation blocks with safe copied-target local drift that should be preserved, use the capture form:
+
+```powershell
+.\bin\loki.exe --store $store switch $profile @buckets --capture-local --yes
+```
+
+Manual app checks after activation:
+
+- Open a fresh Windows Terminal PowerShell tab and confirm the Loki profile line/prompt state reflects the active profile/buckets.
+- Run `echo $env:STARSHIP_CONFIG`, `echo $env:LOKI_PROFILE`, and `starship prompt`; there must be no legacy profile-repo errors.
+- Open Git Bash and run `echo $LOKI_PROFILE` plus `starship prompt`.
+- Check VS Code, Codex, Pi, Claude/Copilot, Git, and Warp config paths only for legacy path references; do not print secret values or full config contents.
 
 ## Troubleshooting
 

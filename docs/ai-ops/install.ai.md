@@ -1,317 +1,566 @@
 ---
 operation: install
-target: loki-profile-manager development checkout and validation
+target: loki-profile-manager CLI plus optional first-run Loki store registration and migration
 prerequisites:
+  - tool: node
+    version: ">=18"
+  - tool: npm
+    version: any
   - tool: git
     version: any
   - tool: go
-    version: ">=1.23"
-  - account: null
-    permissions: []
+    version: ">=1.23 when INSTALL_METHOD=source"
+  - account: sync-provider
+    permissions:
+      - read and write access to ${STORE_PATH} when RUN_FIRST_RUN=true
 variables:
+  - name: INSTALL_METHOD
+    description: install method, one of npm or source
+    required: false
+    default: npm
+    sensitive: false
   - name: REPO_URL
-    description: Git URL for the repository.
+    description: Git URL for source validation or source install
     required: false
     default: https://github.com/asudbring/loki-profile-manager.git
     sensitive: false
   - name: WORKDIR
-    description: Parent directory where the repository checkout will be created.
-    required: true
+    description: parent directory for source checkout when INSTALL_METHOD=source
+    required: false
     default: null
     sensitive: false
   - name: REPO_DIR
-    description: Full path to the repository checkout.
+    description: full checkout path when INSTALL_METHOD=source
     required: false
     default: ${WORKDIR}/loki-profile-manager
     sensitive: false
+  - name: STORE_PATH
+    description: Loki store path inside a synced folder
+    required: false
+    default: null
+    sensitive: false
+  - name: PROFILE
+    description: profile to register, verify, migrate, and switch
+    required: false
+    default: work
+    sensitive: false
+  - name: BUCKETS
+    description: space-separated bucket list for first-run commands
+    required: false
+    default: ""
+    sensitive: false
+  - name: MACHINE_NAME
+    description: machine display name for Loki registry
+    required: false
+    default: host name
+    sensitive: false
+  - name: RUN_FIRST_RUN
+    description: whether to configure store and register machine after install
+    required: false
+    default: "false"
+    sensitive: false
+  - name: LOKI_EXE
+    description: resolved Loki executable path produced by Step 4; defaults to loki on PATH for npm installs
+    required: false
+    default: loki
+    sensitive: false
+  - name: MACHINE_SCENARIO
+    description: first-run scenario, one of fresh or existing
+    required: false
+    default: fresh
+    sensitive: false
+  - name: LEGACY_REPO
+    description: optional legacy profile repository path for migrate repo
+    required: false
+    default: null
+    sensitive: false
 idempotent: true
-estimated_duration: 5-10 minutes
+estimated_duration: 5-30 minutes
 side_effects:
-  - creates or updates ${REPO_DIR}
-  - downloads Go modules into the Go module cache
-  - writes a local build artifact named loki or loki.exe inside ${REPO_DIR}
+  - installs or updates a global npm package when INSTALL_METHOD=npm
+  - creates or updates ${REPO_DIR} when INSTALL_METHOD=source
+  - downloads npm or Go dependencies
+  - creates or updates local Loki state
+  - creates or updates ${STORE_PATH} when RUN_FIRST_RUN=true and store init/use/register/migrate commands run
+  - can capture local profile files into the store when MACHINE_SCENARIO=existing and migration --yes steps run
 requires_network: true
 requires_sudo: false
 ---
 
 # Install Loki Profile Manager
 
-This procedure creates a development checkout of `loki-profile-manager`, validates it, builds the CLI binary, and runs a smoke command without touching real user profile targets.
+This procedure installs the `loki` CLI and, when requested, performs a safe first-run setup against a synced Loki store. It supports a fresh machine path and an existing-machine migration path. It never prints secret values. Execute the procedure in one shell session so variables exported in earlier steps remain available to later steps.
 
 ## Prerequisites
 
-- `git` available on PATH.
-- `go` 1.23 or later available on PATH.
-- Network access to `github.com`.
-- Docker only if native Go validation cannot run.
+- `node` 18 or later and `npm` available on PATH for `INSTALL_METHOD=npm`.
+- `git` and Go 1.23 or later for `INSTALL_METHOD=source`.
+- A synced filesystem folder available at `${STORE_PATH}` when `${RUN_FIRST_RUN}` is `true`.
+- No secret values in command output, logs, or chat.
 
 ## Variables
 
 | Name | Required | Default | Description |
 |---|---|---|---|
-| `REPO_URL` | no | `https://github.com/asudbring/loki-profile-manager.git` | Repository URL. |
-| `WORKDIR` | yes | `null` | Parent directory for the checkout. |
-| `REPO_DIR` | no | `${WORKDIR}/loki-profile-manager` | Checkout directory. |
-
-Resolve `${WORKDIR}` before Step 1. If `${REPO_DIR}` is not provided, set it to `${WORKDIR}/loki-profile-manager`.
+| `INSTALL_METHOD` | no | `npm` | `npm` or `source`. |
+| `REPO_URL` | no | `https://github.com/asudbring/loki-profile-manager.git` | Source repository URL. |
+| `WORKDIR` | only for source | `null` | Parent directory for checkout. |
+| `REPO_DIR` | only for source | `${WORKDIR}/loki-profile-manager` | Checkout directory. |
+| `STORE_PATH` | only for first-run | `null` | Synced Loki store path. |
+| `PROFILE` | no | `work` | Profile name. |
+| `BUCKETS` | no | empty | Space-separated bucket names. |
+| `MACHINE_NAME` | no | host name | Machine registry name. |
+| `RUN_FIRST_RUN` | no | `false` | Set `true` to configure store and register machine. |
+| `LOKI_EXE` | no | `loki` | Resolved Loki executable path. Step 4 sets this for source installs. |
+| `MACHINE_SCENARIO` | no | `fresh` | `fresh` or `existing`. |
+| `LEGACY_REPO` | no | `null` | Optional legacy profile repository path. |
 
 ## Procedure
 
-## Step 1 — Verify Git access
+## Step 1 — Validate install method variables
 
-**Goal**: confirm Git can reach the repository.
+**Goal**: reject unsupported install or first-run modes before making changes.
+
+**Command** (Linux/macOS):
+```bash
+: "${INSTALL_METHOD:=npm}"
+: "${RUN_FIRST_RUN:=false}"
+: "${MACHINE_SCENARIO:=fresh}"
+case "$INSTALL_METHOD" in npm|source) ;; *) echo "unsupported INSTALL_METHOD=$INSTALL_METHOD" >&2; exit 2 ;; esac
+case "$RUN_FIRST_RUN" in true|false) ;; *) echo "RUN_FIRST_RUN must be true or false" >&2; exit 2 ;; esac
+case "$MACHINE_SCENARIO" in fresh|existing) ;; *) echo "MACHINE_SCENARIO must be fresh or existing" >&2; exit 2 ;; esac
+if [ "$INSTALL_METHOD" = source ] && [ -z "${WORKDIR:-}" ]; then echo "WORKDIR required for source install" >&2; exit 2; fi
+if [ "$RUN_FIRST_RUN" = true ] && [ -z "${STORE_PATH:-}" ]; then echo "STORE_PATH required when RUN_FIRST_RUN=true" >&2; exit 2; fi
+```
+
+**Command** (Windows / PowerShell):
+```powershell
+if (-not $env:INSTALL_METHOD) { $env:INSTALL_METHOD = 'npm' }
+if (-not $env:RUN_FIRST_RUN) { $env:RUN_FIRST_RUN = 'false' }
+if (-not $env:MACHINE_SCENARIO) { $env:MACHINE_SCENARIO = 'fresh' }
+if ($env:INSTALL_METHOD -notin @('npm','source')) { throw "unsupported INSTALL_METHOD=$env:INSTALL_METHOD" }
+if ($env:RUN_FIRST_RUN -notin @('true','false')) { throw 'RUN_FIRST_RUN must be true or false' }
+if ($env:MACHINE_SCENARIO -notin @('fresh','existing')) { throw 'MACHINE_SCENARIO must be fresh or existing' }
+if ($env:INSTALL_METHOD -eq 'source' -and -not $env:WORKDIR) { throw 'WORKDIR required for source install' }
+if ($env:RUN_FIRST_RUN -eq 'true' -and -not $env:STORE_PATH) { throw 'STORE_PATH required when RUN_FIRST_RUN=true' }
+```
+
+**Verify** (Linux/macOS):
+```bash
+case "$INSTALL_METHOD/$RUN_FIRST_RUN/$MACHINE_SCENARIO" in npm/*/*|source/*/*) test "$RUN_FIRST_RUN" = true -o "$RUN_FIRST_RUN" = false ;; esac
+```
+
+**Verify** (Windows / PowerShell):
+```powershell
+($env:INSTALL_METHOD -in @('npm','source')) -and ($env:RUN_FIRST_RUN -in @('true','false')) -and ($env:MACHINE_SCENARIO -in @('fresh','existing'))
+```
+
+**On failure**: set valid variables and rerun this step. Do not continue with defaults guessed from context.
+
+**Idempotent**: true
+
+## Step 2 — Install from npm
+
+**Goal**: install or update the global npm package when `${INSTALL_METHOD}` is `npm`.
 
 **Command**:
 ```bash
-git ls-remote "${REPO_URL}" HEAD
+if [ "${INSTALL_METHOD:-npm}" = npm ]; then npm install -g @asudbring/loki-profile-manager; else echo "skip npm install"; fi
+```
+
+**Command** (Windows / PowerShell):
+```powershell
+if ($env:INSTALL_METHOD -eq 'npm') { npm install -g @asudbring/loki-profile-manager } else { 'skip npm install' }
 ```
 
 **Verify**:
 ```bash
-git ls-remote "${REPO_URL}" HEAD | grep -E '^[0-9a-f]{40}[[:space:]]+HEAD$'
+if [ "${INSTALL_METHOD:-npm}" = npm ]; then loki --version && loki --help >/dev/null; else exit 0; fi
 ```
 
-**Expected output**: matches `^[0-9a-f]{40}[[:space:]]+HEAD$`
+**Verify** (Windows / PowerShell):
+```powershell
+if ($env:INSTALL_METHOD -eq 'npm') { loki --version; loki --help | Out-Null } else { $true }
+```
 
-**On failure**: verify network access to `github.com` and confirm `${REPO_URL}` is correct. If using a private fork, authenticate with `gh auth login` or configure Git credentials, then rerun this step. Do not print tokens.
+**On failure**: confirm Node.js 18+ and npm are on PATH. On Windows, open a new shell and ensure `%APPDATA%\npm` and `C:\Program Files\nodejs` are on PATH, then rerun this step.
 
 **Idempotent**: true
 
-## Step 2 — Create work directory
+## Step 3 — Install from source
 
-**Goal**: ensure `${WORKDIR}` exists.
+**Goal**: clone/update the repository and build a local `loki` binary when `${INSTALL_METHOD}` is `source`.
 
 **Command** (Linux/macOS):
 ```bash
-mkdir -p "${WORKDIR}"
+if [ "${INSTALL_METHOD:-npm}" = source ]; then
+  : "${REPO_URL:=https://github.com/asudbring/loki-profile-manager.git}"
+  : "${REPO_DIR:=${WORKDIR}/loki-profile-manager}"
+  mkdir -p "$WORKDIR"
+  if [ -d "$REPO_DIR/.git" ]; then git -C "$REPO_DIR" pull --ff-only; else git clone "$REPO_URL" "$REPO_DIR"; fi
+  cd "$REPO_DIR"
+  go test ./...
+  go vet ./...
+  go mod verify
+  go build -trimpath -o loki ./cmd/loki
+else
+  echo "skip source install"
+fi
 ```
 
 **Command** (Windows / PowerShell):
 ```powershell
-New-Item -ItemType Directory -Force -Path $env:WORKDIR | Out-Null
+if ($env:INSTALL_METHOD -eq 'source') {
+  if (-not $env:REPO_URL) { $env:REPO_URL = 'https://github.com/asudbring/loki-profile-manager.git' }
+  if (-not $env:REPO_DIR) { $env:REPO_DIR = Join-Path $env:WORKDIR 'loki-profile-manager' }
+  New-Item -ItemType Directory -Force -Path $env:WORKDIR | Out-Null
+  if (Test-Path (Join-Path $env:REPO_DIR '.git')) { git -C $env:REPO_DIR pull --ff-only } else { git clone $env:REPO_URL $env:REPO_DIR }
+  Push-Location $env:REPO_DIR
+  go test ./...
+  go vet ./...
+  go mod verify
+  go build -trimpath -o loki.exe ./cmd/loki
+  Pop-Location
+} else { 'skip source install' }
 ```
 
 **Verify** (Linux/macOS):
 ```bash
-test -d "${WORKDIR}"
+if [ "${INSTALL_METHOD:-npm}" = source ]; then test -x "${REPO_DIR}/loki" && "${REPO_DIR}/loki" --help >/dev/null; else exit 0; fi
 ```
 
 **Verify** (Windows / PowerShell):
 ```powershell
-Test-Path -Path $env:WORKDIR -PathType Container
+if ($env:INSTALL_METHOD -eq 'source') { Test-Path (Join-Path $env:REPO_DIR 'loki.exe'); & (Join-Path $env:REPO_DIR 'loki.exe') --help | Out-Null } else { $true }
 ```
 
-**On failure**: choose a writable `${WORKDIR}` and rerun this step.
+**On failure**: surface the failing test, vet, module, or build output. Do not proceed to first-run setup with an unvalidated source build.
 
 **Idempotent**: true
 
-## Step 3 — Clone or update repository
+## Step 4 — Select Loki executable
 
-**Goal**: ensure `${REPO_DIR}` contains the latest `main` checkout.
+**Goal**: set `${LOKI_EXE}` to the binary installed by the selected method.
 
 **Command** (Linux/macOS):
 ```bash
-if [ -d "${REPO_DIR}/.git" ]; then git -C "${REPO_DIR}" pull --ff-only; else git clone "${REPO_URL}" "${REPO_DIR}"; fi
+if [ "${INSTALL_METHOD:-npm}" = source ]; then export LOKI_EXE="${REPO_DIR}/loki"; else export LOKI_EXE="$(command -v loki)"; fi
+printf '%s\n' "$LOKI_EXE"
 ```
 
 **Command** (Windows / PowerShell):
 ```powershell
-if (Test-Path (Join-Path $env:REPO_DIR ".git")) { git -C $env:REPO_DIR pull --ff-only } else { git clone $env:REPO_URL $env:REPO_DIR }
+if ($env:INSTALL_METHOD -eq 'source') { $env:LOKI_EXE = Join-Path $env:REPO_DIR 'loki.exe' } else { $env:LOKI_EXE = (Get-Command loki).Source }
+$env:LOKI_EXE
 ```
 
 **Verify** (Linux/macOS):
 ```bash
-test -f "${REPO_DIR}/go.mod" && test -f "${REPO_DIR}/cmd/loki/main.go"
+test -n "$LOKI_EXE" && "$LOKI_EXE" --version
 ```
 
 **Verify** (Windows / PowerShell):
 ```powershell
-(Test-Path (Join-Path $env:REPO_DIR "go.mod")) -and (Test-Path (Join-Path $env:REPO_DIR "cmd/loki/main.go"))
+Test-Path $env:LOKI_EXE; & $env:LOKI_EXE --version
 ```
 
-**On failure**: if the directory exists but is not this repository, move it aside and rerun the clone command.
+**On failure**: rerun Step 2 or Step 3. If npm installed successfully but `loki` is missing, fix PATH and reopen the shell.
 
 **Idempotent**: true
 
-## Step 4 — Verify Go toolchain
+## Step 5 — Configure store path
 
-**Goal**: confirm Go is installed and visible.
-
-**Command**:
-```bash
-go version
-```
-
-**Verify** (Linux/macOS):
-```bash
-go version | grep -E 'go1\.(23|[3-9][0-9])'
-```
-
-**Verify** (Windows / PowerShell):
-```powershell
-go version | Select-String -Pattern 'go1\.(23|[3-9][0-9])'
-```
-
-**Expected output**: contains Go `1.23` or later.
-
-**On failure**: install Go 1.23 or later, reopen the shell, and rerun this step. If native Go cannot be installed, use the Docker validation fallback in Step 8 after confirming Docker is installed.
-
-**Idempotent**: true
-
-## Step 5 — Run unit and integration tests
-
-**Goal**: validate all Go packages.
-
-**Command**:
-```bash
-go test ./...
-```
-
-**Verify**:
-```bash
-go test ./...
-```
-
-**Expected output**: all packages report `ok` or `[no test files]`.
-
-**On failure**: stop. Capture package name and failing test output. Do not proceed to build.
-
-**Idempotent**: true
-
-## Step 6 — Run vet
-
-**Goal**: run Go static checks.
-
-**Command**:
-```bash
-go vet ./...
-```
-
-**Verify**:
-```bash
-go vet ./...
-```
-
-**Expected output**: no output and exit code 0.
-
-**On failure**: stop. Capture vet output.
-
-**Idempotent**: true
-
-## Step 7 — Build binary
-
-**Goal**: create the local Loki CLI binary.
+**Goal**: persist an existing store or initialize a new empty store when `${RUN_FIRST_RUN}` is `true`.
 
 **Command** (Linux/macOS):
 ```bash
-go build -o loki ./cmd/loki
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then
+  "$LOKI_EXE" store discover --manual "$STORE_PATH"
+  if [ -d "$STORE_PATH/registry" ] && [ -d "$STORE_PATH/profiles" ]; then
+    "$LOKI_EXE" store use "$STORE_PATH"
+  else
+    "$LOKI_EXE" store init "$STORE_PATH"
+  fi
+else
+  echo "skip first-run store setup"
+fi
 ```
 
 **Command** (Windows / PowerShell):
 ```powershell
-go build -o loki.exe ./cmd/loki
+if ($env:RUN_FIRST_RUN -eq 'true') {
+  & $env:LOKI_EXE store discover --manual $env:STORE_PATH
+  if ((Test-Path (Join-Path $env:STORE_PATH 'registry')) -and (Test-Path (Join-Path $env:STORE_PATH 'profiles'))) {
+    & $env:LOKI_EXE store use $env:STORE_PATH
+  } else {
+    & $env:LOKI_EXE store init $env:STORE_PATH
+  }
+} else { 'skip first-run store setup' }
 ```
 
 **Verify** (Linux/macOS):
 ```bash
-./loki --help | grep -F "Manage local profiles"
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" store status | grep -E 'valid|configured|Effective'; else exit 0; fi
 ```
 
 **Verify** (Windows / PowerShell):
 ```powershell
-.\loki.exe --help | Select-String -SimpleMatch "Manage local profiles"
+if ($env:RUN_FIRST_RUN -eq 'true') { & $env:LOKI_EXE store status | Select-String -Pattern 'valid|configured|Effective' } else { $true }
 ```
 
-**On failure**: rerun Step 5 and Step 6. If they pass, surface the build error.
+**On failure**: if the path is non-empty but not a Loki store, choose an empty folder or a valid existing store. Do not delete user files automatically.
 
 **Idempotent**: true
 
-## Step 8 — Docker validation fallback
+## Step 6 — Register machine
 
-**Goal**: validate the repository when native Go is unavailable or suspect.
+**Goal**: create or update the machine registry record when `${RUN_FIRST_RUN}` is `true`.
 
 **Command** (Linux/macOS):
 ```bash
-docker run --rm -v "${REPO_DIR}:/work" -w /work golang:1.23 go test ./...
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then
+  : "${PROFILE:=work}"
+  : "${MACHINE_NAME:=$(hostname)}"
+  set --
+  for bucket in ${BUCKETS:-}; do set -- "$@" --allow-bucket "$bucket"; done
+  "$LOKI_EXE" machine register --name "$MACHINE_NAME" --allow-profile "$PROFILE" "$@"
+else
+  echo "skip machine register"
+fi
 ```
 
 **Command** (Windows / PowerShell):
 ```powershell
-docker run --rm -v "${env:REPO_DIR}:/work" -w /work golang:1.23 go test ./...
+if ($env:RUN_FIRST_RUN -eq 'true') {
+  if (-not $env:PROFILE) { $env:PROFILE = 'work' }
+  if (-not $env:MACHINE_NAME) { $env:MACHINE_NAME = $env:COMPUTERNAME }
+  $args = @('machine','register','--name',$env:MACHINE_NAME,'--allow-profile',$env:PROFILE)
+  if ($env:BUCKETS) { $env:BUCKETS -split ' ' | Where-Object { $_ } | ForEach-Object { $args += @('--allow-bucket', $_) } }
+  & $env:LOKI_EXE @args
+} else { 'skip machine register' }
 ```
 
 **Verify** (Linux/macOS):
 ```bash
-docker run --rm -v "${REPO_DIR}:/work" -w /work golang:1.23 go vet ./...
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" machine status | grep -E 'registered|Machine'; else exit 0; fi
 ```
 
 **Verify** (Windows / PowerShell):
 ```powershell
-docker run --rm -v "${env:REPO_DIR}:/work" -w /work golang:1.23 go vet ./...
+if ($env:RUN_FIRST_RUN -eq 'true') { & $env:LOKI_EXE machine status | Select-String -Pattern 'registered|Machine' } else { $true }
 ```
 
-**Expected output**: tests report `ok` and vet exits 0.
-
-**On failure**: if running from Git Bash on Windows, set `MSYS_NO_PATHCONV=1` and rerun from Git Bash. Otherwise surface Docker output.
+**On failure**: wait for sync-provider file locks to clear and rerun the same register command. Do not edit `registry/machines.json` manually unless debugging with explicit approval.
 
 **Idempotent**: true
 
-## Step 9 — Run status smoke test
+## Step 7 — Migrate existing local profiles
 
-**Goal**: confirm the binary can initialize local app state and print status.
+**Goal**: when `${MACHINE_SCENARIO}` is `existing`, capture known local settings into the store before switching.
 
 **Command** (Linux/macOS):
 ```bash
-./loki status
+if [ "${RUN_FIRST_RUN:-false}" = true ] && [ "${MACHINE_SCENARIO:-fresh}" = existing ]; then
+  buckets=${BUCKETS:-}
+  first_bucket=${buckets%% *}
+  if [ -n "$first_bucket" ]; then
+    "$LOKI_EXE" migrate local --profile "$PROFILE" --bucket "$first_bucket" --dry-run
+    "$LOKI_EXE" migrate local --profile "$PROFILE" --bucket "$first_bucket" --yes
+  else
+    "$LOKI_EXE" migrate local --profile "$PROFILE" --dry-run
+    "$LOKI_EXE" migrate local --profile "$PROFILE" --yes
+  fi
+  if [ -n "${LEGACY_REPO:-}" ]; then
+    "$LOKI_EXE" migrate repo "$LEGACY_REPO" --profile "$PROFILE" --dry-run
+    "$LOKI_EXE" migrate repo "$LEGACY_REPO" --profile "$PROFILE" --yes
+  fi
+else
+  echo "skip existing-machine migration"
+fi
 ```
 
 **Command** (Windows / PowerShell):
 ```powershell
-.\loki.exe status
+if ($env:RUN_FIRST_RUN -eq 'true' -and $env:MACHINE_SCENARIO -eq 'existing') {
+  $bucket = ($env:BUCKETS -split ' ' | Where-Object { $_ } | Select-Object -First 1)
+  if ($bucket) {
+    & $env:LOKI_EXE migrate local --profile $env:PROFILE --bucket $bucket --dry-run
+    & $env:LOKI_EXE migrate local --profile $env:PROFILE --bucket $bucket --yes
+  } else {
+    & $env:LOKI_EXE migrate local --profile $env:PROFILE --dry-run
+    & $env:LOKI_EXE migrate local --profile $env:PROFILE --yes
+  }
+  if ($env:LEGACY_REPO) {
+    & $env:LOKI_EXE migrate repo $env:LEGACY_REPO --profile $env:PROFILE --dry-run
+    & $env:LOKI_EXE migrate repo $env:LEGACY_REPO --profile $env:PROFILE --yes
+  }
+} else { 'skip existing-machine migration' }
 ```
 
 **Verify** (Linux/macOS):
 ```bash
-./loki status | grep -F "Loki Profile Manager"
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" verify "$PROFILE" ${BUCKETS:-}; else exit 0; fi
 ```
 
 **Verify** (Windows / PowerShell):
 ```powershell
-.\loki.exe status | Select-String -SimpleMatch "Loki Profile Manager"
+if ($env:RUN_FIRST_RUN -eq 'true') { $args=@('verify',$env:PROFILE); if($env:BUCKETS){$args += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; & $env:LOKI_EXE @args } else { $true }
 ```
 
-**On failure**: inspect local state path permissions. Do not delete real user files.
+**On failure**: inspect the migration dry-run output and generated manifest. Use `loki adopt <target> --profile <profile> --dry-run` for missed targets. Do not proceed to real switch until `verify` succeeds.
+
+**Idempotent**: false (real migration writes store files and local managed-target records; reruns update the same layer but may reflect current local file changes)
+
+## Step 8 — Verify and dry-run switch
+
+**Goal**: prove the selected profile can activate safely without writing target files.
+
+**Command** (Linux/macOS):
+```bash
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then
+  "$LOKI_EXE" doctor
+  "$LOKI_EXE" verify "$PROFILE" ${BUCKETS:-}
+  "$LOKI_EXE" switch "$PROFILE" ${BUCKETS:-} --dry-run
+else
+  "$LOKI_EXE" doctor
+fi
+```
+
+**Command** (Windows / PowerShell):
+```powershell
+if ($env:RUN_FIRST_RUN -eq 'true') {
+  & $env:LOKI_EXE doctor
+  $verifyArgs=@('verify',$env:PROFILE); if($env:BUCKETS){$verifyArgs += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; & $env:LOKI_EXE @verifyArgs
+  $switchArgs=@('switch',$env:PROFILE); if($env:BUCKETS){$switchArgs += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; $switchArgs += '--dry-run'; & $env:LOKI_EXE @switchArgs
+} else { & $env:LOKI_EXE doctor }
+```
+
+**Verify** (Linux/macOS):
+```bash
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" switch "$PROFILE" ${BUCKETS:-} --dry-run | grep -F 'Loki switch dry-run'; else exit 0; fi
+```
+
+**Verify** (Windows / PowerShell):
+```powershell
+if ($env:RUN_FIRST_RUN -eq 'true') { $args=@('switch',$env:PROFILE); if($env:BUCKETS){$args += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; $args += '--dry-run'; & $env:LOKI_EXE @args | Select-String -SimpleMatch 'Loki switch dry-run' } else { $true }
+```
+
+**On failure**: resolve every blocker. Adopt/migrate unmanaged targets, reconcile managed hash drift, or remove conflicting manifest entries. Do not run `switch --yes` until dry-run blockers are gone.
+
+**Idempotent**: true
+
+## Step 9 — Activate profile
+
+**Goal**: activate the selected profile only after a successful dry-run.
+
+**Command** (Linux/macOS):
+```bash
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then
+  "$LOKI_EXE" switch "$PROFILE" ${BUCKETS:-} --yes
+else
+  echo "skip activation"
+fi
+```
+
+**Command** (Windows / PowerShell):
+```powershell
+if ($env:RUN_FIRST_RUN -eq 'true') {
+  $args=@('switch',$env:PROFILE); if($env:BUCKETS){$args += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; $args += '--yes'; & $env:LOKI_EXE @args
+} else { 'skip activation' }
+```
+
+**Verify** (Linux/macOS):
+```bash
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" status --verbose | grep -E "Active profile: ${PROFILE}"; else exit 0; fi
+```
+
+**Verify** (Windows / PowerShell):
+```powershell
+if ($env:RUN_FIRST_RUN -eq 'true') { & $env:LOKI_EXE status --verbose | Select-String -Pattern "Active profile: $env:PROFILE" } else { $true }
+```
+
+**On failure**: if output says capture is required and the change is safe copy-mode drift, rerun with `switch <profile> [buckets...] --capture-local --yes`. If output reports unmanaged overwrite protection, return to migration/adoption. Do not delete local files automatically.
+
+**Idempotent**: true when targets remain unchanged between runs
+
+## Step 10 — Final smoke
+
+**Goal**: confirm Loki can report state and dry-run the active profile after activation.
+
+**Command** (Linux/macOS):
+```bash
+"$LOKI_EXE" status --verbose
+if [ "${RUN_FIRST_RUN:-false}" = true ]; then "$LOKI_EXE" switch "$PROFILE" ${BUCKETS:-} --dry-run; fi
+```
+
+**Command** (Windows / PowerShell):
+```powershell
+& $env:LOKI_EXE status --verbose
+if ($env:RUN_FIRST_RUN -eq 'true') { $args=@('switch',$env:PROFILE); if($env:BUCKETS){$args += ($env:BUCKETS -split ' ' | Where-Object { $_ })}; $args += '--dry-run'; & $env:LOKI_EXE @args }
+```
+
+**Verify** (Linux/macOS):
+```bash
+"$LOKI_EXE" --help >/dev/null && "$LOKI_EXE" status >/dev/null
+```
+
+**Verify** (Windows / PowerShell):
+```powershell
+& $env:LOKI_EXE --help | Out-Null; & $env:LOKI_EXE status | Out-Null
+```
+
+**On failure**: surface the command and exit code. Do not inspect or print secret-rendered file contents.
 
 **Idempotent**: true
 
 ## Rollback
 
-Remove the checkout and local build artifact only. Do not remove Go module cache or user-local Loki state unless explicitly requested.
+Npm install rollback:
 
-Linux/macOS:
+```bash
+npm uninstall -g @asudbring/loki-profile-manager
+```
+
+Source install rollback, Linux/macOS:
 
 ```bash
 rm -rf "${REPO_DIR}"
 ```
 
-Windows PowerShell:
+Source install rollback, Windows PowerShell:
 
 ```powershell
 Remove-Item -Recurse -Force $env:REPO_DIR
 ```
 
-## Verification
-
-Linux/macOS:
+Profile activation rollback must use Loki snapshots, not package uninstall:
 
 ```bash
-test -f "${REPO_DIR}/go.mod" && (cd "${REPO_DIR}" && go test ./... && go vet ./...)
+loki snapshots list
+loki snapshots show <snapshot-id>
+loki snapshots restore <snapshot-id> --dry-run
 ```
 
-Windows PowerShell:
+Run real restore only after the required dry-run guard and consent described in `docs/USAGE.md`.
 
-```powershell
-Test-Path (Join-Path $env:REPO_DIR "go.mod"); Push-Location $env:REPO_DIR; go test ./...; go vet ./...; Pop-Location
+## Verification
+
+An install is successful when:
+
+```bash
+loki --version
+loki --help
+loki doctor
 ```
 
-A successful install has a valid checkout, passing tests, passing vet, and a working `loki status` command.
+A first-run setup is successful when:
+
+```bash
+loki store status
+loki machine status
+loki verify ${PROFILE} ${BUCKETS}
+loki switch ${PROFILE} ${BUCKETS} --dry-run
+loki status --verbose
+```
+
+Expected result: commands exit 0, `status --verbose` reports the intended active profile/buckets after activation, and the final dry-run has no unexpected blockers.
