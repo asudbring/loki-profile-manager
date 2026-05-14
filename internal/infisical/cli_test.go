@@ -449,6 +449,51 @@ func TestClientMachineAuthErrorDoesNotLeakSecrets(t *testing.T) {
 	}
 }
 
+func TestClientValidateConfigIgnoresAmbientEnv(t *testing.T) {
+	runner := &fakeRunner{}
+	client := Client{Runner: runner, LookupEnv: mapLookup(map[string]string{
+		"INFISICAL_HOST":          "http://infisical.example",
+		"INFISICAL_CLIENT_SECRET": "ambient-secret",
+	})}
+	err := client.ValidateConfig(context.Background(), Config{AuthMethod: "universal-auth", ClientID: "client-id", ClientSecret: "client-secret", ProjectID: "project-id", Environment: "dev"})
+	if err != nil {
+		t.Fatalf("ValidateConfig() error = %v", err)
+	}
+	if len(runner.mintedConfigs) != 1 {
+		t.Fatalf("minted configs = %+v", runner.mintedConfigs)
+	}
+	minted := runner.mintedConfigs[0]
+	if minted.Host != "" || minted.ClientSecret != "client-secret" {
+		t.Fatalf("minted config used ambient values: %+v", minted)
+	}
+	if len(runner.envs) != 1 || !hasEnv(runner.envs[0], "INFISICAL_HOST=") || !hasEnv(runner.envs[0], "INFISICAL_CLIENT_SECRET=") || !hasEnv(runner.envs[0], "INFISICAL_TOKEN=machine-token") {
+		t.Fatalf("validation env did not clear ambient Infisical values: %+v", runner.envs)
+	}
+}
+
+func TestClientCheckStatusReportsInvalidMachineAuth(t *testing.T) {
+	runner := &fakeRunner{runErr: errors.New("client-secret minted-token secret-value")}
+	client := testClient(runner)
+	client.Config = Config{AuthMethod: "universal-auth", ClientID: "client-id", ClientSecret: "client-secret", ProjectID: "project-id", Environment: "dev"}
+
+	status := client.CheckStatus(context.Background())
+	if !status.CLIInstalled || status.Authenticated || status.Ready {
+		t.Fatalf("status = %+v", status)
+	}
+	if len(status.Checks) < 2 {
+		t.Fatalf("checks = %+v", status.Checks)
+	}
+	check := status.Checks[len(status.Checks)-1]
+	if check.Code != "infisical.machine_auth_invalid" || !strings.Contains(check.Message, "machine identity") || !strings.Contains(check.Remediation, "loki secrets configure infisical") || !strings.Contains(check.Remediation, "remove") {
+		t.Fatalf("machine auth check = %+v", check)
+	}
+	for _, leaked := range []string{"client-secret", "minted-token", "secret-value", "client-id", "project-id"} {
+		if strings.Contains(check.Message, leaked) || strings.Contains(check.Remediation, leaked) {
+			t.Fatalf("status leaked %q: %+v", leaked, status.Checks)
+		}
+	}
+}
+
 func TestClientRunWithSecretsPassesProjectID(t *testing.T) {
 	runner := &fakeRunner{runOutput: "ok\n"}
 	client := testClient(runner)

@@ -73,10 +73,11 @@ func (ExecRunner) RunInteractive(ctx context.Context, name string, args []string
 const readinessProbeSecret = "__LOKI_INFISICAL_READINESS_PROBE__" // #nosec G101 -- sentinel secret name, not a credential value.
 
 type Client struct {
-	Binary    string
-	Runner    Runner
-	Config    Config
-	LookupEnv EnvLookup
+	Binary      string
+	Runner      Runner
+	Config      Config
+	LookupEnv   EnvLookup
+	SanitizeEnv bool
 }
 
 type CLIUnavailableError struct {
@@ -362,6 +363,33 @@ func (cfg Config) commandEnv() []string {
 	return env
 }
 
+var infisicalAmbientEnvKeys = []string{
+	"INFISICAL_TOKEN",
+	"INFISICAL_AUTH_METHOD",
+	"INFISICAL_CLIENT_ID",
+	"INFISICAL_CLIENT_SECRET",
+	"INFISICAL_UNIVERSAL_AUTH_CLIENT_ID",
+	"INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET",
+	"INFISICAL_PROJECT_ID",
+	"INFISICAL_ENV",
+	"INFISICAL_ENVIRONMENT",
+	"INFISICAL_API_URL",
+	"INFISICAL_HOST",
+	"INFISICAL_HOST_URL",
+}
+
+func (c Client) commandEnvForConfig(cfg Config) []string {
+	env := cfg.commandEnv()
+	if !c.SanitizeEnv {
+		return env
+	}
+	sanitized := make([]string, 0, len(infisicalAmbientEnvKeys)+len(env))
+	for _, key := range infisicalAmbientEnvKeys {
+		sanitized = append(sanitized, key+"=")
+	}
+	return append(sanitized, env...)
+}
+
 func (cfg Config) loginDomain() string {
 	if strings.TrimSpace(cfg.APIURL) != "" {
 		return strings.TrimSpace(cfg.APIURL)
@@ -374,14 +402,14 @@ func (c Client) commandEnv(ctx context.Context, cfg Config) ([]string, Config, e
 		return nil, cfg, err
 	}
 	if strings.TrimSpace(cfg.Token) != "" {
-		return cfg.commandEnv(), cfg, nil
+		return c.commandEnvForConfig(cfg), cfg, nil
 	}
 	return c.commandEnvWithMachineToken(ctx, cfg)
 }
 
 func (c Client) commandEnvWithMachineToken(ctx context.Context, cfg Config) ([]string, Config, error) {
 	if !cfg.universalAuthConfigured() {
-		return cfg.commandEnv(), cfg, nil
+		return c.commandEnvForConfig(cfg), cfg, nil
 	}
 	cfg.Token = ""
 	token, err := c.mintMachineToken(ctx, cfg)
@@ -389,7 +417,7 @@ func (c Client) commandEnvWithMachineToken(ctx context.Context, cfg Config) ([]s
 		return nil, cfg, err
 	}
 	cfg.Token = token
-	return cfg.commandEnv(), cfg, nil
+	return c.commandEnvForConfig(cfg), cfg, nil
 }
 
 func (c Client) shouldRetryWithMachineToken(cfg Config) bool {
@@ -495,6 +523,13 @@ func (c Client) CheckInstalled(ctx context.Context) error {
 	return nil
 }
 
+func (c Client) ValidateConfig(ctx context.Context, cfg Config) error {
+	c.Config = cfg
+	c.LookupEnv = func(string) (string, bool) { return "", false }
+	c.SanitizeEnv = true
+	return c.CheckAuthenticated(ctx)
+}
+
 func (c Client) CheckAuthenticated(ctx context.Context) error {
 	c = c.withDefaults()
 	if err := c.CheckInstalled(ctx); err != nil {
@@ -503,7 +538,7 @@ func (c Client) CheckAuthenticated(ctx context.Context) error {
 	cfg := c.resolvedConfig()
 	env, cfg, err := c.commandEnv(ctx, cfg)
 	if err != nil {
-		return AuthUnavailableError{}
+		return authErrorForConfig(err, cfg)
 	}
 	out, err := c.Runner.Run(ctx, c.Binary, c.secretGetArgs(readinessProbeSecret, cfg), env)
 	if err == nil || secretGetMissing(readinessProbeSecret, err, out) {
@@ -512,12 +547,26 @@ func (c Client) CheckAuthenticated(ctx context.Context) error {
 	if c.shouldRetryWithMachineToken(cfg) {
 		env, cfg, err = c.commandEnvWithMachineToken(ctx, cfg)
 		if err != nil {
-			return AuthUnavailableError{}
+			return authErrorForConfig(err, cfg)
 		}
 		out, err = c.Runner.Run(ctx, c.Binary, c.secretGetArgs(readinessProbeSecret, cfg), env)
 		if err == nil || secretGetMissing(readinessProbeSecret, err, out) {
 			return nil
 		}
+	}
+	if cfg.machineAuthConfigured() {
+		return MachineAuthError{}
+	}
+	return AuthUnavailableError{}
+}
+
+func authErrorForConfig(err error, cfg Config) error {
+	var machineErr MachineAuthError
+	if errors.As(err, &machineErr) {
+		return MachineAuthError{}
+	}
+	if cfg.machineAuthConfigured() {
+		return MachineAuthError{}
 	}
 	return AuthUnavailableError{}
 }
@@ -531,13 +580,28 @@ func (c Client) CheckStatus(ctx context.Context) secrets.Status {
 	status.CLIInstalled = true
 	status.Checks = append(status.Checks, secrets.Check{Severity: secrets.SeverityInfo, Code: "infisical.cli_found", Message: "Infisical CLI is installed"})
 	if err := c.CheckAuthenticated(ctx); err != nil {
-		status.Checks = append(status.Checks, secrets.Check{Severity: secrets.SeverityWarning, Code: "infisical.not_ready", Message: err.Error(), Remediation: "Run `loki secrets login`, configure Infisical machine identity environment variables, then run `infisical init` or set INFISICAL_PROJECT_ID if needed."})
+		check := secrets.Check{Severity: secrets.SeverityWarning, Code: "infisical.not_ready", Message: err.Error(), Remediation: "Run `loki secrets login`, configure Infisical machine identity environment variables, then run `infisical init` or set INFISICAL_PROJECT_ID if needed."}
+		var machineErr MachineAuthError
+		if errors.As(err, &machineErr) {
+			check.Code = "infisical.machine_auth_invalid"
+			check.Message = MachineAuthError{}.Error()
+			check.Remediation = machineAuthRemediation()
+		}
+		status.Checks = append(status.Checks, check)
 		return status
 	}
 	status.Authenticated = true
 	status.Ready = true
 	status.Checks = append(status.Checks, secrets.Check{Severity: secrets.SeverityInfo, Code: "infisical.ready", Message: "Infisical CLI is ready for render templates"})
 	return status
+}
+
+func machineAuthRemediation() string {
+	envPath := defaultInfisicalEnvPath()
+	if envPath == "" {
+		return "Rerun `loki secrets configure infisical` with valid machine identity credentials, or remove the local Infisical env file to use interactive CLI login."
+	}
+	return fmt.Sprintf("Rerun `loki secrets configure infisical` with valid machine identity credentials, or remove %s to use interactive CLI login.", envPath)
 }
 
 func secretGetMissing(name string, err error, output []byte) bool {

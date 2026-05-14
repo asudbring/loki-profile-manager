@@ -138,7 +138,7 @@ func printSecretsStatus(out io.Writer, result app.SecretsStatusResult, jsonOutpu
 	fmt.Fprintln(out, "Loki secrets")
 	fmt.Fprintf(out, "Provider: %s\n", result.Provider)
 	fmt.Fprintf(out, "CLI: %s\n", foundState(result.CLIInstalled))
-	fmt.Fprintf(out, "Auth: %s\n", authState(result.Ready))
+	fmt.Fprintf(out, "Auth: %s\n", authState(result))
 	if !result.Ready {
 		if next := nextSecretStep(result.Checks); next != "" {
 			fmt.Fprintf(out, "Next step: %s\n", next)
@@ -165,7 +165,7 @@ func printSecretsConfigureInfisical(out io.Writer, result app.SecretsConfigureIn
 		fmt.Fprintf(out, "Missing keys: %s\n", strings.Join(result.Missing, ", "))
 	}
 	if result.Verified {
-		fmt.Fprintf(out, "Auth: %s\n", authState(result.Status.Ready))
+		fmt.Fprintf(out, "Auth: %s\n", authState(result.Status))
 		if !result.Status.Ready {
 			if next := nextSecretStep(result.Status.Checks); next != "" {
 				fmt.Fprintf(out, "Next step: %s\n", next)
@@ -202,9 +202,14 @@ func foundState(found bool) string {
 	return "missing"
 }
 
-func authState(ready bool) string {
-	if ready {
+func authState(result app.SecretsStatusResult) string {
+	if result.Ready {
 		return "authenticated"
+	}
+	for _, check := range result.Checks {
+		if check.Code == "infisical.machine_auth_invalid" {
+			return "machine identity invalid"
+		}
 	}
 	return "not authenticated or project not initialized"
 }

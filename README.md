@@ -152,7 +152,7 @@ loki secrets status
 loki secrets check OPENAI_API_KEY
 ```
 
-`loki secrets configure infisical` prompts for Infisical Universal Auth details and writes only local `~/.config/infisical/.env` config; run `loki secrets status` afterward to verify readiness. `loki secrets --infisical` remains noninteractive for automation from existing safe local inputs. Output lists key names/readiness only, never values.
+`loki secrets configure infisical` prompts for Infisical Universal Auth details, validates them before writing, and writes only local `~/.config/infisical/.env` config. If validation fails, the existing env file stays unchanged. Run `loki secrets status` afterward to verify readiness. `loki secrets --infisical` remains noninteractive for automation from existing safe local inputs. Output lists key names/readiness only, never values.
 
 Inspect and restore local activation snapshots:
 
