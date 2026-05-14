@@ -455,7 +455,7 @@ loki secrets status
 loki secrets check SECRET_NAME
 ```
 
-For automation that already has safe `INFISICAL_*` environment variables or `.infisical.json` project config, use noninteractive `loki secrets --infisical` instead of the wizard.
+For automation that already has safe `INFISICAL_*` environment variables or `.infisical.json` project config, use noninteractive `loki secrets --infisical` instead of the wizard. The interactive wizard validates Universal Auth before writing; if validation fails, it leaves the existing local Infisical env file unchanged.
 
 ### Step 7 — Dry-run and resolve blockers
 
@@ -639,6 +639,7 @@ An empty initialized store has no real profile manifests. `verify smoke` and `sw
 | `switch` blocks unmanaged file | Loki will not overwrite local files it does not manage | Use `migrate local`, `migrate repo`, `adopt`, move the file aside, or rerun with `--backup-unmanaged --yes` only when the synced Loki store should win. |
 | `switch` asks for capture | A copied managed target changed locally | Review change, then rerun with `--capture-local --yes` only if safe. |
 | Secret render fails | Infisical not ready or secret missing | Run `loki secrets configure infisical` for interactive setup, then `loki secrets status` and `loki secrets check <NAME>`. For automation from existing safe local inputs, run `loki secrets --infisical`. |
+| `secrets status` says `machine identity invalid` | Local `~/.config/infisical/.env` has invalid Universal Auth values | Rerun `loki secrets configure infisical` with valid values, or move/remove the local env file to use `loki secrets login` plus `.infisical.json`. |
 | Operation lock timeout | Another Loki process or stale `.loki-operation.lock` | Confirm no Loki process is active on any synced machine before manual lock removal. |
 
 ## Rollback and recovery

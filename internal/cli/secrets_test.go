@@ -14,6 +14,7 @@ import (
 
 	"github.com/asudbring/loki-profile-manager/internal/app"
 	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/infisical"
 	"github.com/asudbring/loki-profile-manager/internal/secrets"
 )
 
@@ -50,6 +51,17 @@ func (f *fakeCLISecretLoginRunner) Login(ctx context.Context, req secrets.LoginR
 	return f.err
 }
 
+type fakeCLIInfisicalConfigValidator struct {
+	configs []infisical.Config
+	err     error
+}
+
+func (f *fakeCLIInfisicalConfigValidator) ValidateConfig(ctx context.Context, cfg infisical.Config) error {
+	_ = ctx
+	f.configs = append(f.configs, cfg)
+	return f.err
+}
+
 func TestSecretsStatusJSON(t *testing.T) {
 	status := secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}
 	cmd, out, _ := secretsTestCommand(t, app.Options{SecretStatusChecker: fakeCLISecretStatusChecker{status: status}})
@@ -74,6 +86,19 @@ func TestSecretsStatusNotReadyReturnsErrorAfterOutput(t *testing.T) {
 		t.Fatalf("secrets status error = %v", err)
 	}
 	if got := out.String(); !strings.Contains(got, "Loki secrets") || !strings.Contains(got, "Next step: run login") {
+		t.Fatalf("status output = %s", got)
+	}
+}
+
+func TestSecretsStatusReportsInvalidMachineAuthState(t *testing.T) {
+	status := secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Ready: false, Checks: []secrets.Check{{Severity: secrets.SeverityWarning, Code: "infisical.machine_auth_invalid", Message: "Infisical machine identity authentication failed", Remediation: "Rerun `loki secrets configure infisical`, or remove the local Infisical env file to use CLI login."}}}
+	cmd, out, _ := secretsTestCommand(t, app.Options{SecretStatusChecker: fakeCLISecretStatusChecker{status: status}})
+	cmd.SetArgs([]string{"secrets", "status"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "not ready") {
+		t.Fatalf("secrets status error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Auth: machine identity invalid") || !strings.Contains(got, "Next step: Rerun `loki secrets configure infisical`") {
 		t.Fatalf("status output = %s", got)
 	}
 }
@@ -115,8 +140,9 @@ func TestSecretsCheckRequiresNames(t *testing.T) {
 
 func TestSecretsConfigureInfisicalWizardPromptsWritesConfigAndHidesValues(t *testing.T) {
 	home := t.TempDir()
+	validator := &fakeCLIInfisicalConfigValidator{}
 	cmd, out, errOut := secretsTestCommandWithResolver(t,
-		app.Options{SecretStatusChecker: fakeCLISecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}}},
+		app.Options{SecretStatusChecker: fakeCLISecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}}, InfisicalConfigValidator: validator},
 		config.PathResolver{GOOS: "darwin", HomeDir: home},
 	)
 	cmd.SetArgs([]string{"secrets", "configure", "infisical"})
@@ -143,6 +169,43 @@ func TestSecretsConfigureInfisicalWizardPromptsWritesConfigAndHidesValues(t *tes
 			t.Fatalf("env file missing %q:\n%s", want, text)
 		}
 	}
+	if len(validator.configs) != 1 || validator.configs[0].ProjectID != "project-123" || validator.configs[0].ClientID != "client-123" {
+		t.Fatalf("validated configs = %+v", validator.configs)
+	}
+}
+
+func TestSecretsConfigureInfisicalWizardValidationFailureDoesNotWriteOrLeak(t *testing.T) {
+	home := t.TempDir()
+	envPath := filepath.Join(home, ".config", "infisical", ".env")
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	original := "INFISICAL_CLIENT_ID=old-client\n"
+	if err := os.WriteFile(envPath, []byte(original), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	cmd, out, errOut := secretsTestCommandWithResolver(t,
+		app.Options{InfisicalConfigValidator: &fakeCLIInfisicalConfigValidator{err: infisical.MachineAuthError{}}},
+		config.PathResolver{GOOS: "darwin", HomeDir: home},
+	)
+	cmd.SetArgs([]string{"secrets", "configure", "infisical"})
+	cmd.SetIn(strings.NewReader("project-123\n\nclient-123\ndummy-client-secret\nhttps://infisical.example\ny\n"))
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "validation") {
+		t.Fatalf("secrets configure infisical error = %v", err)
+	}
+	combined := out.String() + errOut.String()
+	for _, leak := range []string{"dummy-client-secret", "client-123", "project-123"} {
+		if strings.Contains(combined, leak) {
+			t.Fatalf("wizard output leaked %q: %s", leak, combined)
+		}
+	}
+	content, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(content) != original {
+		t.Fatalf("env file changed after validation failure:\n%s", content)
+	}
 }
 
 func TestSecretsConfigureInfisicalCommandAppearsInHelp(t *testing.T) {
@@ -153,6 +216,31 @@ func TestSecretsConfigureInfisicalCommandAppearsInHelp(t *testing.T) {
 	}
 	if got := out.String(); !strings.Contains(got, "infisical") || !strings.Contains(got, "interactive") {
 		t.Fatalf("help output = %s", got)
+	}
+}
+
+func TestSecretsInfisicalAllowsReadyCliLoginWithProjectConfigOnly(t *testing.T) {
+	home := t.TempDir()
+	work := t.TempDir()
+	oldWD, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	defer os.Chdir(oldWD)
+	if err := os.Chdir(work); err != nil {
+		t.Fatalf("Chdir() error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(work, ".infisical.json"), []byte(`{"workspaceId":"project-from-config","defaultEnvironment":"dev"}`), 0o644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	cmd, out, _ := secretsTestCommandWithResolver(t, app.Options{SecretStatusChecker: fakeCLISecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}}}, config.PathResolver{GOOS: "darwin", HomeDir: home})
+	cmd.SetArgs([]string{"secrets", "--infisical"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("secrets --infisical error = %v", err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "Auth: authenticated") || strings.Contains(got, "Missing keys:") {
+		t.Fatalf("output = %s", got)
 	}
 }
 

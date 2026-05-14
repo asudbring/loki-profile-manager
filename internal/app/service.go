@@ -16,6 +16,7 @@ import (
 	"github.com/asudbring/loki-profile-manager/internal/activation"
 	"github.com/asudbring/loki-profile-manager/internal/config"
 	"github.com/asudbring/loki-profile-manager/internal/db"
+	"github.com/asudbring/loki-profile-manager/internal/infisical"
 	lokilog "github.com/asudbring/loki-profile-manager/internal/log"
 	"github.com/asudbring/loki-profile-manager/internal/machine"
 	"github.com/asudbring/loki-profile-manager/internal/secrets"
@@ -41,25 +42,31 @@ type restoreGuard struct {
 	ExpiresAt    string `json:"expires_at"`
 }
 
+type InfisicalConfigValidator interface {
+	ValidateConfig(ctx context.Context, cfg infisical.Config) error
+}
+
 type Options struct {
-	Resolver            config.PathResolver
-	StoreOverride       string
-	Verbose             bool
-	Stderr              io.Writer
-	SecretProvider      activation.SecretProvider
-	SecretStatusChecker secrets.StatusChecker
-	SecretLoginRunner   secrets.LoginRunner
+	Resolver                 config.PathResolver
+	StoreOverride            string
+	Verbose                  bool
+	Stderr                   io.Writer
+	SecretProvider           activation.SecretProvider
+	SecretStatusChecker      secrets.StatusChecker
+	SecretLoginRunner        secrets.LoginRunner
+	InfisicalConfigValidator InfisicalConfigValidator
 }
 
 type Service struct {
-	resolver            config.PathResolver
-	paths               config.LocalPaths
-	storeOverride       string
-	logger              *lokilog.Logger
-	database            *sql.DB
-	secretProvider      activation.SecretProvider
-	secretStatusChecker secrets.StatusChecker
-	secretLoginRunner   secrets.LoginRunner
+	resolver                 config.PathResolver
+	paths                    config.LocalPaths
+	storeOverride            string
+	logger                   *lokilog.Logger
+	database                 *sql.DB
+	secretProvider           activation.SecretProvider
+	secretStatusChecker      secrets.StatusChecker
+	secretLoginRunner        secrets.LoginRunner
+	infisicalConfigValidator InfisicalConfigValidator
 }
 
 type StatusRequest struct{}
@@ -307,15 +314,20 @@ func NewService(ctx context.Context, opts Options) (*Service, error) {
 	if secretLoginRunner == nil {
 		secretLoginRunner = defaultSecretLoginRunner()
 	}
+	infisicalConfigValidator := opts.InfisicalConfigValidator
+	if infisicalConfigValidator == nil {
+		infisicalConfigValidator = defaultInfisicalConfigValidator()
+	}
 	return &Service{
-		resolver:            resolver,
-		paths:               paths,
-		storeOverride:       storeOverride,
-		logger:              logger,
-		database:            database,
-		secretProvider:      secretProvider,
-		secretStatusChecker: secretStatusChecker,
-		secretLoginRunner:   secretLoginRunner,
+		resolver:                 resolver,
+		paths:                    paths,
+		storeOverride:            storeOverride,
+		logger:                   logger,
+		database:                 database,
+		secretProvider:           secretProvider,
+		secretStatusChecker:      secretStatusChecker,
+		secretLoginRunner:        secretLoginRunner,
+		infisicalConfigValidator: infisicalConfigValidator,
 	}, nil
 }
 

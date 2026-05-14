@@ -229,3 +229,8 @@ func defaultSecretLoginRunner() secrets.LoginRunner {
 	client := infisical.NewClient(nil)
 	return client
 }
+
+func defaultInfisicalConfigValidator() InfisicalConfigValidator {
+	client := infisical.NewClient(nil)
+	return client
+}

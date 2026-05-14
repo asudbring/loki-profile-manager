@@ -293,7 +293,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.scrubSecretsConfigureInputs()
 		if msg.err == nil {
 			m.secretsConfigure = false
-			m.secretsConfigureMessage = "Infisical configuration saved. Run secrets status to verify readiness."
+			m.secretsConfigureMessage = "Infisical configuration validated and saved. Run secrets status to verify readiness."
 			if msg.result.Verified {
 				m.secrets = msg.result.Status
 				m.secretsErr = nil

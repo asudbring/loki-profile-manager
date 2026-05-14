@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -45,6 +46,17 @@ type fakeAppSecretLoginRunner struct {
 
 func (f *fakeAppSecretLoginRunner) Login(ctx context.Context, req secrets.LoginRequest) error {
 	f.domains = append(f.domains, req.Domain)
+	return f.err
+}
+
+type fakeInfisicalConfigValidator struct {
+	configs []infisical.Config
+	err     error
+}
+
+func (f *fakeInfisicalConfigValidator) ValidateConfig(ctx context.Context, cfg infisical.Config) error {
+	_ = ctx
+	f.configs = append(f.configs, cfg)
 	return f.err
 }
 
@@ -272,6 +284,59 @@ func TestFormatEnvValueRoundTripsQuotesAndHash(t *testing.T) {
 	}
 }
 
+func TestSecretsConfigureInfisicalValidatesExplicitRequestBeforeWriting(t *testing.T) {
+	ctx := context.Background()
+	home := t.TempDir()
+	envPath := filepath.Join(home, ".config", "infisical", ".env")
+	if err := os.MkdirAll(filepath.Dir(envPath), 0o700); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	original := "# existing local config\nINFISICAL_CLIENT_ID=old-client\nINFISICAL_CLIENT_SECRET=old-secret\nINFISICAL_PROJECT_ID=old-project\n"
+	if err := os.WriteFile(envPath, []byte(original), 0o600); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	validator := &fakeInfisicalConfigValidator{err: infisical.MachineAuthError{}}
+	svc, err := NewService(ctx, Options{
+		Resolver:                 config.PathResolver{GOOS: "darwin", HomeDir: home},
+		InfisicalConfigValidator: validator,
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	defer svc.Close()
+
+	_, err = svc.SecretsConfigureInfisical(ctx, SecretsConfigureInfisicalRequest{
+		ProjectID:         "project-123",
+		Environment:       "prod",
+		ClientID:          "client-123",
+		ClientSecret:      "dummy-client-secret",
+		HostURL:           "https://infisical.example",
+		OverwriteExisting: true,
+	})
+	if err == nil {
+		t.Fatal("SecretsConfigureInfisical() error = nil, want validation failure")
+	}
+	for _, leak := range []string{"dummy-client-secret", "client-123", "project-123"} {
+		if strings.Contains(err.Error(), leak) {
+			t.Fatalf("validation error leaked %q: %v", leak, err)
+		}
+	}
+	content, readErr := os.ReadFile(envPath)
+	if readErr != nil {
+		t.Fatalf("ReadFile() error = %v", readErr)
+	}
+	if string(content) != original {
+		t.Fatalf("env file changed after validation failure:\n%s", content)
+	}
+	if len(validator.configs) != 1 {
+		t.Fatalf("validator configs = %+v, want one validation", validator.configs)
+	}
+	validated := validator.configs[0]
+	if validated.ProjectID != "project-123" || validated.Environment != "prod" || validated.ClientID != "client-123" || validated.ClientSecret != "dummy-client-secret" || validated.Host != "https://infisical.example" || validated.APIURL != "https://infisical.example" {
+		t.Fatalf("validated config = %+v", validated)
+	}
+}
+
 func TestSecretsConfigureInfisicalExplicitRequestOverwritesLocalConfigAndOmitsToken(t *testing.T) {
 	ctx := context.Background()
 	home := t.TempDir()
@@ -283,9 +348,11 @@ func TestSecretsConfigureInfisicalExplicitRequestOverwritesLocalConfigAndOmitsTo
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	env := map[string]string{"INFISICAL_TOKEN": "dummy-env-token"}
+	validator := &fakeInfisicalConfigValidator{}
 	svc, err := NewService(ctx, Options{
-		Resolver:            config.PathResolver{GOOS: "darwin", HomeDir: home, Env: func(key string) string { return env[key] }},
-		SecretStatusChecker: fakeAppSecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}},
+		Resolver:                 config.PathResolver{GOOS: "darwin", HomeDir: home, Env: func(key string) string { return env[key] }},
+		SecretStatusChecker:      fakeAppSecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}},
+		InfisicalConfigValidator: validator,
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)
@@ -332,8 +399,13 @@ func TestSecretsConfigureInfisicalExplicitRequestOverwritesLocalConfigAndOmitsTo
 	if err != nil {
 		t.Fatalf("Stat() error = %v", err)
 	}
-	if got := info.Mode().Perm(); got != 0o600 {
-		t.Fatalf("env file mode = %v, want 0600", got)
+	if runtime.GOOS != "windows" {
+		if got := info.Mode().Perm(); got != 0o600 {
+			t.Fatalf("env file mode = %v, want 0600", got)
+		}
+	}
+	if len(validator.configs) != 1 || validator.configs[0].ProjectID != "project-123" || validator.configs[0].Environment != "prod" {
+		t.Fatalf("validated configs = %+v", validator.configs)
 	}
 }
 
@@ -348,8 +420,9 @@ func TestSecretsConfigureInfisicalExplicitBlankHostClearsExistingHost(t *testing
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 	svc, err := NewService(ctx, Options{
-		Resolver:            config.PathResolver{GOOS: "darwin", HomeDir: home},
-		SecretStatusChecker: fakeAppSecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}},
+		Resolver:                 config.PathResolver{GOOS: "darwin", HomeDir: home},
+		SecretStatusChecker:      fakeAppSecretStatusChecker{status: secrets.Status{Provider: secrets.ProviderInfisical, CLIInstalled: true, Authenticated: true, Ready: true}},
+		InfisicalConfigValidator: &fakeInfisicalConfigValidator{},
 	})
 	if err != nil {
 		t.Fatalf("NewService() error = %v", err)

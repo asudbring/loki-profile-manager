@@ -462,10 +462,10 @@ Flags:
 Behavior:
 
 - V1 supports Infisical only. Azure Key Vault and other providers are deferred.
-- `configure infisical` prompts for Infisical Universal Auth values and writes `~/.config/infisical/.env` with local-only permissions where supported. It stores Universal Auth config only, does not persist minted `INFISICAL_TOKEN` values, and then tells you to run `loki secrets status` for readiness verification.
+- `configure infisical` prompts for Infisical Universal Auth values, validates them with Infisical before writing, and writes `~/.config/infisical/.env` with local-only permissions where supported. If validation fails, Loki leaves any existing env file unchanged. It stores Universal Auth config only, does not persist minted `INFISICAL_TOKEN` values, and then tells you to run `loki secrets status` for readiness verification.
 - `--infisical` creates or updates `~/.config/infisical/.env` from existing `INFISICAL_*` environment variables and local `.infisical.json` project config, then runs readiness checks. It remains noninteractive for automation, reports key names only, and never prints values.
 - `login` delegates to `infisical login` using inherited terminal I/O. Loki does not capture tokens, passwords, or login output.
-- `status` checks that the Infisical CLI is installed and ready for render templates. It does not list or print secret values.
+- `status` checks that the Infisical CLI is installed and ready for render templates. It does not list or print secret values. If a local machine-auth env file is invalid, `status` reports `machine identity invalid` and tells you to rerun `loki secrets configure infisical` or remove the local env file to fall back to interactive CLI login.
 - `check` fetches only the named secrets and reports available or missing names. It never prints values.
 - Loki does not store Infisical tokens or secret values in the synced store or local SQLite. The only wizard-written secret-bearing file is the machine-local Infisical env file.
 - Render mode reads secret values only during real `switch` execution for files that use `render` mode.

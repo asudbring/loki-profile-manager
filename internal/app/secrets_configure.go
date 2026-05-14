@@ -92,6 +92,8 @@ func (s *Service) SecretsConfigureInfisical(ctx context.Context, req SecretsConf
 	}
 
 	assignments := map[string]string{}
+	updated := []string{}
+	preserved := []string{}
 	writeKeys := append([]string{}, infisicalEnvWriteOrder...)
 	if explicit || (strings.TrimSpace(existing["INFISICAL_TOKEN"]) != "" && (strings.TrimSpace(existing["INFISICAL_CLIENT_ID"]) != "" || strings.TrimSpace(candidates["INFISICAL_CLIENT_ID"]) != "")) {
 		writeKeys = append(writeKeys, "INFISICAL_TOKEN")
@@ -102,13 +104,20 @@ func (s *Service) SecretsConfigureInfisical(ctx context.Context, req SecretsConf
 		candidateValue := strings.TrimSpace(candidates[key])
 		_, candidateSet := candidates[key]
 		if existingValue != "" && (!candidateSet || !req.OverwriteExisting) {
-			result.Preserved = append(result.Preserved, key)
+			preserved = append(preserved, key)
 			continue
 		}
 		if candidateSet && (candidateValue != "" || req.OverwriteExisting) {
 			assignments[key] = candidateValue
 			existing[key] = candidateValue
-			result.Updated = append(result.Updated, key)
+			updated = append(updated, key)
+		}
+	}
+
+	result.Missing = missingInfisicalConfigKeys(existing)
+	if explicit && len(result.Missing) == 0 {
+		if err := s.validateExplicitInfisicalConfig(ctx, existing); err != nil {
+			return result, err
 		}
 	}
 
@@ -122,6 +131,8 @@ func (s *Service) SecretsConfigureInfisical(ctx context.Context, req SecretsConf
 			return result, err
 		}
 	}
+	result.Updated = updated
+	result.Preserved = preserved
 
 	result.Missing = missingInfisicalConfigKeys(existing)
 	if !req.SkipVerify {
@@ -131,6 +142,9 @@ func (s *Service) SecretsConfigureInfisical(ctx context.Context, req SecretsConf
 		}
 		result.Status = status
 		result.Verified = true
+		if status.Ready {
+			result.Missing = []string{}
+		}
 	}
 	sort.Strings(result.Updated)
 	sort.Strings(result.Preserved)
@@ -140,6 +154,39 @@ func (s *Service) SecretsConfigureInfisical(ctx context.Context, req SecretsConf
 
 func (req SecretsConfigureInfisicalRequest) hasExplicitInfisicalValues() bool {
 	return strings.TrimSpace(req.ProjectID) != "" || strings.TrimSpace(req.Environment) != "" || strings.TrimSpace(req.ClientID) != "" || strings.TrimSpace(req.ClientSecret) != "" || strings.TrimSpace(req.HostURL) != ""
+}
+
+func (s *Service) validateExplicitInfisicalConfig(ctx context.Context, values map[string]string) error {
+	if s == nil || s.infisicalConfigValidator == nil {
+		return nil
+	}
+	cfg := infisical.Config{
+		Token:        strings.TrimSpace(values["INFISICAL_TOKEN"]),
+		ProjectID:    strings.TrimSpace(values["INFISICAL_PROJECT_ID"]),
+		Environment:  strings.TrimSpace(values["INFISICAL_ENV"]),
+		AuthMethod:   strings.TrimSpace(values["INFISICAL_AUTH_METHOD"]),
+		ClientID:     strings.TrimSpace(values["INFISICAL_CLIENT_ID"]),
+		ClientSecret: strings.TrimSpace(values["INFISICAL_CLIENT_SECRET"]),
+		APIURL:       strings.TrimSpace(values["INFISICAL_API_URL"]),
+		Host:         strings.TrimSpace(firstNonEmptyInfisicalValue(values["INFISICAL_HOST"], values["INFISICAL_HOST_URL"])),
+	}
+	if err := s.infisicalConfigValidator.ValidateConfig(ctx, cfg); err != nil {
+		var cliErr infisical.CLIUnavailableError
+		if errors.As(err, &cliErr) {
+			return fmt.Errorf("secrets configure infisical: validation failed before writing local config; no changes written: %w", cliErr)
+		}
+		return fmt.Errorf("secrets configure infisical: validation failed before writing local config; no changes written. Verify the Infisical project ID, environment, client ID, client secret, and host/API URL, then retry")
+	}
+	return nil
+}
+
+func firstNonEmptyInfisicalValue(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func (req SecretsConfigureInfisicalRequest) infisicalEnvValues() (map[string]string, error) {

@@ -31,7 +31,7 @@ func newSecretsConfigureInfisicalCommand(resolver config.PathResolver, globals *
 	cmd := &cobra.Command{
 		Use:   "infisical",
 		Short: "Interactively configure Infisical machine authentication.",
-		Long:  "Interactively configure Infisical machine authentication. Secret values are written only to the local Infisical env file and are never printed.",
+		Long:  "Interactively configure Infisical machine authentication. Values are validated before writing; secret values are written only to the local Infisical env file and are never printed.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			prompter := newSecretsPrompter(cmd.InOrStdin(), cmd.ErrOrStderr())

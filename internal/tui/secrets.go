@@ -213,7 +213,7 @@ func (m Model) secretsConfigureView() string {
 		titleStyle.Render("Secrets"),
 		"",
 		subtitleStyle.Render("Configure Infisical"),
-		mutedStyle.Render("Writes Universal Auth config to the local Infisical env file. Secret field is masked."),
+		mutedStyle.Render("Validates Universal Auth, then writes the local Infisical env file. Secret field is masked."),
 		"",
 	}
 	for i, label := range secretsConfigureFieldLabels {
