@@ -8,6 +8,15 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - No unreleased changes.
 
+## v0.1.7 — 2026-05-14
+
+Patch release for Infisical first-configure hardening.
+
+- Fixed `loki secrets configure infisical` and the TUI Infisical wizard to validate Universal Auth before writing the local env file, preserving existing config on validation failure.
+- Fixed sanitized status reporting for invalid local machine-auth config so `loki secrets status` now points users to rerun configure or remove the local env file to use CLI login.
+- Fixed `loki secrets --infisical` to succeed when interactive Infisical CLI login is already ready and only `.infisical.json` supplies project/env metadata.
+- Added regression coverage for failed validation, ambient `INFISICAL_*` isolation, CLI-login fallback, and sanitized output.
+
 ## v0.1.6 — 2026-05-13
 
 Feature release for first-run setup remediation and safer Infisical configuration.
