@@ -75,7 +75,7 @@ func TestDiscoverWindowsOneDriveCommercialClassifiedBusiness(t *testing.T) {
 func TestDiscoverDropboxInfoJSON(t *testing.T) {
 	home := t.TempDir()
 	dropboxRoot := filepath.Join(home, "Dropbox (Contoso)")
-	infoPath := filepath.Join(home, ".dropbox", "info.json")
+	infoPath := config.JoinForOS("linux", home, ".dropbox", "info.json")
 	candidates := DiscoverProviderFolders(DiscoveryOptions{
 		GOOS:    "linux",
 		HomeDir: home,
