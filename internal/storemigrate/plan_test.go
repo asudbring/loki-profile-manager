@@ -9,6 +9,15 @@ import (
 	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
+func TestDatalessFlagSet(t *testing.T) {
+	if !datalessFlagSet(darwinDatalessFlag) {
+		t.Fatal("dataless flag not detected")
+	}
+	if datalessFlagSet(0x20) {
+		t.Fatal("compressed-only flag detected as dataless")
+	}
+}
+
 func TestBuildPlanRequiresValidSourceAndEmptyDestination(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := store.EnsureLayout(source); err != nil {

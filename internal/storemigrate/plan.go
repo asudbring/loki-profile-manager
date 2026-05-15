@@ -133,6 +133,9 @@ func BuildPlan(opts PlanOptions) (Plan, error) {
 			Kind:         kind,
 			Mode:         info.Mode().String(),
 		}
+		if fileInfoDataless(info) {
+			plan.Blockers = append(plan.Blockers, datalessBlocker(entryPlan))
+		}
 		switch kind {
 		case "directory":
 			plan.Summary.DirCount++
@@ -152,7 +155,7 @@ func BuildPlan(opts PlanOptions) (Plan, error) {
 	}
 	sort.Slice(plan.Entries, func(i, j int) bool { return plan.Entries[i].RelativePath < plan.Entries[j].RelativePath })
 	if len(plan.Blockers) > 0 {
-		return plan, fmt.Errorf("store migrate: source contains unsupported entries")
+		return plan, fmt.Errorf("store migrate: source contains %d entries that cannot be copied safely; first blocker: %s", len(plan.Blockers), plan.Blockers[0])
 	}
 	plan.CanMigrate = true
 	return plan, nil

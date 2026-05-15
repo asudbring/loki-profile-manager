@@ -8,6 +8,13 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - No unreleased changes.
 
+## v0.1.9 — 2026-05-15
+
+Patch release for macOS cloud-only source-store safety.
+
+- Changed `loki store migrate` dry-run planning to detect macOS dataless/cloud-only source files before copy, fail quickly, and report the first file that must be downloaded.
+- Prevented silent long-running migration attempts when OneDrive/File Provider would need to hydrate hundreds of source files during copy.
+
 ## v0.1.8 — 2026-05-15
 
 Feature release for first-class store-root migration.
