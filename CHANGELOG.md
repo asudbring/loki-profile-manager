@@ -6,7 +6,9 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
-- No unreleased changes.
+- Reworked `loki store migrate` into a staged V2 pipeline: rich cloud-only preflight, opt-in `--hydrate`, progress events, per-file timeout, hidden staging copy, validated promotion, interrupted staging cleanup, transactional DB rewire, and active managed-symlink retargeting.
+- Added cross-platform cloud placeholder detector plumbing: macOS dataless flags, conservative Windows Cloud Files attributes where available, and safe no-op detection on Linux/other platforms while retaining staging/progress/cleanup behavior.
+- Updated store migration docs for OneDrive/Dropbox cloud-only handling, `--hydrate`, `--file-timeout`, `--progress-interval`, and `--cleanup`.
 
 ## v0.1.9 — 2026-05-15
 

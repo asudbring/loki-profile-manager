@@ -158,10 +158,12 @@ func rebasePathUnderRoot(pathValue, oldRoot, newRoot string) (string, bool, erro
 	if err != nil {
 		return "", false, err
 	}
-	if pathAbs != oldAbs && !pathWithinRoot(oldAbs, pathAbs) {
+	oldComparable := comparableActivationPath(oldAbs)
+	pathComparable := comparableActivationPath(pathAbs)
+	if pathComparable != oldComparable && !pathWithinRoot(oldAbs, pathAbs) {
 		return pathValue, false, nil
 	}
-	rel, err := filepath.Rel(oldAbs, pathAbs)
+	rel, err := relativePathUnderRootPreserveCase(oldAbs, pathAbs)
 	if err != nil {
 		return "", false, err
 	}
@@ -172,9 +174,29 @@ func rebasePathUnderRoot(pathValue, oldRoot, newRoot string) (string, bool, erro
 }
 
 func pathWithinRoot(rootAbs, childAbs string) bool {
-	rel, err := filepath.Rel(rootAbs, childAbs)
+	rel, err := filepath.Rel(comparableActivationPath(rootAbs), comparableActivationPath(childAbs))
 	if err != nil || rel == "." || rel == "" {
 		return false
 	}
 	return rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func comparableActivationPath(path string) string {
+	return strings.ToLower(filepath.Clean(path))
+}
+
+func relativePathUnderRootPreserveCase(rootAbs, childAbs string) (string, error) {
+	rootClean := filepath.Clean(rootAbs)
+	childClean := filepath.Clean(childAbs)
+	if comparableActivationPath(rootClean) == comparableActivationPath(childClean) {
+		return ".", nil
+	}
+	rootWithSeparator := rootClean
+	if !strings.HasSuffix(rootWithSeparator, string(filepath.Separator)) {
+		rootWithSeparator += string(filepath.Separator)
+	}
+	if strings.HasPrefix(comparableActivationPath(childClean), comparableActivationPath(rootWithSeparator)) && len(childClean) >= len(rootWithSeparator) {
+		return childClean[len(rootWithSeparator):], nil
+	}
+	return filepath.Rel(rootClean, childClean)
 }

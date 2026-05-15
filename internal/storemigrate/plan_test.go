@@ -1,6 +1,7 @@
 package storemigrate
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -50,6 +51,19 @@ func TestBuildPlanRejectsNestedDestination(t *testing.T) {
 	}
 }
 
+func TestBuildPlanRejectsCaseVariantNestedDestination(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "Source")
+	if _, err := store.EnsureLayout(source); err != nil {
+		t.Fatalf("EnsureLayout(source) error = %v", err)
+	}
+	dest := filepath.Join(root, "source", "nested")
+	_, err := BuildPlan(PlanOptions{FromPath: source, ToPath: dest})
+	if err == nil || !strings.Contains(err.Error(), "destination cannot be inside source") {
+		t.Fatalf("BuildPlan(case-variant nested dest) error = %v", err)
+	}
+}
+
 func TestBuildPlanRejectsSymlinkedDestinationInsideSource(t *testing.T) {
 	source := filepath.Join(t.TempDir(), "source")
 	if _, err := store.EnsureLayout(source); err != nil {
@@ -94,6 +108,84 @@ func TestBuildPlanCountsFilesAndExcludesOperationLock(t *testing.T) {
 	if !planContains(plan, "profiles/work/core/files/settings.json") {
 		t.Fatalf("custom file missing from plan entries: %+v", plan.Entries)
 	}
+}
+
+func TestBuildPlanReportsDatalessFilesWithoutScanningForever(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	if _, err := store.EnsureLayout(source); err != nil {
+		t.Fatalf("EnsureLayout(source) error = %v", err)
+	}
+	cloudFile := filepath.Join(source, "profiles", "work", "core", "files", "cloud.txt")
+	if err := os.WriteFile(cloudFile, []byte("cloud"), 0o644); err != nil {
+		t.Fatalf("WriteFile(cloud) error = %v", err)
+	}
+
+	plan, err := BuildPlan(PlanOptions{
+		FromPath: source,
+		ToPath:   filepath.Join(t.TempDir(), "dest"),
+		Dataless: func(path string, info fs.FileInfo) bool {
+			return path == cloudFile
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cloud-only") {
+		t.Fatalf("BuildPlan() error = %v, want cloud-only blocker", err)
+	}
+	if plan.Summary.DatalessCount != 1 {
+		t.Fatalf("DatalessCount = %d, want 1", plan.Summary.DatalessCount)
+	}
+	if len(plan.DatalessEntries) != 1 || plan.DatalessEntries[0].RelativePath != "profiles/work/core/files/cloud.txt" {
+		t.Fatalf("DatalessEntries = %+v", plan.DatalessEntries)
+	}
+}
+
+func TestBuildPlanAllowsDatalessWhenHydrateRequested(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	if _, err := store.EnsureLayout(source); err != nil {
+		t.Fatalf("EnsureLayout(source) error = %v", err)
+	}
+	cloudFile := filepath.Join(source, "profiles", "work", "core", "files", "cloud.txt")
+	if err := os.WriteFile(cloudFile, []byte("cloud"), 0o644); err != nil {
+		t.Fatalf("WriteFile(cloud) error = %v", err)
+	}
+
+	plan, err := BuildPlan(PlanOptions{
+		FromPath:      source,
+		ToPath:        filepath.Join(t.TempDir(), "dest"),
+		AllowDataless: true,
+		Dataless:      func(path string, info fs.FileInfo) bool { return path == cloudFile },
+	})
+	if err != nil {
+		t.Fatalf("BuildPlan(AllowDataless) error = %v", err)
+	}
+	if !plan.CanMigrate || plan.Summary.DatalessCount != 1 {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
+func TestBuildPlanUsesCloudPlaceholderDetector(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	if _, err := store.EnsureLayout(source); err != nil {
+		t.Fatalf("EnsureLayout(source) error = %v", err)
+	}
+	cloudFile := filepath.Join(source, "profiles", "work", "core", "files", "cloud.txt")
+	if err := os.WriteFile(cloudFile, []byte("cloud"), 0o644); err != nil {
+		t.Fatalf("WriteFile(cloud) error = %v", err)
+	}
+
+	_, err := BuildPlan(PlanOptions{
+		FromPath: source,
+		ToPath:   filepath.Join(t.TempDir(), "dest"),
+		Detector: fakeCloudDetector{path: cloudFile},
+	})
+	if err == nil || !strings.Contains(err.Error(), "cloud-only") {
+		t.Fatalf("BuildPlan(detector) error = %v, want cloud-only blocker", err)
+	}
+}
+
+type fakeCloudDetector struct{ path string }
+
+func (d fakeCloudDetector) IsCloudOnly(path string, _ fs.FileInfo) bool {
+	return path == d.path
 }
 
 func planContains(plan Plan, rel string) bool {

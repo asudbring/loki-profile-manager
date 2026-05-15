@@ -105,6 +105,36 @@ func TestStoreMigrateDryRunJSON(t *testing.T) {
 	}
 }
 
+func TestStoreMigrateDryRunShowsCloudOnlyGuidance(t *testing.T) {
+	home := t.TempDir()
+	storePath := filepath.Join(t.TempDir(), "old")
+	cmd, _, _ := testCommandWithHome(home)
+	cmd.SetArgs([]string{"store", "init", storePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("store init error = %v", err)
+	}
+	dest := filepath.Join(t.TempDir(), "new")
+	cmd, out, _ := testCommandWithHome(home)
+	cmd.SetArgs([]string{"store", "migrate", "--to", dest, "--dry-run", "--hydrate"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("store migrate dry-run hydrate error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Cloud-only files:") {
+		t.Fatalf("migrate output missing cloud-only summary: %s", out.String())
+	}
+}
+
+func TestStoreMigrateCleanupCLI(t *testing.T) {
+	cmd, out, _ := testCommand(t)
+	cmd.SetArgs([]string{"store", "migrate", "--to", filepath.Join(t.TempDir(), "new"), "--cleanup"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("store migrate cleanup error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Interrupted staging directories removed:") {
+		t.Fatalf("cleanup output = %s", out.String())
+	}
+}
+
 func TestStoreMigrateRequiresDryRunOrYes(t *testing.T) {
 	cmd, _, _ := testCommand(t)
 	cmd.SetArgs([]string{"store", "migrate", "--to", filepath.Join(t.TempDir(), "new")})

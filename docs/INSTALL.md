@@ -164,7 +164,7 @@ If the store has no profiles yet, create the first profile core before running `
 
 ## Move an existing store to OneDrive Business or Dropbox
 
-Use `store migrate` when this machine already points at a valid Loki store and you want the source of truth under a different sync-provider folder. The destination must be missing or empty. Loki copies and validates the new store, rewires this machine's local SQLite state by default, and never deletes the old store.
+Use `store migrate` when this machine already points at a valid Loki store and you want the source of truth under a different sync-provider folder. The destination must be missing or empty. Loki copies to a hidden staging sibling, validates the staged store, promotes it to the final destination, rewires this machine's local SQLite state by default, retargets active Loki-managed symlinks, and never deletes the old store.
 
 Dropbox example:
 
@@ -180,10 +180,11 @@ OneDrive for Business example on macOS:
 ```bash
 loki store discover
 loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --dry-run
-loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --yes
+# If dry-run reports cloud-only files, either download them in Finder first or opt into hydration:
+loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --yes --hydrate
 ```
 
-Use `--copy-only` to stage the destination without changing local state. Use `--capture-local` with `--yes` only when Loki reports safe copy-mode local changes that should be written back before the store copy. After migration, wait for the sync client to finish uploading the new folder before switching other machines.
+Use `--copy-only` to copy and validate the destination without changing local state. Use `--cleanup` to remove interrupted `.LokiProfileManager.incomplete-*` staging siblings. Use `--capture-local` with `--yes` only when Loki reports safe copy-mode local changes that should be written back before the store copy. After migration, wait for the sync client to finish uploading the new folder before switching other machines.
 
 ### Windows fresh machine
 
