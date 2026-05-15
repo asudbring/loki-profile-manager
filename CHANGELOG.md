@@ -8,6 +8,12 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - No unreleased changes.
 
+## v0.1.11 — 2026-05-15
+
+Patch release for store migration retarget repair.
+
+- Fixed store migration symlink retargeting to preserve broken-but-managed symlinks by moving them from the old store root to the new store root even when the source file is missing.
+
 ## v0.1.10 — 2026-05-15
 
 Feature release for observable, staged store migration.

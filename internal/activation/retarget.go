@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
 )
 
 // RetargetManagedSymlinks updates active Loki-managed symlinks that still point at oldRoot.
@@ -52,10 +54,26 @@ func RetargetManagedSymlinks(ctx context.Context, database *sql.DB, oldRoot, new
 				continue
 			}
 		}
-		if err := ApplySymlink(nextTarget, record.TargetPath); err != nil {
+		if err := replaceSymlinkTarget(nextTarget, record.TargetPath); err != nil {
 			return changed, err
 		}
 		changed++
 	}
 	return changed, nil
+}
+
+func replaceSymlinkTarget(source, target string) error {
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		return fmt.Errorf("create parent directory for %s: %w", target, err)
+	}
+	if err := removeExisting(target); err != nil {
+		return err
+	}
+	if err := os.Symlink(source, target); err != nil {
+		if runtime.GOOS == "windows" {
+			return fmt.Errorf("retarget symlink %s -> %s: %w. Enable Developer Mode or run from an elevated shell", target, source, err)
+		}
+		return fmt.Errorf("retarget symlink %s -> %s: %w", target, source, err)
+	}
+	return nil
 }

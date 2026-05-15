@@ -50,6 +50,48 @@ func TestRetargetManagedSymlinksMovesActiveLinksToNewStore(t *testing.T) {
 	}
 }
 
+func TestRetargetManagedSymlinksRetargetsBrokenLinksToNewRoot(t *testing.T) {
+	ctx := context.Background()
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	oldRoot := filepath.Join(root, "old")
+	newRoot := filepath.Join(root, "new")
+	oldSource := filepath.Join(oldRoot, "profiles", "writer", "core", "files", ".stow-local-ignore")
+	newSource := filepath.Join(newRoot, "profiles", "writer", "core", "files", ".stow-local-ignore")
+	target := filepath.Join(root, "target")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatalf("MkdirAll(target parent) error = %v", err)
+	}
+	if err := os.Symlink(oldSource, target); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	if err := PutManagedTarget(ctx, database, ManagedTarget{
+		TargetPath:    target,
+		SourcePath:    newSource,
+		Mode:          string(OperationSymlink),
+		LayerKind:     "core",
+		LayerName:     "writer",
+		LastAppliedAt: time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC).Format(time.RFC3339),
+	}); err != nil {
+		t.Fatalf("PutManagedTarget() error = %v", err)
+	}
+	changed, err := RetargetManagedSymlinks(ctx, database, oldRoot, newRoot)
+	if err != nil {
+		t.Fatalf("RetargetManagedSymlinks() error = %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("changed = %d, want 1", changed)
+	}
+	got, err := os.Readlink(target)
+	if err != nil {
+		t.Fatalf("Readlink(target) error = %v", err)
+	}
+	if got != newSource {
+		t.Fatalf("link target = %q, want %q", got, newSource)
+	}
+}
+
 func TestRetargetManagedSymlinksSkipsCopyManagedTargets(t *testing.T) {
 	ctx := context.Background()
 	database := activationDB(t)
