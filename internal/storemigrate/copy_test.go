@@ -1,11 +1,13 @@
 package storemigrate
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asudbring/loki-profile-manager/internal/store"
 )
@@ -112,6 +114,73 @@ func TestCopyPlanPreservesSymlinkWhenSupported(t *testing.T) {
 	}
 	if got != "target.txt" {
 		t.Fatalf("copied symlink = %q", got)
+	}
+}
+
+func TestCopyPlanWithOptionsReportsProgress(t *testing.T) {
+	source := filepath.Join(t.TempDir(), "source")
+	if _, err := store.EnsureLayout(source); err != nil {
+		t.Fatalf("EnsureLayout(source) error = %v", err)
+	}
+	contentPath := filepath.Join(source, "profiles", "work", "core", "files", "settings.json")
+	if err := os.WriteFile(contentPath, []byte(`{"copied":true}`), 0o644); err != nil {
+		t.Fatalf("WriteFile(content) error = %v", err)
+	}
+	dest := filepath.Join(t.TempDir(), "dest")
+	plan, err := BuildPlan(PlanOptions{FromPath: source, ToPath: dest})
+	if err != nil {
+		t.Fatalf("BuildPlan() error = %v", err)
+	}
+	reporter := &MemoryReporter{}
+	result, err := CopyPlanWithOptions(context.Background(), CopyOptions{Plan: plan, Reporter: reporter, FileTimeout: time.Second})
+	if err != nil {
+		t.Fatalf("CopyPlanWithOptions() error = %v", err)
+	}
+	if !result.Valid || result.CopiedFiles == 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	if len(reporter.Events()) == 0 {
+		t.Fatalf("no progress events recorded")
+	}
+}
+
+func TestCopyPlanWithOptionsReturnsOnFileTimeout(t *testing.T) {
+	plan := Plan{
+		FromPath:        filepath.Join(t.TempDir(), "source"),
+		ToPath:          filepath.Join(t.TempDir(), "dest"),
+		CanMigrate:      true,
+		Summary:         Summary{FileCount: 1},
+		Entries:         []Entry{{RelativePath: "cloud.txt", SourcePath: filepath.Join(t.TempDir(), "cloud.txt"), DestPath: filepath.Join(t.TempDir(), "dest", "cloud.txt"), Kind: "file"}},
+		Warnings:        []string{},
+		Blockers:        []string{},
+		Provider:        "manual",
+		DatalessEntries: []Entry{},
+	}
+	if err := os.MkdirAll(plan.FromPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(source) error = %v", err)
+	}
+	start := time.Now()
+	_, err := CopyPlanWithOptions(context.Background(), CopyOptions{
+		Plan:        plan,
+		FileTimeout: 10 * time.Millisecond,
+		CopyFile: func(ctx context.Context, entry Entry) (int64, error) {
+			<-ctx.Done()
+			return 0, ctx.Err()
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "timed out") {
+		t.Fatalf("CopyPlanWithOptions(timeout) error = %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > time.Second {
+		t.Fatalf("timeout returned too slowly: %s", elapsed)
+	}
+}
+
+func TestPlanWithDestinationRewritesEntryDestinations(t *testing.T) {
+	plan := Plan{ToPath: "/final", Entries: []Entry{{RelativePath: "profiles/work/core/manifest.yaml", DestPath: "/final/profiles/work/core/manifest.yaml"}}}
+	staging := PlanWithDestination(plan, "/staging")
+	if staging.ToPath != "/staging" || staging.Entries[0].DestPath != filepath.Join("/staging", "profiles", "work", "core", "manifest.yaml") {
+		t.Fatalf("staging plan = %+v", staging)
 	}
 }
 

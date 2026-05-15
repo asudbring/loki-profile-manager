@@ -108,9 +108,11 @@ loki store use /path/to/LokiProfileManager
 loki store status
 loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --dry-run
 loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --yes
+# If dry-run reports cloud-only files, materialize them explicitly:
+loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --yes --hydrate
 ```
 
-`store migrate` copies the current valid store to a missing/empty destination, validates the copy, and rewires local SQLite state unless `--copy-only` is set. The old store is never deleted. Use `--capture-local` if safe copy-mode local changes must be written back before copying.
+`store migrate` copies the current valid store to a hidden staging sibling, validates it, promotes it to the missing/empty destination, and rewires local SQLite state unless `--copy-only` is set. It reports progress by default during `--yes`, fails fast on cloud-only source files unless `--hydrate` is provided, retargets active Loki-managed symlinks after rewire, and never deletes the old store. Use `--cleanup` to remove interrupted staging directories and `--capture-local` if safe copy-mode local changes must be written back before copying.
 
 Register this machine:
 

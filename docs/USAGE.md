@@ -226,10 +226,11 @@ Creates a missing/empty Loki store layout or accepts an existing valid layout, t
 ### `loki store migrate`
 
 ```bash
-loki store migrate --to <path> (--dry-run|--yes) [--from <path>] [--provider <provider>] [--copy-only] [--capture-local] [--json]
+loki store migrate --to <path> (--dry-run|--yes) [--from <path>] [--provider <provider>] [--copy-only] [--capture-local] [--hydrate] [--file-timeout <duration>] [--progress-interval <duration>] [--json]
+loki store migrate --to <path> --cleanup [--json]
 ```
 
-Copies a valid Loki store root to a missing/empty destination and validates the copied layout. By default, `--yes` also rewires this machine's persisted store path and rebases local `managed_targets.source_path` rows from the old store root to the new store root. `--copy-only` stages and validates the copied store without changing local SQLite state. The old store is never deleted.
+Copies a valid Loki store root to a hidden staging sibling, validates the staged layout, then promotes it to a missing/empty destination. By default, `--yes` also rewires this machine's persisted store path, rebases `managed_targets.source_path` rows and metadata source paths, and retargets active Loki-managed symlinks from the old store root to the new store root. `--copy-only` validates and promotes the copied store without changing local SQLite state. The old store is never deleted.
 
 Flags:
 
@@ -242,14 +243,20 @@ Flags:
 | `--yes` | Copy the store and, unless `--copy-only` is set, rewire local state. |
 | `--copy-only` | Copy and validate only; do not persist the new store path or rebase managed targets. |
 | `--capture-local` | Before copying, write safe copy-mode local changes back to the source store. |
+| `--hydrate` | Explicitly materialize cloud-only source files before copying. Without this flag, migration fails fast when cloud placeholders are detected. |
+| `--file-timeout <duration>` | Maximum time to spend hydrating or copying one source file before failing. Defaults to `2m`. |
+| `--progress-interval <duration>` | Minimum interval between same-phase progress messages during `--yes`. Defaults to `2s`. |
+| `--cleanup` | Remove interrupted staging directories for the destination and exit. Does not require `--dry-run` or `--yes`. |
 | `--json` | Emit machine-readable JSON. |
 
 Safety rules:
 
-- Requires exactly one of `--dry-run` or `--yes`.
+- Requires exactly one of `--dry-run` or `--yes`, except `--cleanup` which exits after staging cleanup.
 - Refuses non-empty destinations and nested source/destination paths.
 - Refuses source stores containing provider conflict-copy files; run `loki sync --dry-run` and resolve them first.
+- Refuses cloud-only source files unless `--hydrate` is provided. macOS detects File Provider dataless files; Windows uses conservative Cloud Files attributes when available; Linux/other platforms still get staged copy, progress, timeout, cleanup, rewire, and symlink retarget behavior.
 - Refuses local copy-mode drift on `--yes` unless `--capture-local` is provided.
+- Copies to a hidden `.DESTINATION.incomplete-*` sibling first, validates staging, then promotes to the final path. Use `--cleanup` if an interrupted run leaves staging behind.
 - Does not call provider APIs or wait for OneDrive/Dropbox upload completion; wait for your sync client after the local copy finishes.
 
 Examples:
@@ -258,7 +265,9 @@ Examples:
 loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --dry-run
 loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --yes
 loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --dry-run
+loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --yes --hydrate
 loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --yes --copy-only
+loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --cleanup
 ```
 
 ### `loki store unset`

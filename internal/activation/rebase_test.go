@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -66,6 +67,32 @@ func TestRebaseManagedTargetSourcePathsUpdatesSourceAndMetadataSources(t *testin
 	}
 	if got["sources"][1].Path != outsideSource {
 		t.Fatalf("outside metadata source changed to %q", got["sources"][1].Path)
+	}
+}
+
+func TestRebaseManagedTargetSourcePathsRejectsCaseVariantNestedRoots(t *testing.T) {
+	database := activationDB(t)
+	defer database.Close()
+	root := t.TempDir()
+	oldRoot := filepath.Join(root, "Store")
+	newRoot := filepath.Join(root, "store", "nested")
+	_, err := RebaseManagedTargetSourcePaths(context.Background(), database, oldRoot, newRoot)
+	if err == nil || !strings.Contains(err.Error(), "must not be nested") {
+		t.Fatalf("RebaseManagedTargetSourcePaths(case nested) error = %v", err)
+	}
+}
+
+func TestRebasePathUnderRootPreservesRelativeCase(t *testing.T) {
+	oldRoot := filepath.Join(t.TempDir(), "Store")
+	newRoot := filepath.Join(t.TempDir(), "NewStore")
+	pathValue := filepath.Join(filepath.Dir(oldRoot), "store", "Profiles", "Work", "File.JSON")
+	got, ok, err := rebasePathUnderRoot(pathValue, oldRoot, newRoot)
+	if err != nil || !ok {
+		t.Fatalf("rebasePathUnderRoot() got=%q ok=%v err=%v", got, ok, err)
+	}
+	want := filepath.Join(newRoot, "Profiles", "Work", "File.JSON")
+	if got != want {
+		t.Fatalf("rebased path = %q, want %q", got, want)
 	}
 }
 

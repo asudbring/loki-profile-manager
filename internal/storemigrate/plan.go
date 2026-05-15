@@ -14,9 +14,12 @@ import (
 
 // PlanOptions describes a store-root migration plan request.
 type PlanOptions struct {
-	FromPath string
-	ToPath   string
-	Provider store.ProviderType
+	FromPath      string
+	ToPath        string
+	Provider      store.ProviderType
+	AllowDataless bool
+	Dataless      func(path string, info fs.FileInfo) bool
+	Detector      CloudPlaceholderDetector
 }
 
 // Entry describes one filesystem entry copied from source store to destination store.
@@ -31,29 +34,31 @@ type Entry struct {
 
 // Summary is the aggregate copy estimate for a migration plan.
 type Summary struct {
-	FileCount    int   `json:"file_count"`
-	DirCount     int   `json:"dir_count"`
-	SymlinkCount int   `json:"symlink_count"`
-	ByteCount    int64 `json:"byte_count"`
+	FileCount     int   `json:"file_count"`
+	DirCount      int   `json:"dir_count"`
+	SymlinkCount  int   `json:"symlink_count"`
+	DatalessCount int   `json:"dataless_count,omitempty"`
+	ByteCount     int64 `json:"byte_count"`
 }
 
 // Plan is a dry-run-safe description of a store-root migration.
 type Plan struct {
-	FromPath   string             `json:"from_path"`
-	ToPath     string             `json:"to_path"`
-	Provider   store.ProviderType `json:"provider,omitempty"`
-	CanMigrate bool               `json:"can_migrate"`
-	Summary    Summary            `json:"summary"`
-	Entries    []Entry            `json:"entries,omitempty"`
-	Warnings   []string           `json:"warnings,omitempty"`
-	Blockers   []string           `json:"blockers,omitempty"`
+	FromPath        string             `json:"from_path"`
+	ToPath          string             `json:"to_path"`
+	Provider        store.ProviderType `json:"provider,omitempty"`
+	CanMigrate      bool               `json:"can_migrate"`
+	Summary         Summary            `json:"summary"`
+	Entries         []Entry            `json:"entries,omitempty"`
+	DatalessEntries []Entry            `json:"dataless_entries,omitempty"`
+	Warnings        []string           `json:"warnings,omitempty"`
+	Blockers        []string           `json:"blockers,omitempty"`
 }
 
 // BuildPlan validates source/destination safety and builds a copy manifest.
 func BuildPlan(opts PlanOptions) (Plan, error) {
 	from := filepath.Clean(strings.TrimSpace(opts.FromPath))
 	to := filepath.Clean(strings.TrimSpace(opts.ToPath))
-	plan := Plan{FromPath: from, ToPath: to, Provider: opts.Provider, Entries: []Entry{}, Warnings: []string{}, Blockers: []string{}}
+	plan := Plan{FromPath: from, ToPath: to, Provider: opts.Provider, Entries: []Entry{}, DatalessEntries: []Entry{}, Warnings: []string{}, Blockers: []string{}}
 	if from == "" || from == "." {
 		return plan, fmt.Errorf("store migrate: source store path is required")
 	}
@@ -106,6 +111,15 @@ func BuildPlan(opts PlanOptions) (Plan, error) {
 		return plan, fmt.Errorf("store migrate: resolve provider conflict copies before migration")
 	}
 
+	dataless := opts.Dataless
+	if dataless == nil {
+		detector := opts.Detector
+		if detector == nil {
+			detector = DefaultCloudPlaceholderDetector()
+		}
+		dataless = detector.IsCloudOnly
+	}
+
 	if err := filepath.WalkDir(from, func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("walk source %s: %w", path, err)
@@ -133,8 +147,12 @@ func BuildPlan(opts PlanOptions) (Plan, error) {
 			Kind:         kind,
 			Mode:         info.Mode().String(),
 		}
-		if fileInfoDataless(info) {
-			plan.Blockers = append(plan.Blockers, datalessBlocker(entryPlan))
+		if dataless(path, info) {
+			plan.Summary.DatalessCount++
+			plan.DatalessEntries = append(plan.DatalessEntries, entryPlan)
+			if !opts.AllowDataless {
+				plan.Blockers = append(plan.Blockers, datalessBlocker(entryPlan))
+			}
 		}
 		switch kind {
 		case "directory":
@@ -143,6 +161,9 @@ func BuildPlan(opts PlanOptions) (Plan, error) {
 			plan.Summary.FileCount++
 			entryPlan.Size = info.Size()
 			plan.Summary.ByteCount += info.Size()
+			if plan.Summary.DatalessCount > 0 && len(plan.DatalessEntries) > 0 && plan.DatalessEntries[len(plan.DatalessEntries)-1].RelativePath == entryPlan.RelativePath {
+				plan.DatalessEntries[len(plan.DatalessEntries)-1].Size = entryPlan.Size
+			}
 		case "symlink":
 			plan.Summary.SymlinkCount++
 		default:
@@ -153,12 +174,32 @@ func BuildPlan(opts PlanOptions) (Plan, error) {
 	}); err != nil {
 		return plan, err
 	}
-	sort.Slice(plan.Entries, func(i, j int) bool { return plan.Entries[i].RelativePath < plan.Entries[j].RelativePath })
+	sortPlanEntries(&plan)
 	if len(plan.Blockers) > 0 {
-		return plan, fmt.Errorf("store migrate: source contains %d entries that cannot be copied safely; first blocker: %s", len(plan.Blockers), plan.Blockers[0])
+		return plan, fmt.Errorf("store migrate: source contains %d cloud-only or unsupported entries; first blocker: %s", len(plan.Blockers), plan.Blockers[0])
 	}
 	plan.CanMigrate = true
 	return plan, nil
+}
+
+// PlanWithDestination returns a copy of plan whose destination root and entry destinations point at toPath.
+func PlanWithDestination(plan Plan, toPath string) Plan {
+	toPath = filepath.Clean(toPath)
+	plan.ToPath = toPath
+	for i := range plan.Entries {
+		plan.Entries[i].DestPath = filepath.Join(toPath, filepath.FromSlash(plan.Entries[i].RelativePath))
+	}
+	for i := range plan.DatalessEntries {
+		plan.DatalessEntries[i].DestPath = filepath.Join(toPath, filepath.FromSlash(plan.DatalessEntries[i].RelativePath))
+	}
+	return plan
+}
+
+func sortPlanEntries(plan *Plan) {
+	sort.Slice(plan.Entries, func(i, j int) bool { return plan.Entries[i].RelativePath < plan.Entries[j].RelativePath })
+	sort.Slice(plan.DatalessEntries, func(i, j int) bool {
+		return plan.DatalessEntries[i].RelativePath < plan.DatalessEntries[j].RelativePath
+	})
 }
 
 func entryKind(info fs.FileInfo) string {
@@ -184,10 +225,12 @@ func sameOrNestedPath(parent, child string) (same bool, nested bool, err error) 
 	if err != nil {
 		return false, false, fmt.Errorf("resolve path %s: %w", child, err)
 	}
-	if parentResolved == childResolved {
+	parentComparable := comparablePathForNesting(parentResolved)
+	childComparable := comparablePathForNesting(childResolved)
+	if parentComparable == childComparable {
 		return true, false, nil
 	}
-	rel, err := filepath.Rel(parentResolved, childResolved)
+	rel, err := filepath.Rel(parentComparable, childComparable)
 	if err != nil {
 		return false, false, err
 	}
@@ -198,6 +241,10 @@ func sameOrNestedPath(parent, child string) (same bool, nested bool, err error) 
 		return false, true, nil
 	}
 	return false, false, nil
+}
+
+func comparablePathForNesting(path string) string {
+	return strings.ToLower(filepath.Clean(path))
 }
 
 func resolvePathForNesting(path string) (string, error) {

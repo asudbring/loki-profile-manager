@@ -1,15 +1,18 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/asudbring/loki-profile-manager/internal/app"
 	"github.com/asudbring/loki-profile-manager/internal/config"
 	"github.com/asudbring/loki-profile-manager/internal/store"
+	"github.com/asudbring/loki-profile-manager/internal/storemigrate"
 )
 
 func newStoreCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
@@ -97,6 +100,10 @@ func newStoreMigrateCommand(resolver config.PathResolver, globals *globalOptions
 	var yes bool
 	var copyOnly bool
 	var captureLocal bool
+	var hydrate bool
+	var cleanup bool
+	var fileTimeout time.Duration
+	var progressInterval time.Duration
 	var jsonOutput bool
 	cmd := &cobra.Command{
 		Use:   "migrate --to <path> (--dry-run|--yes)",
@@ -112,7 +119,11 @@ func newStoreMigrateCommand(resolver config.PathResolver, globals *globalOptions
 				return err
 			}
 			defer svc.Close()
-			result, err := svc.StoreMigrate(cmd.Context(), app.StoreMigrateRequest{FromPath: fromPath, ToPath: toPath, Provider: provider, DryRun: dryRun, Yes: yes, CopyOnly: copyOnly, CaptureLocal: captureLocal})
+			reporter := storemigrate.Reporter(nil)
+			if !jsonOutput && yes {
+				reporter = newStoreMigrateReporter(cmd)
+			}
+			result, err := svc.StoreMigrate(cmd.Context(), app.StoreMigrateRequest{FromPath: fromPath, ToPath: toPath, Provider: provider, DryRun: dryRun, Yes: yes, CopyOnly: copyOnly, CaptureLocal: captureLocal, Hydrate: hydrate, Cleanup: cleanup, FileTimeout: fileTimeout, ProgressInterval: progressInterval, Reporter: reporter})
 			if err != nil {
 				return err
 			}
@@ -132,6 +143,10 @@ func newStoreMigrateCommand(resolver config.PathResolver, globals *globalOptions
 	cmd.Flags().BoolVar(&yes, "yes", false, "copy and rewire local state after validation")
 	cmd.Flags().BoolVar(&copyOnly, "copy-only", false, "copy and validate destination without changing local store configuration")
 	cmd.Flags().BoolVar(&captureLocal, "capture-local", false, "write safe local copy-mode changes back to the source store before copying")
+	cmd.Flags().BoolVar(&hydrate, "hydrate", false, "explicitly materialize cloud-only source files before copying")
+	cmd.Flags().BoolVar(&cleanup, "cleanup", false, "remove interrupted staging directories for the destination and exit")
+	cmd.Flags().DurationVar(&fileTimeout, "file-timeout", 2*time.Minute, "maximum time to spend on one source file before failing")
+	cmd.Flags().DurationVar(&progressInterval, "progress-interval", 2*time.Second, "minimum interval between same-phase progress messages")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
 	return cmd
 }
@@ -277,6 +292,13 @@ func printStoreDiscover(cmd *cobra.Command, result app.DiscoverStoresResult) {
 
 func printStoreMigrate(cmd *cobra.Command, result app.StoreMigrateResult) {
 	out := cmd.OutOrStdout()
+	if result.CleanedStaging != nil {
+		fmt.Fprintf(out, "Interrupted staging directories removed: %d\n", len(result.CleanedStaging))
+		for _, path := range result.CleanedStaging {
+			fmt.Fprintf(out, "Removed: %s\n", path)
+		}
+		return
+	}
 	if result.DryRun {
 		fmt.Fprintln(out, "Store migration dry-run")
 	} else if result.CopyOnly {
@@ -292,13 +314,20 @@ func printStoreMigrate(cmd *cobra.Command, result app.StoreMigrateResult) {
 	fmt.Fprintf(out, "Files: %d\n", result.Plan.Summary.FileCount)
 	fmt.Fprintf(out, "Directories: %d\n", result.Plan.Summary.DirCount)
 	fmt.Fprintf(out, "Symlinks: %d\n", result.Plan.Summary.SymlinkCount)
+	fmt.Fprintf(out, "Cloud-only files: %d\n", result.Plan.Summary.DatalessCount)
 	fmt.Fprintf(out, "Bytes: %d\n", result.Plan.Summary.ByteCount)
 	if !result.DryRun {
+		if result.HydratedFiles > 0 {
+			fmt.Fprintf(out, "Hydrated files: %d\n", result.HydratedFiles)
+		}
 		fmt.Fprintf(out, "Copied files: %d\n", result.CopiedFiles)
 		fmt.Fprintf(out, "Copied directories: %d\n", result.CopiedDirs)
 		fmt.Fprintf(out, "Copied symlinks: %d\n", result.CopiedSymlinks)
 		fmt.Fprintf(out, "Rebased managed targets: %d\n", result.RebasedManagedTargets)
+		fmt.Fprintf(out, "Retargeted symlinks: %d\n", result.RetargetedSymlinks)
 		fmt.Fprintf(out, "Local store switched: %s\n", formatBoolCLI(result.Switched))
+	} else if result.Plan.Summary.DatalessCount > 0 {
+		fmt.Fprintln(out, "Next step: make cloud-only files available locally or rerun with --yes --hydrate to materialize and copy.")
 	} else {
 		fmt.Fprintln(out, "Next step: rerun with --yes to copy and rewire, or --yes --copy-only to stage the copy only.")
 	}
@@ -308,6 +337,25 @@ func printStoreMigrate(cmd *cobra.Command, result app.StoreMigrateResult) {
 	for _, warning := range result.Warnings {
 		fmt.Fprintf(out, "Warning: %s\n", warning)
 	}
+}
+
+func newStoreMigrateReporter(cmd *cobra.Command) storemigrate.Reporter {
+	return storemigrate.ReporterFunc(func(_ context.Context, event storemigrate.Event) {
+		out := cmd.ErrOrStderr()
+		message := event.Message
+		if message == "" {
+			message = string(event.Phase)
+		}
+		if event.TotalFiles > 0 {
+			fmt.Fprintf(out, "[%s] %s (%d/%d files, %d/%d bytes)", event.Phase, message, event.DoneFiles, event.TotalFiles, event.DoneBytes, event.TotalBytes)
+		} else {
+			fmt.Fprintf(out, "[%s] %s", event.Phase, message)
+		}
+		if event.CurrentPath != "" {
+			fmt.Fprintf(out, ": %s", event.CurrentPath)
+		}
+		fmt.Fprintln(out)
+	})
 }
 
 func printStoreEnsureResult(cmd *cobra.Command, title string, result app.EnsureStoreResult) {
