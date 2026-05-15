@@ -9,6 +9,7 @@ import (
 
 	"github.com/asudbring/loki-profile-manager/internal/app"
 	"github.com/asudbring/loki-profile-manager/internal/config"
+	"github.com/asudbring/loki-profile-manager/internal/store"
 )
 
 func newStoreCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
@@ -21,6 +22,7 @@ func newStoreCommand(resolver config.PathResolver, globals *globalOptions, facto
 	}
 	cmd.AddCommand(newStoreStatusCommand(resolver, globals, factory))
 	cmd.AddCommand(newStoreDiscoverCommand(resolver, globals, factory))
+	cmd.AddCommand(newStoreMigrateCommand(resolver, globals, factory))
 	cmd.AddCommand(newStoreUseCommand(resolver, globals, factory))
 	cmd.AddCommand(newStoreInitCommand(resolver, globals, factory))
 	cmd.AddCommand(newStoreUnsetCommand(resolver, globals, factory))
@@ -83,6 +85,53 @@ func newStoreDiscoverCommand(resolver config.PathResolver, globals *globalOption
 		},
 	}
 	cmd.Flags().StringVar(&manualPath, "manual", "", "manual store path candidate")
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
+	return cmd
+}
+
+func newStoreMigrateCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
+	var fromPath string
+	var toPath string
+	var providerValue string
+	var dryRun bool
+	var yes bool
+	var copyOnly bool
+	var captureLocal bool
+	var jsonOutput bool
+	cmd := &cobra.Command{
+		Use:   "migrate --to <path> (--dry-run|--yes)",
+		Short: "Copy the current Loki store to a new cloud-provider path and optionally rewire local state.",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			provider, err := parseStoreMigrateProvider(providerValue)
+			if err != nil {
+				return err
+			}
+			svc, err := newCLIService(cmd, resolver, globals, factory)
+			if err != nil {
+				return err
+			}
+			defer svc.Close()
+			result, err := svc.StoreMigrate(cmd.Context(), app.StoreMigrateRequest{FromPath: fromPath, ToPath: toPath, Provider: provider, DryRun: dryRun, Yes: yes, CopyOnly: copyOnly, CaptureLocal: captureLocal})
+			if err != nil {
+				return err
+			}
+			if jsonOutput {
+				encoder := json.NewEncoder(cmd.OutOrStdout())
+				encoder.SetIndent("", "  ")
+				return encoder.Encode(result)
+			}
+			printStoreMigrate(cmd, result)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&fromPath, "from", "", "source Loki store path (default: current effective store)")
+	cmd.Flags().StringVar(&toPath, "to", "", "destination Loki store path; must be missing or empty")
+	cmd.Flags().StringVar(&providerValue, "provider", "", "destination provider label: onedrive-business, onedrive-personal, onedrive, dropbox, or manual")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "plan migration without copying or rewiring")
+	cmd.Flags().BoolVar(&yes, "yes", false, "copy and rewire local state after validation")
+	cmd.Flags().BoolVar(&copyOnly, "copy-only", false, "copy and validate destination without changing local store configuration")
+	cmd.Flags().BoolVar(&captureLocal, "capture-local", false, "write safe local copy-mode changes back to the source store before copying")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
 	return cmd
 }
@@ -226,6 +275,41 @@ func printStoreDiscover(cmd *cobra.Command, result app.DiscoverStoresResult) {
 	}
 }
 
+func printStoreMigrate(cmd *cobra.Command, result app.StoreMigrateResult) {
+	out := cmd.OutOrStdout()
+	if result.DryRun {
+		fmt.Fprintln(out, "Store migration dry-run")
+	} else if result.CopyOnly {
+		fmt.Fprintln(out, "Store copied")
+	} else {
+		fmt.Fprintln(out, "Store migrated")
+	}
+	fmt.Fprintf(out, "Source: %s\n", result.OldStorePath)
+	fmt.Fprintf(out, "Destination: %s\n", result.NewStorePath)
+	if result.Provider != "" {
+		fmt.Fprintf(out, "Provider: %s\n", result.Provider)
+	}
+	fmt.Fprintf(out, "Files: %d\n", result.Plan.Summary.FileCount)
+	fmt.Fprintf(out, "Directories: %d\n", result.Plan.Summary.DirCount)
+	fmt.Fprintf(out, "Symlinks: %d\n", result.Plan.Summary.SymlinkCount)
+	fmt.Fprintf(out, "Bytes: %d\n", result.Plan.Summary.ByteCount)
+	if !result.DryRun {
+		fmt.Fprintf(out, "Copied files: %d\n", result.CopiedFiles)
+		fmt.Fprintf(out, "Copied directories: %d\n", result.CopiedDirs)
+		fmt.Fprintf(out, "Copied symlinks: %d\n", result.CopiedSymlinks)
+		fmt.Fprintf(out, "Rebased managed targets: %d\n", result.RebasedManagedTargets)
+		fmt.Fprintf(out, "Local store switched: %s\n", formatBoolCLI(result.Switched))
+	} else {
+		fmt.Fprintln(out, "Next step: rerun with --yes to copy and rewire, or --yes --copy-only to stage the copy only.")
+	}
+	if result.CaptureRequired {
+		fmt.Fprintln(out, "Local changes detected: rerun with --capture-local before migrating.")
+	}
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(out, "Warning: %s\n", warning)
+	}
+}
+
 func printStoreEnsureResult(cmd *cobra.Command, title string, result app.EnsureStoreResult) {
 	out := cmd.OutOrStdout()
 	fmt.Fprintln(out, title)
@@ -237,6 +321,18 @@ func printStoreEnsureResult(cmd *cobra.Command, title string, result app.EnsureS
 	}
 	if result.Valid {
 		fmt.Fprintln(out, "Next step: loki machine register --allow-profile <profile>")
+	}
+}
+
+func parseStoreMigrateProvider(value string) (store.ProviderType, error) {
+	value = strings.TrimSpace(value)
+	switch store.ProviderType(value) {
+	case "":
+		return "", nil
+	case store.ProviderOneDrive, store.ProviderOneDriveBusiness, store.ProviderOneDrivePersonal, store.ProviderDropbox, store.ProviderManual:
+		return store.ProviderType(value), nil
+	default:
+		return "", fmt.Errorf("store migrate: unsupported provider %q", value)
 	}
 }
 

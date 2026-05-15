@@ -5,9 +5,9 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: public.
-- Current npm release: `v0.1.6`; latest full Windows app/manual dogfood validation: `v0.1.5`.
+- Current npm release: `v0.1.8`; latest full Windows app/manual dogfood validation: `v0.1.7`.
 - Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, Infisical readiness/setup UX, and Bubble Tea TUI MVP.
-- Current commands: `status`, `store status`, `store discover`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Current commands: `status`, `store status`, `store discover`, `store migrate`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `import-skill` markdown conversion and Azure Key Vault/other secret providers.
 - License: MIT.
 
@@ -98,7 +98,7 @@ loki status
 loki --verbose status
 ```
 
-Discover or configure a store:
+Discover, configure, or move a store:
 
 ```bash
 loki store discover
@@ -106,7 +106,11 @@ loki store discover --manual /path/to/LokiProfileManager
 loki store init /path/to/LokiProfileManager
 loki store use /path/to/LokiProfileManager
 loki store status
+loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --dry-run
+loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --yes
 ```
+
+`store migrate` copies the current valid store to a missing/empty destination, validates the copy, and rewires local SQLite state unless `--copy-only` is set. The old store is never deleted. Use `--capture-local` if safe copy-mode local changes must be written back before copying.
 
 Register this machine:
 

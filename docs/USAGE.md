@@ -22,6 +22,7 @@ Current commands:
 | `status` | Implemented |
 | `store status` | Implemented |
 | `store discover` | Implemented |
+| `store migrate` | Implemented |
 | `store use` | Implemented |
 | `store init` | Implemented |
 | `store unset` | Implemented |
@@ -222,6 +223,44 @@ loki store init <path> [--json]
 
 Creates a missing/empty Loki store layout or accepts an existing valid layout, then persists the path. It refuses non-empty invalid directories.
 
+### `loki store migrate`
+
+```bash
+loki store migrate --to <path> (--dry-run|--yes) [--from <path>] [--provider <provider>] [--copy-only] [--capture-local] [--json]
+```
+
+Copies a valid Loki store root to a missing/empty destination and validates the copied layout. By default, `--yes` also rewires this machine's persisted store path and rebases local `managed_targets.source_path` rows from the old store root to the new store root. `--copy-only` stages and validates the copied store without changing local SQLite state. The old store is never deleted.
+
+Flags:
+
+| Flag | Description |
+|---|---|
+| `--to <path>` | Destination Loki store path. Required. Must be missing or empty. |
+| `--from <path>` | Source Loki store path. Defaults to the current effective store. |
+| `--provider <provider>` | Optional label: `onedrive-business`, `onedrive-personal`, `onedrive`, `dropbox`, or `manual`. |
+| `--dry-run` | Validate and estimate the migration without copying or rewiring. |
+| `--yes` | Copy the store and, unless `--copy-only` is set, rewire local state. |
+| `--copy-only` | Copy and validate only; do not persist the new store path or rebase managed targets. |
+| `--capture-local` | Before copying, write safe copy-mode local changes back to the source store. |
+| `--json` | Emit machine-readable JSON. |
+
+Safety rules:
+
+- Requires exactly one of `--dry-run` or `--yes`.
+- Refuses non-empty destinations and nested source/destination paths.
+- Refuses source stores containing provider conflict-copy files; run `loki sync --dry-run` and resolve them first.
+- Refuses local copy-mode drift on `--yes` unless `--capture-local` is provided.
+- Does not call provider APIs or wait for OneDrive/Dropbox upload completion; wait for your sync client after the local copy finishes.
+
+Examples:
+
+```bash
+loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --dry-run
+loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --yes
+loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --dry-run
+loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --yes --copy-only
+```
+
 ### `loki store unset`
 
 ```bash
@@ -237,6 +276,8 @@ loki store discover
 loki store init ~/OneDrive/loki
 loki store status
 loki store use ~/OneDrive/loki
+loki store migrate --to ~/Dropbox/loki --provider dropbox --dry-run
+loki store migrate --to ~/Dropbox/loki --provider dropbox --yes
 loki store unset
 ```
 

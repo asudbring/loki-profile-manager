@@ -27,7 +27,28 @@ func SetKV(ctx context.Context, database *sql.DB, key, value string) error {
 	if database == nil {
 		return fmt.Errorf("set kv %q: database is nil", key)
 	}
-	_, err := database.ExecContext(ctx, `
+	if err := setKV(ctx, database, key, value); err != nil {
+		return fmt.Errorf("set kv %q: %w", key, err)
+	}
+	return nil
+}
+
+func SetKVTx(ctx context.Context, tx *sql.Tx, key, value string) error {
+	if tx == nil {
+		return fmt.Errorf("set kv %q: transaction is nil", key)
+	}
+	if err := setKV(ctx, tx, key, value); err != nil {
+		return fmt.Errorf("set kv %q: %w", key, err)
+	}
+	return nil
+}
+
+type kvExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func setKV(ctx context.Context, executor kvExecutor, key, value string) error {
+	_, err := executor.ExecContext(ctx, `
 INSERT INTO kv_state (key, value, updated_at)
 VALUES (?, ?, ?)
 ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
@@ -35,10 +56,7 @@ ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.upd
 		value,
 		time.Now().UTC().Format(time.RFC3339),
 	)
-	if err != nil {
-		return fmt.Errorf("set kv %q: %w", key, err)
-	}
-	return nil
+	return err
 }
 
 func DeleteKV(ctx context.Context, database *sql.DB, key string) error {

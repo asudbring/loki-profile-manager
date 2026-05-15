@@ -162,6 +162,29 @@ If the store has no profiles yet, create the first profile core before running `
 - If an unmanaged local file should become source of truth, use `loki adopt` or `loki migrate local` instead of `--backup-unmanaged`.
 - Do not put secret values in the store. Render templates should reference secret names only.
 
+## Move an existing store to OneDrive Business or Dropbox
+
+Use `store migrate` when this machine already points at a valid Loki store and you want the source of truth under a different sync-provider folder. The destination must be missing or empty. Loki copies and validates the new store, rewires this machine's local SQLite state by default, and never deletes the old store.
+
+Dropbox example:
+
+```bash
+loki store status
+loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --dry-run
+loki store migrate --to "$HOME/Dropbox/LokiProfileManager" --provider dropbox --yes
+loki store status
+```
+
+OneDrive for Business example on macOS:
+
+```bash
+loki store discover
+loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --dry-run
+loki store migrate --to "$HOME/Library/CloudStorage/OneDrive-Contoso/LokiProfileManager" --provider onedrive-business --yes
+```
+
+Use `--copy-only` to stage the destination without changing local state. Use `--capture-local` with `--yes` only when Loki reports safe copy-mode local changes that should be written back before the store copy. After migration, wait for the sync client to finish uploading the new folder before switching other machines.
+
 ### Windows fresh machine
 
 Open PowerShell.

@@ -38,7 +38,7 @@ func TestDiscoverMacDropbox(t *testing.T) {
 	}
 }
 
-func TestDiscoverMacCloudStorageOneDrive(t *testing.T) {
+func TestDiscoverMacCloudStorageOneDriveBusiness(t *testing.T) {
 	home := t.TempDir()
 	cloud := filepath.Join(home, "Library", "CloudStorage", "OneDrive-Contoso")
 	candidates := DiscoverProviderFolders(DiscoveryOptions{
@@ -48,8 +48,8 @@ func TestDiscoverMacCloudStorageOneDrive(t *testing.T) {
 			return []string{cloud}, nil
 		},
 	})
-	if !hasCandidate(candidates, ProviderOneDrive, config.JoinForOS("darwin", cloud, StoreDirName)) {
-		t.Fatalf("cloudstorage candidate missing: %+v", candidates)
+	if !hasCandidate(candidates, ProviderOneDriveBusiness, config.JoinForOS("darwin", cloud, StoreDirName)) {
+		t.Fatalf("business cloudstorage candidate missing: %+v", candidates)
 	}
 }
 
@@ -58,6 +58,36 @@ func TestDiscoverManualReturnedWithoutProviders(t *testing.T) {
 	candidates := DiscoverProviderFolders(DiscoveryOptions{GOOS: "darwin", ManualPath: manual})
 	if len(candidates) == 0 || candidates[0].Provider != ProviderManual || candidates[0].StorePath != config.CleanForOS("darwin", manual) {
 		t.Fatalf("manual candidate missing: %+v", candidates)
+	}
+}
+
+func TestDiscoverWindowsOneDriveCommercialClassifiedBusiness(t *testing.T) {
+	env := map[string]string{"OneDriveCommercial": `C:\Users\alice\OneDrive - Contoso`}
+	candidates := DiscoverProviderFolders(DiscoveryOptions{
+		GOOS: "windows",
+		Env:  func(key string) string { return env[key] },
+	})
+	if !hasCandidate(candidates, ProviderOneDriveBusiness, `C:\Users\alice\OneDrive - Contoso\loki`) {
+		t.Fatalf("business OneDrive candidate missing: %+v", candidates)
+	}
+}
+
+func TestDiscoverDropboxInfoJSON(t *testing.T) {
+	home := t.TempDir()
+	dropboxRoot := filepath.Join(home, "Dropbox (Contoso)")
+	infoPath := filepath.Join(home, ".dropbox", "info.json")
+	candidates := DiscoverProviderFolders(DiscoveryOptions{
+		GOOS:    "linux",
+		HomeDir: home,
+		ReadFile: func(path string) ([]byte, error) {
+			if path != infoPath {
+				t.Fatalf("ReadFile(%s), want %s", path, infoPath)
+			}
+			return []byte(`{"business":{"path":"` + filepath.ToSlash(dropboxRoot) + `"}}`), nil
+		},
+	})
+	if !hasCandidate(candidates, ProviderDropbox, config.JoinForOS("linux", dropboxRoot, StoreDirName)) {
+		t.Fatalf("Dropbox info.json candidate missing: %+v", candidates)
 	}
 }
 

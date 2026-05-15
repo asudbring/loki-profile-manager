@@ -8,9 +8,11 @@ const (
 type ProviderType string
 
 const (
-	ProviderOneDrive ProviderType = "onedrive"
-	ProviderDropbox  ProviderType = "dropbox"
-	ProviderManual   ProviderType = "manual"
+	ProviderOneDrive         ProviderType = "onedrive"
+	ProviderOneDriveBusiness ProviderType = "onedrive-business"
+	ProviderOneDrivePersonal ProviderType = "onedrive-personal"
+	ProviderDropbox          ProviderType = "dropbox"
+	ProviderManual           ProviderType = "manual"
 )
 
 type ProviderCandidate struct {
@@ -28,6 +30,7 @@ type DiscoveryOptions struct {
 	Env        func(string) string
 	Exists     func(string) bool
 	Glob       func(string) ([]string, error)
+	ReadFile   func(string) ([]byte, error)
 }
 
 type Layout struct {

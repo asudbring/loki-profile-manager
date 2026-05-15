@@ -8,6 +8,16 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - No unreleased changes.
 
+## v0.1.8 — 2026-05-15
+
+Feature release for first-class store-root migration.
+
+- Added `loki store migrate --to <path> (--dry-run|--yes)` to copy an existing valid Loki store to a missing/empty destination and rewire local SQLite state by default.
+- Added `--copy-only`, `--capture-local`, provider labels, destination safety checks, provider conflict-copy blocking, and transaction-safe managed-target source-path rebasing.
+- Added OneDrive for Business and Dropbox discovery hardening, including Windows `OneDriveCommercial`, macOS CloudStorage OneDrive tenant folders, and Dropbox `info.json` parsing.
+- Added regression coverage for dry-run no-write behavior, copy validation, symlink/nested destination safety, local state rebase, and CLI JSON output.
+- Updated README, install, usage, and architecture docs for OneDrive Business and Dropbox store migration workflows.
+
 ## v0.1.7 — 2026-05-14
 
 Patch release for Infisical first-configure hardening.

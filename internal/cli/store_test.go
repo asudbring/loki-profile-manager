@@ -80,3 +80,35 @@ func TestStoreDiscoverManualJSON(t *testing.T) {
 		t.Fatalf("discover result = %+v", result)
 	}
 }
+
+func TestStoreMigrateDryRunJSON(t *testing.T) {
+	home := t.TempDir()
+	storePath := filepath.Join(t.TempDir(), "old")
+	cmd, _, _ := testCommandWithHome(home)
+	cmd.SetArgs([]string{"store", "init", storePath})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("store init error = %v", err)
+	}
+
+	dest := filepath.Join(t.TempDir(), "new")
+	cmd, out, _ := testCommandWithHome(home)
+	cmd.SetArgs([]string{"store", "migrate", "--to", dest, "--dry-run", "--provider", "dropbox", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("store migrate dry-run error = %v", err)
+	}
+	var result app.StoreMigrateResult
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("migrate JSON invalid: %v\n%s", err, out.String())
+	}
+	if !result.DryRun || result.NewStorePath == "" || result.Provider != store.ProviderDropbox || result.CopiedFiles != 0 {
+		t.Fatalf("migrate dry-run result = %+v", result)
+	}
+}
+
+func TestStoreMigrateRequiresDryRunOrYes(t *testing.T) {
+	cmd, _, _ := testCommand(t)
+	cmd.SetArgs([]string{"store", "migrate", "--to", filepath.Join(t.TempDir(), "new")})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "exactly one") {
+		t.Fatalf("store migrate missing mode error = %v", err)
+	}
+}

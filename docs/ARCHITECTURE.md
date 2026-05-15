@@ -33,6 +33,7 @@ flowchart TB
       VerifyPkg[verify]
       DoctorPkg[doctor]
       SyncPkg[storesync]
+      StoreMigratePkg[storemigrate]
       ActivationPkg[activation]
       InfisicalPkg[infisical]
     end
@@ -48,6 +49,7 @@ flowchart TB
     App --> VerifyPkg
     App --> DoctorPkg
     App --> SyncPkg
+    App --> StoreMigratePkg
     App --> ActivationPkg
     StorePkg --> Store
     MachinePkg --> Registry
@@ -134,6 +136,8 @@ loki/
 ```
 
 The store directories `conflicts/`, `snapshots/`, and `logs/` exist in the store layout for future sync/provider workflows. Phase 4 activation snapshots are stored in local app state to avoid syncing machine-local recovery data. `loki import-skill` can create profile bucket layer directories (`files/`, `skills/`, `templates/`, and `manifest.yaml`) under an existing parent profile.
+
+Store-root migration is handled by `loki store migrate`. The CLI delegates orchestration to `internal/app`, while `internal/storemigrate` owns dry-run planning, destination safety checks, conflict-copy blocking, and filesystem copy/validation. The app service copies from the old valid store to a missing/empty destination under the source store operation lock, then rewires local SQLite by updating `kv_state.store_path` and rebasing `managed_targets.source_path` plus managed-target metadata source paths in one transaction. The old store is never deleted, and provider labels such as `onedrive-business` and `dropbox` are metadata only; OneDrive/Dropbox desktop clients still perform cloud sync.
 
 ## Local state
 
