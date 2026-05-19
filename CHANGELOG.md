@@ -8,6 +8,15 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - No unreleased changes.
 
+## v0.1.12 — 2026-05-19
+
+Feature release for plugin bundle import.
+
+- Added `loki import-plugin <source>` for multi-runtime plugin/package bundles with explicit `--runtime` selection and `--runtime all` opt-in.
+- Added a Pi runtime adapter that stores canonical bundles under `plugins/<name>`, activates them through managed `~/.pi/agent/packages/<name>`, and merges Pi settings packages without duplicate target conflicts.
+- Added Copilot manual install guidance while intentionally avoiding direct edits to Copilot internals, plus plan-only warnings for Claude, Codex, and VS Code adapters.
+- Hardened plugin import safety: dry-runs write nothing, non-dry-run copy staging stays inside the store, `.git` directories are excluded, existing destinations require `--overwrite`, and destination state is rechecked under the store lock.
+
 ## v0.1.11 — 2026-05-15
 
 Patch release for store migration retarget repair.

@@ -66,6 +66,7 @@ func NewRootCommand(opts Options) *cobra.Command {
 	cmd.AddCommand(newSwitchCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newSyncCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newImportSkillCommand(opts.Resolver, globals, factory))
+	cmd.AddCommand(newImportPluginCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newSecretsCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newSnapshotsCommand(opts.Resolver, globals, factory))
 	cmd.AddCommand(newStoreCommand(opts.Resolver, globals, factory))
