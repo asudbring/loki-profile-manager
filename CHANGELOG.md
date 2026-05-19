@@ -8,6 +8,12 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 - No unreleased changes.
 
+## v0.1.13 — 2026-05-19
+
+Patch release for Windows CI coverage on plugin import.
+
+- Fixed the new plugin-import activation-plan regression test to compare managed Pi settings targets portably across Windows and Unix path formats.
+
 ## v0.1.12 — 2026-05-19
 
 Feature release for plugin bundle import.

@@ -322,8 +322,10 @@ func jsonArrayContains(values []any, want string) bool {
 }
 
 func planHasOperation(plan activation.Plan, target string, opType activation.OperationType) bool {
+	want := filepath.ToSlash(target)
 	for _, op := range plan.Operations {
-		if op.TargetPath == target && op.Type == opType {
+		got := filepath.ToSlash(op.TargetPath)
+		if (got == want || strings.HasSuffix(got, want)) && op.Type == opType {
 			return true
 		}
 	}
