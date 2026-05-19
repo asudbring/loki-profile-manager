@@ -35,6 +35,7 @@ func TestUpdateCLIPrintsUpdateResult(t *testing.T) {
 
 func TestRootUpdateNoticePrintsForHumanCommand(t *testing.T) {
 	withUpdateTestVersion(t, "v1.0.0")
+	withoutUpdateNoticeCI(t)
 
 	runner := &cliFakeUpdateRunner{outputs: map[string]app.UpdateCommandResult{
 		"npm view @asudbring/loki-profile-manager version --silent": {Stdout: "1.2.0\n"},
@@ -52,6 +53,7 @@ func TestRootUpdateNoticePrintsForHumanCommand(t *testing.T) {
 
 func TestRootUpdateNoticeSwallowsCheckFailure(t *testing.T) {
 	withUpdateTestVersion(t, "v1.0.0")
+	withoutUpdateNoticeCI(t)
 
 	runner := &cliFakeUpdateRunner{errors: map[string]error{
 		"npm view @asudbring/loki-profile-manager version --silent": errors.New("network down"),
@@ -210,6 +212,13 @@ func withUpdateTestVersion(t *testing.T, version string) {
 	oldVersion := app.Version
 	app.Version = version
 	t.Cleanup(func() { app.Version = oldVersion })
+}
+
+func withoutUpdateNoticeCI(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{"CI", "GITHUB_ACTIONS", "TF_BUILD", "BUILD_BUILDID"} {
+		t.Setenv(name, "")
+	}
 }
 
 func newNoticeTestRunner() *cliFakeUpdateRunner {
