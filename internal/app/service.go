@@ -55,6 +55,7 @@ type Options struct {
 	SecretStatusChecker      secrets.StatusChecker
 	SecretLoginRunner        secrets.LoginRunner
 	InfisicalConfigValidator InfisicalConfigValidator
+	UpdateRunner             UpdateCommandRunner
 }
 
 type Service struct {
@@ -67,6 +68,7 @@ type Service struct {
 	secretStatusChecker      secrets.StatusChecker
 	secretLoginRunner        secrets.LoginRunner
 	infisicalConfigValidator InfisicalConfigValidator
+	updateRunner             UpdateCommandRunner
 }
 
 type StatusRequest struct{}
@@ -318,6 +320,10 @@ func NewService(ctx context.Context, opts Options) (*Service, error) {
 	if infisicalConfigValidator == nil {
 		infisicalConfigValidator = defaultInfisicalConfigValidator()
 	}
+	updateRunner := opts.UpdateRunner
+	if updateRunner == nil {
+		updateRunner = defaultUpdateRunner()
+	}
 	return &Service{
 		resolver:                 resolver,
 		paths:                    paths,
@@ -328,6 +334,7 @@ func NewService(ctx context.Context, opts Options) (*Service, error) {
 		secretStatusChecker:      secretStatusChecker,
 		secretLoginRunner:        secretLoginRunner,
 		infisicalConfigValidator: infisicalConfigValidator,
+		updateRunner:             updateRunner,
 	}, nil
 }
 

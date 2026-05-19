@@ -30,6 +30,7 @@ Current commands:
 | `switch` | Implemented |
 | `sync` | Implemented |
 | `tui` | Implemented Bubble Tea MVP |
+| `update` | Implemented npm self-update |
 | `import-skill` | Implemented folder and zip-import MVP |
 | `secrets configure infisical` | Implemented interactive Infisical setup wizard |
 | `secrets login` | Implemented Infisical CLI wrapper |
@@ -105,6 +106,29 @@ Safety rules:
 - Use `switch --capture-local --yes` only for safe copy-mode local changes from the currently active Loki-managed profile.
 - Render outputs are regenerated from templates and are not captured.
 - Merge drift is detected but manual in this MVP.
+
+## `loki update`
+
+Install the newest Loki npm build.
+
+```bash
+loki update
+```
+
+Behavior:
+
+- Runs `npm install -g @asudbring/loki-profile-manager@latest`.
+- Uses `npm view @asudbring/loki-profile-manager version --silent` to discover the latest npm version.
+- Requires `npm` on `PATH`; if npm is missing, install Node.js/npm or run the npm install command manually after npm is available.
+- Always invokes npm install for `@latest`, even when the installed version already matches npm, so the command can repair or refresh the global package.
+
+Startup update notices:
+
+- Human CLI commands check npm for a newer version at most once every 24 hours.
+- The check result is cached in Loki local SQLite `kv_state` and reused until the cache expires.
+- When newer npm version exists, Loki prints this notice to stderr: ``Newer Loki version available: <version>. Run `loki update` to install the latest npm build.``
+- The startup check is skipped for `loki update`, `loki --version`, help output, `--json` commands, `loki`/`loki tui` TUI startup, CI contexts, noninteractive stderr, development builds, and `LOKI_NO_UPDATE_CHECK=1`.
+- Update-check failures never fail the command that triggered the notice check.
 
 ## `loki tui`
 

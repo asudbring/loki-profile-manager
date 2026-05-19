@@ -7,7 +7,7 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 - Repository visibility: public.
 - Current npm release: `v0.1.13`; latest full Windows app/manual dogfood validation: `v0.1.7`.
 - Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, plugin bundle import MVP, Infisical readiness/setup UX, and Bubble Tea TUI MVP.
-- Current commands: `status`, `store status`, `store discover`, `store migrate`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `import-skill`, `import-plugin`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
+- Current commands: `status`, `store status`, `store discover`, `store migrate`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `update`, `import-skill`, `import-plugin`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `import-skill` markdown conversion and Azure Key Vault/other secret providers.
 - License: MIT.
 
@@ -38,6 +38,14 @@ npm install -g @asudbring/loki-profile-manager
 loki --version
 loki doctor
 ```
+
+Update an npm install in place:
+
+```bash
+loki update
+```
+
+`loki update` installs `@asudbring/loki-profile-manager@latest` with npm. Human CLI commands check npm at most once every 24 hours and print a stderr notice when a newer Loki version is available. Set `LOKI_NO_UPDATE_CHECK=1` to disable the startup check.
 
 If Windows cannot find `loki` after npm install, open a new shell and ensure the npm global bin directory is on `PATH` (usually `%APPDATA%\npm`). Node/npm also require `C:\Program Files\nodejs` on `PATH`.
 
@@ -90,6 +98,12 @@ loki switch work content-dev --capture-local --yes
 `--capture-local` writes safe managed copy-mode local changes back to the store before switching. If a fresh install blocks on unmanaged files and the Loki store should win, use `loki switch work content-dev --backup-unmanaged --yes` to move those blockers to a local backup directory and switch.
 
 ## Quick command examples
+
+Update Loki from the latest npm build:
+
+```bash
+loki update
+```
 
 Show local status, active profile, and managed target count:
 
