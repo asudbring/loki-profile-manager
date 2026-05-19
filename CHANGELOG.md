@@ -6,6 +6,12 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+- No unreleased changes.
+
+## v0.1.14 — 2026-05-19
+
+Feature release for Loki self-update support.
+
 - Added `loki update` to install the latest `@asudbring/loki-profile-manager` npm build with `npm install -g @asudbring/loki-profile-manager@latest`.
 - Added cached npm update notices for human CLI commands, with 24-hour local SQLite caching and `LOKI_NO_UPDATE_CHECK=1` opt-out.
 
