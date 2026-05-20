@@ -5,8 +5,8 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 ## Status
 
 - Repository visibility: public.
-- Current npm release: `v0.1.14`; latest full Windows app/manual dogfood validation: `v0.1.7`.
-- Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, plugin bundle import MVP, Infisical readiness/setup UX, and Bubble Tea TUI MVP.
+- Current npm release: `v0.1.16`; latest full Windows app/manual dogfood validation: `v0.1.7`.
+- Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, safe stale managed-state repair, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, plugin bundle import MVP, Infisical readiness/setup UX, and Bubble Tea TUI MVP.
 - Current commands: `status`, `store status`, `store discover`, `store migrate`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `update`, `import-skill`, `import-plugin`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
 - Not implemented yet: `import-skill` markdown conversion and Azure Key Vault/other secret providers.
 - License: MIT.
@@ -173,6 +173,17 @@ loki secrets check OPENAI_API_KEY
 ```
 
 `loki secrets configure infisical` prompts for Infisical Universal Auth details, validates them before writing, and writes only local `~/.config/infisical/.env` config. If validation fails, the existing env file stays unchanged. Run `loki secrets status` afterward to verify readiness. `loki secrets --infisical` remains noninteractive for automation from existing safe local inputs. Output lists key names/readiness only, never values.
+
+Run local diagnostics and safely repair stale managed-target SQLite state:
+
+```bash
+loki doctor
+loki doctor --json
+loki doctor --repair-managed-state
+loki doctor --repair-managed-state --write-safe-files
+```
+
+`loki doctor --repair-managed-state` refreshes stale local managed-target records only when the local target and current manifest source are equivalent. `--write-safe-files` additionally canonicalizes safe local files before updating state. Semantic repair is implemented for JSON; other files must be byte-identical unless Loki can regenerate the canonical merge output safely.
 
 Inspect and restore local activation snapshots:
 

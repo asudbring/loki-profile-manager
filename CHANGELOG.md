@@ -6,6 +6,12 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.16 — 2026-05-20
+
+Documentation release for the npm package README.
+
+- Refreshed the GitHub and npm README with the current npm release number and managed-state doctor repair usage.
+
 ## v0.1.15 — 2026-05-20
 
 Patch release for safe managed-target state repair.
