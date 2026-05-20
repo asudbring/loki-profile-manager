@@ -6,6 +6,10 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.15 — 2026-05-20
+
+Patch release for safe managed-target state repair.
+
 - Added `loki doctor --repair-managed-state [--write-safe-files]` to detect and repair safe stale managed-target SQLite state after manifest mode/hash changes.
 
 ## v0.1.14 — 2026-05-19
