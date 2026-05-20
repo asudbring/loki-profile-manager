@@ -49,6 +49,12 @@ You can also dispatch the workflow manually:
 gh workflow run release.yml -f version=v0.1.0
 ```
 
+To repair or republish only npm for an existing version, run `.github/workflows/npm-publish.yml` from the default branch with the desired version. This path rebuilds the npm tarball from the current default branch while stamping the requested version, so use it only for packaging/publishing repairs where the CLI source has not changed for that version.
+
+```bash
+gh workflow run npm-publish.yml -f version=v0.1.0
+```
+
 ## Local fallback release
 
 Use this lane when GitHub Actions is unavailable or when validating a package set before pushing a tag.

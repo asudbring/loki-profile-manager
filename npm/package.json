@@ -3,6 +3,10 @@
   "version": "0.0.0-dev",
   "description": "Cross-platform installer wrapper for the Loki Profile Manager CLI.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/asudbring/loki-profile-manager"
+  },
   "bin": {
     "loki": "bin/loki.js"
   },
