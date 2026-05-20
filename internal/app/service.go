@@ -56,6 +56,8 @@ type Options struct {
 	SecretLoginRunner        secrets.LoginRunner
 	InfisicalConfigValidator InfisicalConfigValidator
 	UpdateRunner             UpdateCommandRunner
+	DoctorRepairManagedState bool
+	DoctorWriteSafeFiles     bool
 }
 
 type Service struct {

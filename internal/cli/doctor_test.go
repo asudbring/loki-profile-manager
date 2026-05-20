@@ -41,6 +41,29 @@ func TestDoctorJSONOutput(t *testing.T) {
 	}
 }
 
+func TestDoctorWriteSafeFilesRequiresRepairFlag(t *testing.T) {
+	cmd, _, _ := testCommand(t)
+	cmd.SetArgs([]string{"doctor", "--write-safe-files"})
+	err := cmd.Execute()
+	if err == nil || !strings.Contains(err.Error(), "--write-safe-files requires --repair-managed-state") {
+		t.Fatalf("doctor error = %v, want write-safe-files dependency error", err)
+	}
+}
+
+func TestDoctorHelpShowsManagedStateRepairFlags(t *testing.T) {
+	cmd, out, _ := testCommand(t)
+	cmd.SetArgs([]string{"doctor", "--help"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("doctor help error = %v", err)
+	}
+	got := out.String()
+	for _, want := range []string{"--repair-managed-state", "--write-safe-files"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("doctor help missing %q: %s", want, got)
+		}
+	}
+}
+
 func TestDoctorInvalidStorePrintsReportAndFails(t *testing.T) {
 	missingStore := filepath.Join(t.TempDir(), "missing-loki")
 	cmd, out, _ := testCommand(t)

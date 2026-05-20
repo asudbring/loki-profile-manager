@@ -15,18 +15,25 @@ import (
 
 func newDoctorCommand(resolver config.PathResolver, globals *globalOptions, _ ServiceFactory) *cobra.Command {
 	var jsonOutput bool
+	var repairManagedState bool
+	var writeSafeFiles bool
 
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Inspect Loki environment, store, machine, and recovery health.",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if writeSafeFiles && !repairManagedState {
+				return fmt.Errorf("doctor: --write-safe-files requires --repair-managed-state")
+			}
 			ctx := cmd.Context()
 			report, err := app.RunDoctor(ctx, app.Options{
-				Resolver:      resolver,
-				StoreOverride: globals.store,
-				Verbose:       globals.verbose,
-				Stderr:        cmd.ErrOrStderr(),
+				Resolver:                 resolver,
+				StoreOverride:            globals.store,
+				Verbose:                  globals.verbose,
+				Stderr:                   cmd.ErrOrStderr(),
+				DoctorRepairManagedState: repairManagedState,
+				DoctorWriteSafeFiles:     writeSafeFiles,
 			})
 			if err != nil {
 				return err
@@ -47,6 +54,8 @@ func newDoctorCommand(resolver config.PathResolver, globals *globalOptions, _ Se
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
+	cmd.Flags().BoolVar(&repairManagedState, "repair-managed-state", false, "repair safe stale managed-target state records")
+	cmd.Flags().BoolVar(&writeSafeFiles, "write-safe-files", false, "with --repair-managed-state, canonicalize safe local files before repairing state")
 	return cmd
 }
 

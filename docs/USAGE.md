@@ -578,6 +578,7 @@ Inspect local environment, store layout, machine registry, snapshots, operation 
 
 ```bash
 loki doctor [--json]
+loki doctor --repair-managed-state [--write-safe-files]
 loki --store /path/to/loki doctor [--json]
 ```
 
@@ -586,22 +587,29 @@ Flags:
 | Flag | Description |
 |---|---|
 | `--json` | Emit machine-readable JSON. |
+| `--repair-managed-state` | Repair safe stale local `managed_targets` records when the target and current manifest source are equivalent. |
+| `--write-safe-files` | With `--repair-managed-state`, canonicalize safe local files before repairing state; JSON files may be semantically equivalent, other files must be byte-identical. |
 
 Behavior:
 
 - Uses `--store` first when provided; otherwise reads the configured store path from local key-value state.
 - Does not create local state, a store, machine ID, registry record, snapshot, or target file.
-- Opens existing local SQLite state read-only; a missing database is reported as a warning.
+- Opens existing local SQLite state read-only unless `--repair-managed-state` is set; repair mode opens SQLite writable.
+- Reports stale managed-target state when local files match current manifest sources but SQLite hash/mode metadata is stale.
+- `--repair-managed-state` updates safe stale records; `--write-safe-files` additionally rewrites semantically equivalent JSON files or byte-identical copy/merge files into canonical Loki output before updating state.
+- Does not repair semantic conflicts; those still require manual resolution before switching.
 - Reports warning-only diagnostics with exit code 0.
 - Returns a nonzero exit code when blocking issues exist, such as an invalid configured store layout or SQLite integrity failure.
-- Checks local state paths, SQLite integrity and tables, provider discovery, store layout, operation locks, machine registration and stale heartbeats, snapshot metadata, conflict-copy filenames, and Infisical CLI readiness.
-- Does not fetch or print secret values and does not read target or snapshot file contents.
+- Checks local state paths, SQLite integrity and tables, provider discovery, store layout, managed-target state, operation locks, machine registration and stale heartbeats, snapshot metadata, conflict-copy filenames, and Infisical CLI readiness.
+- Does not fetch or print secret values and does not read target or snapshot file contents except for safe managed-state equivalence checks.
 
 Examples:
 
 ```bash
 loki doctor
 loki doctor --json
+loki doctor --repair-managed-state
+loki doctor --repair-managed-state --write-safe-files
 loki --store /path/to/loki doctor
 loki --store /path/to/loki doctor --json
 ```

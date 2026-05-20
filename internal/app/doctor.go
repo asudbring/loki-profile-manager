@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
+	"os"
 
 	"github.com/asudbring/loki-profile-manager/internal/config"
 	"github.com/asudbring/loki-profile-manager/internal/db"
@@ -10,7 +12,9 @@ import (
 )
 
 type DoctorRequest struct {
-	StorePath string
+	StorePath          string
+	RepairManagedState bool
+	WriteSafeFiles     bool
 }
 
 type DoctorResult = diagnostics.Report
@@ -39,6 +43,8 @@ func (s *Service) Doctor(ctx context.Context, req DoctorRequest) (DoctorResult, 
 		Resolver:            s.resolver,
 		Database:            s.database,
 		SecretStatusChecker: s.secretStatusChecker,
+		RepairManagedState:  req.RepairManagedState,
+		WriteSafeFiles:      req.WriteSafeFiles,
 	}), nil
 }
 
@@ -57,7 +63,22 @@ func RunDoctor(ctx context.Context, opts Options) (DoctorResult, error) {
 		return DoctorResult{}, err
 	}
 	storeOverride := resolver.CleanStoreOverride(opts.StoreOverride)
-	database, exists, openErr := db.OpenExistingReadOnly(ctx, paths.DBPath)
+	var database *sql.DB
+	var exists bool
+	var openErr error
+	if opts.DoctorRepairManagedState {
+		if _, err := os.Stat(paths.DBPath); err == nil {
+			exists = true
+			database, openErr = db.Bootstrap(ctx, paths.DBPath)
+		} else if os.IsNotExist(err) {
+			exists = false
+		} else {
+			exists = true
+			openErr = err
+		}
+	} else {
+		database, exists, openErr = db.OpenExistingReadOnly(ctx, paths.DBPath)
+	}
 	if database != nil {
 		defer database.Close()
 	}
@@ -83,5 +104,7 @@ func RunDoctor(ctx context.Context, opts Options) (DoctorResult, error) {
 		DatabaseMissing:     !exists && openErr == nil,
 		DatabaseError:       databaseError,
 		SecretStatusChecker: opts.SecretStatusChecker,
+		RepairManagedState:  opts.DoctorRepairManagedState,
+		WriteSafeFiles:      opts.DoctorWriteSafeFiles,
 	}), nil
 }

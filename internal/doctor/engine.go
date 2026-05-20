@@ -37,6 +37,8 @@ type Request struct {
 	DatabaseMissing     bool
 	DatabaseError       string
 	SecretStatusChecker secrets.StatusChecker
+	RepairManagedState  bool
+	WriteSafeFiles      bool
 	Now                 func() time.Time
 }
 
@@ -63,6 +65,9 @@ func Run(ctx context.Context, req Request) Report {
 	addProviderChecks(&report, req)
 
 	storeUsable := addStoreChecks(&report, report.StorePath)
+	if storeUsable && req.Database != nil {
+		addManagedStateChecks(ctx, &report, req, now())
+	}
 	addSnapshotChecks(ctx, &report, req.Database, req.LocalPaths.SnapshotDir)
 	addDependencyChecks(ctx, &report, req.SecretStatusChecker)
 	if report.StorePath != "" {
