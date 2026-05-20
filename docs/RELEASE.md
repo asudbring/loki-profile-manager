@@ -30,7 +30,16 @@ Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow:
 5. Runs installer smoke tests on Ubuntu, macOS, and Windows.
 6. Runs npm global install smoke tests on Ubuntu, macOS, and Windows.
 7. Creates or updates the GitHub Release and uploads assets.
-8. Publishes the npm package with `.github/workflows/npm-publish.yml` using the `NPM_TOKEN` repository secret.
+8. Publishes the npm package from GitHub Actions with npm trusted publishing (OIDC), without an npm token.
+
+NPM trusted publisher setup must match the publishing workflow exactly:
+
+- Owner or organization: `asudbring`
+- Repository: `loki-profile-manager`
+- Workflow filename: `release.yml` for tag releases
+- Workflow filename: `npm-publish.yml` for manual npm republish/repair
+- Environment name: blank unless the workflow job is changed to use a GitHub environment
+- Allowed action: `npm publish`
 
 Hyphenated versions such as `v0.1.0-beta.1` are prereleases. Plain versions such as `v0.1.0` are stable 0.x releases.
 

@@ -12,6 +12,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
@@ -28,8 +29,9 @@ jobs:
           go-version: '1.23.x'
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
+          package-manager-cache: false
       - name: Validate
         shell: bash
         run: |
@@ -60,15 +62,10 @@ jobs:
             (cd dist/packages && shasum -a 256 -c checksums.txt)
           fi
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "NPM_TOKEN repository secret is not configured" >&2
-            exit 1
-          fi
+          npm --version
           npm_version="${RELEASE_VERSION#v}"
           package_tgz="./dist/packages/asudbring-loki-profile-manager-${npm_version}.tgz"
           if [[ ! -f "$package_tgz" ]]; then
@@ -76,9 +73,7 @@ jobs:
             exit 1
           fi
           if npm view "@asudbring/loki-profile-manager@${npm_version}" version >/dev/null 2>&1; then
-            npm access set status=public @asudbring/loki-profile-manager
-            echo "@asudbring/loki-profile-manager@${npm_version} already published; ensured public access"
+            echo "@asudbring/loki-profile-manager@${npm_version} already published"
             exit 0
           fi
           npm publish "$package_tgz" --access public
-          npm access set status=public @asudbring/loki-profile-manager
