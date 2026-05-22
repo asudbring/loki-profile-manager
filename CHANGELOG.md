@@ -6,6 +6,10 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.19 — 2026-05-20
+
+Feature release for markdown skill import.
+
 - Added standalone `.md` file support to `loki import-skill`. Markdown files are auto-wrapped into a valid skill folder with derived frontmatter when `name` or `description` are missing.
 
 ## v0.1.18 — 2026-05-20
