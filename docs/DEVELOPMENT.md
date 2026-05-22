@@ -111,7 +111,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow validates tests, packages Linux/macOS/Windows amd64/arm64 archives, writes `checksums.txt`, uploads artifacts, runs installer and npm smoke tests, and creates a GitHub Release. Hyphenated versions are marked prerelease.
+Tag pushes matching `v*` run `.github/workflows/release.yml`. The workflow validates tests, packages Linux/macOS/Windows amd64/arm64 archives, writes `checksums.txt`, uploads artifacts, runs installer and npm smoke tests, creates a GitHub Release, and publishes the npm package via trusted publishing (OIDC). The manual `npm-publish.yml` workflow handles npm republish/repair. Hyphenated versions are marked prerelease.
 
 Local fallback release build that does not require GitHub Actions:
 

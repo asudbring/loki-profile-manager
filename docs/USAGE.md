@@ -596,7 +596,7 @@ Behavior:
 - Does not create local state, a store, machine ID, registry record, snapshot, or target file.
 - Opens existing local SQLite state read-only unless `--repair-managed-state` is set; repair mode opens SQLite writable.
 - Reports stale managed-target state when local files match current manifest sources but SQLite hash/mode metadata is stale.
-- `--repair-managed-state` updates safe stale records; `--write-safe-files` additionally rewrites semantically equivalent JSON files or byte-identical copy/merge files into canonical Loki output before updating state.
+- `--repair-managed-state` updates safe stale records; `--write-safe-files` additionally rewrites semantically equivalent JSON files or byte-identical copy/merge files into canonical Loki output before updating state. JSON output includes `repair_failed` count when some candidates could not be repaired.
 - Does not repair semantic conflicts; those still require manual resolution before switching.
 - Reports warning-only diagnostics with exit code 0.
 - Returns a nonzero exit code when blocking issues exist, such as an invalid configured store layout or SQLite integrity failure.

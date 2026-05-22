@@ -36,10 +36,12 @@ NPM trusted publisher setup must match the publishing workflow exactly:
 
 - Owner or organization: `asudbring`
 - Repository: `loki-profile-manager`
-- Workflow filename: `release.yml` for tag releases
-- Workflow filename: `npm-publish.yml` for manual npm republish/repair
+- Workflow filename: `npm-publish.yml` (currently the only configured trusted publisher; used for manual republish/repair and as fallback)
+- Workflow filename: `release.yml` (add as a second trusted publisher for tag-release auto-publish)
 - Environment name: blank unless the workflow job is changed to use a GitHub environment
 - Allowed action: `npm publish`
+
+Until `release.yml` is added as a trusted publisher on npmjs.com, tag releases require a manual `npm-publish.yml` dispatch to publish to npm.
 
 Hyphenated versions such as `v0.1.0-beta.1` are prereleases. Plain versions such as `v0.1.0` are stable 0.x releases.
 
