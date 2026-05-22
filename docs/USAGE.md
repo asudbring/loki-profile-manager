@@ -31,7 +31,7 @@ Current commands:
 | `sync` | Implemented |
 | `tui` | Implemented Bubble Tea MVP |
 | `update` | Implemented npm self-update |
-| `import-skill` | Implemented folder and zip-import MVP |
+| `import-skill` | Implemented folder, zip, and markdown import |
 | `secrets configure infisical` | Implemented interactive Infisical setup wizard |
 | `secrets login` | Implemented Infisical CLI wrapper |
 | `secrets status` | Implemented Infisical readiness check |
@@ -51,7 +51,6 @@ Planned but not implemented:
 
 | Command | Planned purpose |
 |---|---|
-| Standalone markdown-to-skill conversion | Convert a single markdown file into a valid skill folder for `loki import-skill`. Existing skill folders and zip archives are already supported by `loki import-skill`. |
 | Azure Key Vault/other secret providers | Additional render-secret backends beyond Infisical V1. |
 
 ## First-run workflows
@@ -467,7 +466,7 @@ loki --store /path/to/loki sync --yes
 
 ## `loki import-skill`
 
-Import one valid skill folder or `.zip` archive into a Loki store layer.
+Import a skill folder, `.zip` archive, or standalone `.md` file into a Loki store layer.
 
 ```bash
 loki import-skill <source> (--common | --profile <profile> [--bucket <bucket>]) [--name <store-name>] (--dry-run | --yes) [--overwrite] [--json]
@@ -480,7 +479,7 @@ Flags:
 | `--common` | Import into `profiles/common`. |
 | `--profile <profile>` | Import into `profiles/<profile>/core`, unless `--bucket` is also set. |
 | `--bucket <bucket>` | Import into `profiles/<profile>/buckets/<bucket>`. The parent profile core manifest must already exist. |
-| `--name <store-name>` | Folder name under the layer `skills/` directory. Defaults to the source folder name or zip-derived skill name. |
+| `--name <store-name>` | Folder name under the layer `skills/` directory. Defaults to the source folder name, zip-derived skill name, or markdown filename. |
 | `--dry-run` | Validate and show the planned import without writing files. Creates and removes a transient operation lock. |
 | `--yes` | Confirm store writes. Required for real import. |
 | `--overwrite` | Replace an existing `skills/<store-name>` folder. Without this flag, an existing destination is a blocking conflict. |
@@ -492,7 +491,8 @@ Behavior:
 - Requires exactly one of `--dry-run` or `--yes`.
 - Requires exactly one destination family: `--common` or `--profile <profile>` with optional `--bucket <bucket>`.
 - Validates the source with Loki skill validation (`SKILL.md` frontmatter and local references).
-- Accepts an existing skill folder or a `.zip` archive containing `SKILL.md` at archive root or exactly one top-level skill folder.
+- Accepts an existing skill folder, a `.zip` archive containing `SKILL.md` at archive root or exactly one top-level skill folder, or a standalone `.md` file.
+- When the source is a `.md` file, Loki wraps it into a temporary skill folder as `SKILL.md`. If the file already has valid YAML frontmatter with `name` and `description`, it is used as-is. Otherwise, `name` is derived from the filename (kebab-case) and `description` from the first heading or first non-empty line.
 - Extracts zip archives into a temporary staging directory, normalizes Windows path separators, and rejects path traversal, absolute paths, Windows drive paths, symlink entries, non-regular entries, oversized archives, and ambiguous multi-root archives.
 - Rejects symlinks anywhere inside the staged source skill folder.
 - Acquires the store operation lock before checking destination conflicts or writing.
@@ -500,7 +500,6 @@ Behavior:
 - Adds or updates the selected layer manifest with `skills: [{source: skills/<store-name>}]`.
 - Creates bucket layer folders and manifest when importing into a new bucket under an existing parent profile.
 - Does not mirror the skill into Pi, Claude, or other runtime skill directories.
-- Does not convert standalone markdown files in this MVP; pass an existing valid skill folder or supported `.zip` archive instead.
 
 Examples:
 
@@ -509,6 +508,8 @@ loki --store /path/to/loki import-skill ~/skills/my-skill --common --dry-run
 loki --store /path/to/loki import-skill ~/Downloads/my-skill.zip --profile work --yes
 loki --store /path/to/loki import-skill ~/skills/my-skill --profile work --bucket azure --name cloud-skill --yes
 loki --store /path/to/loki import-skill ~/Downloads/my-skill.zip --common --overwrite --yes --json
+loki --store /path/to/loki import-skill ~/Downloads/my-tool.md --common --yes
+loki --store /path/to/loki import-skill ~/notes/raw-skill.md --profile work --name custom-name --yes
 ```
 
 ## `loki secrets`

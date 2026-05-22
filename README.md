@@ -6,9 +6,9 @@ Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, a
 
 - Repository visibility: public.
 - Current npm release: `v0.1.18`; latest full Windows app/manual dogfood validation: `v0.1.7`.
-- Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, safe stale managed-state repair, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip import MVP, plugin bundle import MVP, Infisical readiness/setup UX, and Bubble Tea TUI MVP.
+- Current implementation: profile store setup, machine registration, migration/adoption bootstrap, guarded profile switching, pre-switch local-change capture, obsolete managed-target cleanup, safe stale managed-state repair, local active-profile marker, Windows redirected Documents support, snapshot inspection/restore, sync conflict cleanup, skill folder/zip/markdown import, plugin bundle import MVP, Infisical readiness/setup UX, and Bubble Tea TUI MVP.
 - Current commands: `status`, `store status`, `store discover`, `store migrate`, `store use`, `store init`, `store unset`, `verify`, `switch`, `sync`, `tui`, `update`, `import-skill`, `import-plugin`, `secrets`, `doctor`, `snapshots list`, `snapshots show`, `snapshots restore`, `machine register`, `machine status`, `migrate repo`, `migrate local`, and `adopt`.
-- Future work: standalone markdown-to-skill conversion and Azure Key Vault/other secret providers. Existing skill folder and zip imports work through `loki import-skill`.
+- Future work: Azure Key Vault/other secret providers.
 - License: MIT.
 
 ## What it does

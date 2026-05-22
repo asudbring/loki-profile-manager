@@ -2,13 +2,17 @@ package app
 
 import (
 	"archive/zip"
+	"bytes"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -44,8 +48,11 @@ func prepareImportSkillSource(source string) (preparedImportSkillSource, error) 
 	if info.IsDir() {
 		return preparedImportSkillSource{OriginalPath: abs, SkillDir: abs, DefaultName: filepath.Base(abs), Kind: "folder", Cleanup: func() {}}, nil
 	}
+	if info.Mode().IsRegular() && strings.EqualFold(filepath.Ext(abs), ".md") {
+		return prepareImportSkillMarkdownSource(abs)
+	}
 	if !info.Mode().IsRegular() || !strings.EqualFold(filepath.Ext(abs), ".zip") {
-		return preparedImportSkillSource{}, fmt.Errorf("import-skill: source %s is not a directory or .zip archive", abs)
+		return preparedImportSkillSource{}, fmt.Errorf("import-skill: source %s is not a directory, .md file, or .zip archive", abs)
 	}
 	return prepareImportSkillZipSource(abs)
 }
@@ -217,4 +224,138 @@ func findImportSkillZipRoot(extractRoot, zipPath string) (string, string, error)
 		return "", "", fmt.Errorf("import-skill: zip archive top-level folder %q does not contain SKILL.md", candidates[0].Name())
 	}
 	return skillDir, candidates[0].Name(), nil
+}
+
+func prepareImportSkillMarkdownSource(mdPath string) (preparedImportSkillSource, error) {
+	content, err := os.ReadFile(mdPath)
+	if err != nil {
+		return preparedImportSkillSource{}, fmt.Errorf("import-skill: read markdown source %s: %w", mdPath, err)
+	}
+
+	baseName := strings.TrimSuffix(filepath.Base(mdPath), filepath.Ext(mdPath))
+	defaultName := toSkillName(baseName)
+
+	skillContent, err := ensureSkillFrontmatter(content, defaultName)
+	if err != nil {
+		return preparedImportSkillSource{}, fmt.Errorf("import-skill: convert markdown %s: %w", mdPath, err)
+	}
+
+	tmp, err := os.MkdirTemp("", "loki-import-skill-md-*")
+	if err != nil {
+		return preparedImportSkillSource{}, fmt.Errorf("import-skill: create markdown staging directory: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(tmp) }
+	ok := false
+	defer func() {
+		if !ok {
+			cleanup()
+		}
+	}()
+
+	if err := os.WriteFile(filepath.Join(tmp, "SKILL.md"), skillContent, 0o644); err != nil {
+		return preparedImportSkillSource{}, fmt.Errorf("import-skill: write SKILL.md: %w", err)
+	}
+
+	ok = true
+	return preparedImportSkillSource{OriginalPath: mdPath, SkillDir: tmp, DefaultName: defaultName, Kind: "markdown", Cleanup: cleanup}, nil
+}
+
+func ensureSkillFrontmatter(content []byte, defaultName string) ([]byte, error) {
+	text := strings.TrimPrefix(strings.ReplaceAll(string(content), "\r\n", "\n"), "\ufeff")
+
+	if strings.HasPrefix(text, "---\n") {
+		end := strings.Index(text[4:], "\n---\n")
+		if end >= 0 {
+			frontBlock := text[4 : 4+end]
+			body := text[4+end+5:]
+			var fm struct {
+				Name        string `yaml:"name"`
+				Description string `yaml:"description"`
+			}
+			if err := yaml.Unmarshal([]byte(frontBlock), &fm); err == nil {
+				if strings.TrimSpace(fm.Name) != "" && strings.TrimSpace(fm.Description) != "" {
+					return content, nil
+				}
+				if strings.TrimSpace(fm.Name) == "" {
+					fm.Name = defaultName
+				}
+				if strings.TrimSpace(fm.Description) == "" {
+					fm.Description = deriveSkillDescription(body)
+				}
+				return buildSkillContent(fm.Name, fm.Description, body), nil
+			}
+		}
+	}
+
+	description := deriveSkillDescription(text)
+	return buildSkillContent(defaultName, description, text), nil
+}
+
+func buildSkillContent(name, description, body string) []byte {
+	var buf bytes.Buffer
+	buf.WriteString("---\n")
+	buf.WriteString("name: " + name + "\n")
+	buf.WriteString("description: " + yamlQuote(description) + "\n")
+	buf.WriteString("---\n")
+	if body != "" && !strings.HasPrefix(body, "\n") {
+		buf.WriteString("\n")
+	}
+	buf.WriteString(body)
+	if !strings.HasSuffix(buf.String(), "\n") {
+		buf.WriteString("\n")
+	}
+	return buf.Bytes()
+}
+
+var headingRE = regexp.MustCompile(`(?m)^#+\s+(.+)$`)
+
+func deriveSkillDescription(body string) string {
+	if m := headingRE.FindStringSubmatch(body); len(m) > 1 {
+		desc := strings.TrimSpace(m[1])
+		if len(desc) > 200 {
+			desc = desc[:200]
+		}
+		return desc
+	}
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if len(trimmed) > 200 {
+			trimmed = trimmed[:200]
+		}
+		return trimmed
+	}
+	return "Imported skill"
+}
+
+func toSkillName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.ToLower(name)
+	name = strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '-' {
+			return r
+		}
+		if r == ' ' || r == '_' || r == '.' {
+			return '-'
+		}
+		return -1
+	}, name)
+	for strings.Contains(name, "--") {
+		name = strings.ReplaceAll(name, "--", "-")
+	}
+	name = strings.Trim(name, "-")
+	if name == "" {
+		name = "imported-skill"
+	}
+	return name
+}
+
+func yamlQuote(s string) string {
+	if strings.ContainsAny(s, ":\n\"'#{}[]|>&*!%@`") || strings.HasPrefix(s, " ") || strings.HasSuffix(s, " ") {
+		escaped := strings.ReplaceAll(s, `"`, `\"`)
+		return `"` + escaped + `"`
+	}
+	return s
 }

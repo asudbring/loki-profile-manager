@@ -376,3 +376,98 @@ func writeSkillZip(t *testing.T, zipPath string, entries map[string]string) stri
 	}
 	return zipPath
 }
+
+func TestImportSkillMarkdownWithFrontmatter(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	mdPath := filepath.Join(t.TempDir(), "my-tool.md")
+	writeAppFile(t, mdPath, "---\nname: my-tool\ndescription: A useful tool\n---\n\n# My Tool\n\nDoes things.\n")
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: mdPath, Common: true, Yes: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(markdown) error = %v", err)
+	}
+	if result.SourceKind != "markdown" {
+		t.Fatalf("source kind = %q, want markdown", result.SourceKind)
+	}
+	if result.Changed != 1 {
+		t.Fatalf("changed = %d, want 1", result.Changed)
+	}
+	skillContent := readAppFile(t, filepath.Join(result.DestinationPath, "SKILL.md"))
+	if !strings.Contains(skillContent, "name: my-tool") || !strings.Contains(skillContent, "description: A useful tool") {
+		t.Fatalf("SKILL.md frontmatter missing: %s", skillContent[:min(200, len(skillContent))])
+	}
+	if !strings.Contains(skillContent, "# My Tool") {
+		t.Fatalf("SKILL.md body missing")
+	}
+}
+
+func TestImportSkillMarkdownWithoutFrontmatter(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	mdPath := filepath.Join(t.TempDir(), "Cool Skill.md")
+	writeAppFile(t, mdPath, "# My Amazing Skill\n\nThis skill does something great.\n")
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: mdPath, Common: true, Yes: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(markdown no frontmatter) error = %v", err)
+	}
+	if result.SourceKind != "markdown" {
+		t.Fatalf("source kind = %q, want markdown", result.SourceKind)
+	}
+	skillContent := readAppFile(t, filepath.Join(result.DestinationPath, "SKILL.md"))
+	if !strings.Contains(skillContent, "name: cool-skill") {
+		t.Fatalf("expected derived name cool-skill in: %s", skillContent[:min(200, len(skillContent))])
+	}
+	if !strings.Contains(skillContent, "My Amazing Skill") {
+		t.Fatalf("expected derived description from heading")
+	}
+	if !strings.Contains(skillContent, "This skill does something great.") {
+		t.Fatalf("expected body preserved")
+	}
+}
+
+func TestImportSkillMarkdownDryRun(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	mdPath := filepath.Join(t.TempDir(), "test-skill.md")
+	writeAppFile(t, mdPath, "---\nname: test-skill\ndescription: A test\n---\n# Test\n")
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: mdPath, Common: true, DryRun: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(markdown dry-run) error = %v", err)
+	}
+	if !result.DryRun || !result.WouldCopy {
+		t.Fatalf("dry-run result = %+v", result)
+	}
+	if _, err := os.Stat(result.DestinationPath); !os.IsNotExist(err) {
+		t.Fatalf("dry-run created destination")
+	}
+}
+
+func TestImportSkillMarkdownPartialFrontmatter(t *testing.T) {
+	ctx := context.Background()
+	svc := newImportSkillTestService(t, ctx, t.TempDir())
+	defer svc.Close()
+	storePath := importSkillStore(t)
+	mdPath := filepath.Join(t.TempDir(), "partial.md")
+	writeAppFile(t, mdPath, "---\nname: partial-skill\n---\n# Partial\n\nHas name but no description.\n")
+
+	result, err := svc.ImportSkill(ctx, ImportSkillRequest{StorePath: storePath, SourceFolder: mdPath, Common: true, Yes: true})
+	if err != nil {
+		t.Fatalf("ImportSkill(partial frontmatter) error = %v", err)
+	}
+	skillContent := readAppFile(t, filepath.Join(result.DestinationPath, "SKILL.md"))
+	if !strings.Contains(skillContent, "name: partial-skill") {
+		t.Fatalf("expected name preserved")
+	}
+	if !strings.Contains(skillContent, "Partial") {
+		t.Fatalf("expected description derived from heading: %s", skillContent[:min(200, len(skillContent))])
+	}
+}
