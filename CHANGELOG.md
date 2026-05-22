@@ -6,6 +6,14 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.18 — 2026-05-20
+
+Patch release for code review fixes.
+
+- Removed redundant file hash computation in managed-state doctor scan (performance).
+- Added `repair_failed` detail to `loki doctor --repair-managed-state --json` output for accurate repair outcome reporting.
+- Scoped `id-token: write` permission to only the npm-publish job in the release workflow (least privilege).
+
 ## v0.1.17 — 2026-05-20
 
 Documentation release for current GitHub and npm docs.
