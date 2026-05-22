@@ -58,7 +58,7 @@ func addManagedStateChecks(ctx context.Context, report *Report, req Request, now
 		report.add(Check{Severity: SeverityInfo, Code: "managed_state.ok", Category: "managed_state", Message: "managed target state matches current files and manifests"})
 		return
 	}
-	report.add(Check{Severity: SeverityWarning, Code: "managed_state.stale", Category: "managed_state", Message: fmt.Sprintf("%d managed target state record(s) are stale", len(stale)), Path: stale[0].Record.TargetPath, Remediation: "Run `loki doctor --repair-managed-state` to refresh safe local state records; add `--write-safe-files` to canonicalize safe local files.", Details: managedStateDetails(len(stale), len(repairable), len(unrepairable), 0)})
+	report.add(Check{Severity: SeverityWarning, Code: "managed_state.stale", Category: "managed_state", Message: fmt.Sprintf("%d managed target state record(s) are stale", len(stale)), Path: stale[0].Record.TargetPath, Remediation: "Run `loki doctor --repair-managed-state` to refresh safe local state records; add `--write-safe-files` to canonicalize safe local files.", Details: managedStateDetails(len(stale), len(repairable), len(unrepairable), 0, 0)})
 }
 
 func addManagedStateRepairChecks(ctx context.Context, report *Report, req Request, now time.Time) {
@@ -66,6 +66,7 @@ func addManagedStateRepairChecks(ctx context.Context, report *Report, req Reques
 	var repairable []managedStateCandidate
 	var unrepairable []managedStateCandidate
 	repaired := 0
+	repairFailed := 0
 	wroteFiles := 0
 	repairErr := store.WithOperationLock(ctx, req.StorePath, store.OperationLockOptions{Operation: "doctor managed-state repair", Timeout: time.Second}, func() error {
 		candidates, scanErr := findManagedStateCandidates(ctx, req.Database, req.StorePath, req.Resolver)
@@ -78,6 +79,7 @@ func addManagedStateRepairChecks(ctx context.Context, report *Report, req Reques
 			if err != nil {
 				candidate.Unrepairable = err.Error()
 				unrepairable = append(unrepairable, candidate)
+				repairFailed++
 				continue
 			}
 			repaired++
@@ -96,12 +98,12 @@ func addManagedStateRepairChecks(ctx context.Context, report *Report, req Reques
 		return
 	}
 	if repaired > 0 {
-		details := managedStateDetails(len(stale), len(repairable), len(unrepairable), wroteFiles)
+		details := managedStateDetails(len(stale), len(repairable), len(unrepairable), wroteFiles, repairFailed)
 		details["repaired"] = strconv.Itoa(repaired)
 		report.add(Check{Severity: SeverityInfo, Code: "managed_state.repaired", Category: "managed_state", Message: fmt.Sprintf("repaired %d managed target state record(s)", repaired), Path: repairable[0].Record.TargetPath, Details: details})
 	}
 	if len(unrepairable) > 0 {
-		report.add(Check{Severity: SeverityWarning, Code: "managed_state.unrepairable", Category: "managed_state", Message: fmt.Sprintf("%d stale managed target state record(s) need manual resolution", len(unrepairable)), Path: unrepairable[0].Record.TargetPath, Remediation: "Resolve the target/source difference manually, then rerun `loki switch` or `loki doctor --repair-managed-state`.", Details: managedStateDetails(len(stale), len(repairable), len(unrepairable), wroteFiles)})
+		report.add(Check{Severity: SeverityWarning, Code: "managed_state.unrepairable", Category: "managed_state", Message: fmt.Sprintf("%d stale managed target state record(s) need manual resolution", len(unrepairable)), Path: unrepairable[0].Record.TargetPath, Remediation: "Resolve the target/source difference manually, then rerun `loki switch` or `loki doctor --repair-managed-state`.", Details: managedStateDetails(len(stale), len(repairable), len(unrepairable), wroteFiles, repairFailed)})
 	}
 }
 
@@ -155,7 +157,7 @@ func findManagedStateCandidates(ctx context.Context, database *sql.DB, storePath
 		if !staleHash && !staleMode && !staleLayer {
 			continue
 		}
-		equivalent, byteEqual, reason := managedStateEquivalent(current, record.TargetPath)
+		equivalent, byteEqual, reason := managedStateEquivalent(current, record.TargetPath, targetHash)
 		candidate := managedStateCandidate{Record: record, Current: current, TargetHash: targetHash, Equivalent: equivalent, ByteEqual: byteEqual, Reason: reason}
 		if equivalent && current.Mode == manifest.ModeMerge && len(byTarget[filepath.Clean(record.TargetPath)]) > 1 && len(current.SourcePaths) == 0 {
 			candidate.Unrepairable = "merge target has multiple manifest sources"
@@ -225,11 +227,7 @@ func managedStateKey(targetPath, sourcePath string) string {
 	return filepath.Clean(targetPath) + "\x00" + filepath.Clean(sourcePath)
 }
 
-func managedStateEquivalent(current managedStateManifestEntry, targetPath string) (bool, bool, string) {
-	targetHash, targetErr := activation.HashPath(targetPath)
-	if targetErr != nil {
-		return false, false, "target_unreadable"
-	}
+func managedStateEquivalent(current managedStateManifestEntry, targetPath string, targetHash string) (bool, bool, string) {
 	if len(current.SourcePaths) > 0 {
 		content, err := activation.MergeBytes(current.Format, current.SourcePaths)
 		if err != nil {
@@ -358,13 +356,17 @@ func repairManagedStateCandidate(ctx context.Context, database *sql.DB, candidat
 	return wrote, activation.PutManagedTarget(ctx, database, record)
 }
 
-func managedStateDetails(stale, repairable, unrepairable, wroteFiles int) map[string]string {
-	return map[string]string{
+func managedStateDetails(stale, repairable, unrepairable, wroteFiles, repairFailed int) map[string]string {
+	d := map[string]string{
 		"stale":        strconv.Itoa(stale),
 		"repairable":   strconv.Itoa(repairable),
 		"unrepairable": strconv.Itoa(unrepairable),
 		"wrote_files":  strconv.Itoa(wroteFiles),
 	}
+	if repairFailed > 0 {
+		d["repair_failed"] = strconv.Itoa(repairFailed)
+	}
+	return d
 }
 
 func storeOperationLockPath(storePath string) string {
