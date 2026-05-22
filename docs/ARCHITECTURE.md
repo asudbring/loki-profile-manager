@@ -461,9 +461,9 @@ flowchart TB
 
 - No setup CLI.
 - Manual snapshot restore exists; sensitive-looking paths are blocked/redacted by default, and per-target restore is available with `--target`.
-- Skill folder and zip import exist, but markdown conversion, runtime mirroring, and target-adapter sync are not implemented.
+- CLI skill folder and zip import exist through `loki import-skill`. Future work covers standalone markdown conversion, runtime mirroring, and target-adapter sync.
 - Secrets V1 supports Infisical only; Azure Key Vault and other providers are deferred.
 - Sync is conflict-copy cleanup only; watcher capture and full provider-state reconciliation are not implemented.
-- TUI MVP exists, including store setup and machine registration, but no manifest editor, `adopt`/`migrate`/`import-skill` execution forms, daemon control, or inline snapshot restore execution.
+- TUI MVP exists, including store setup and machine registration, but no manifest editor, `adopt`/`migrate`/`import-skill` execution forms, daemon control, or inline snapshot restore execution; use the CLI for those supported flows.
 - `OperationMirror` is currently a no-op.
 - Verify does not reuse activation safety classification because it has no SQLite dependency in its current shape.

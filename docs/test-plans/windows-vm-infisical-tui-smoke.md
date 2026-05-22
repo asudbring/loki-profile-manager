@@ -16,15 +16,17 @@ Do not paste or save `INFISICAL_CLIENT_SECRET`, `INFISICAL_TOKEN`, or secret val
 Use this path after a public npm release. Use the source build in section 1 for unreleased `main` validation.
 
 ```powershell
-npm install -g @asudbring/loki-profile-manager@0.1.6
+npm install -g @asudbring/loki-profile-manager@latest
 loki --version
+loki import-skill --help
 loki secrets configure infisical --help
 loki switch --help | Select-String -SimpleMatch '--backup-unmanaged'
 ```
 
 Expected:
 
-- `loki --version` prints `v0.1.6`.
+- `loki --version` prints the current published `v*` release.
+- Import-skill help shows `loki import-skill <source>` for valid skill folders and zip archives.
 - Infisical wizard help shows `loki secrets configure infisical`.
 - Switch help lists `--backup-unmanaged`.
 - No secret values printed.

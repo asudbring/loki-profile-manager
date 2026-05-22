@@ -321,7 +321,7 @@ App checks:
 - Codex, Pi, Claude/Copilot, Git, and Warp config files exist only if the selected profile manages them.
 - `loki switch <profile> [buckets...] --dry-run` has no unexpected blockers after the real switch.
 
-Recent dogfood validation covered the Windows VM app/manual switch flow with Loki `v0.1.5`, profile marker `work:content-dev`, 231 managed targets, PowerShell/Git Bash/starship startup, VS Code settings, Codex/Pi/Claude/Copilot/Git config files, and a full VM store legacy-reference audit with zero legacy hits. Release `v0.1.6` adds the interactive Infisical setup wizard and `--backup-unmanaged` first-install remediation on top of that validated path.
+Recent dogfood validation covered the Windows VM app/manual switch flow through Loki `v0.1.7`, including profile marker `work:content-dev`, PowerShell/Git Bash/starship startup, VS Code settings, Codex/Pi/Claude/Copilot/Git config files, Infisical setup hardening, and first-install unmanaged-backup remediation. Newer releases keep using the same npm install and guarded first-run flow unless their changelog says otherwise.
 
 ## First-run path: existing machine with profiles not migrated
 

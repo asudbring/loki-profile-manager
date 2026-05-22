@@ -6,6 +6,13 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.17 — 2026-05-20
+
+Documentation release for current GitHub and npm docs.
+
+- Updated the README and user docs to show the current npm release, clarify that `loki import-skill` supports valid skill folders and zip archives, and avoid implying the command is missing.
+- Refreshed Windows smoke-test docs to install `@latest` and verify `import-skill` help instead of hardcoding an old npm version.
+
 ## v0.1.16 — 2026-05-20
 
 Documentation release for the npm package README.

@@ -51,7 +51,7 @@ Planned but not implemented:
 
 | Command | Planned purpose |
 |---|---|
-| `import-skill` markdown import | Convert a standalone markdown skill file into a skill folder. |
+| Standalone markdown-to-skill conversion | Convert a single markdown file into a valid skill folder for `loki import-skill`. Existing skill folders and zip archives are already supported by `loki import-skill`. |
 | Azure Key Vault/other secret providers | Additional render-secret backends beyond Infisical V1. |
 
 ## First-run workflows
@@ -500,7 +500,7 @@ Behavior:
 - Adds or updates the selected layer manifest with `skills: [{source: skills/<store-name>}]`.
 - Creates bucket layer folders and manifest when importing into a new bucket under an existing parent profile.
 - Does not mirror the skill into Pi, Claude, or other runtime skill directories.
-- Does not convert standalone markdown files in this MVP.
+- Does not convert standalone markdown files in this MVP; pass an existing valid skill folder or supported `.zip` archive instead.
 
 Examples:
 
