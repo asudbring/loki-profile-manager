@@ -1,5 +1,9 @@
 # Loki Profile Manager
 
+<p align="center">
+  <img src="docs/assets/loki.png" alt="Loki Profile Manager" width="200">
+</p>
+
 Loki Profile Manager is a local Go CLI for managing profile-specific dotfiles, app settings, AI-tool skills, shell prompt state, and secret-rendered templates from a synced Loki store.
 
 ## Status
