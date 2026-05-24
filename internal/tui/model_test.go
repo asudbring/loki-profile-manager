@@ -515,6 +515,95 @@ func TestStatusErrorStillShowsErrorScreen(t *testing.T) {
 	}
 }
 
+func TestSwitchDryRunCaptureBlockerSurfacedInView(t *testing.T) {
+	client := populatedFakeClient()
+	blocked := switchResult("work", []string{"azure"}, true, 1)
+	blocked.CapturePlan = activation.CapturePlan{Changes: []activation.CaptureChange{{
+		TargetPath: "/home/user/.pi/agent/settings.json",
+		SourcePath: "/store/common/files/dot-pi/agent/settings.json",
+		Mode:       "merge",
+		Status:     activation.CaptureUnsupported,
+		Message:    "capture for merge mode is not supported",
+	}}}
+	client.switchResults = []fakeSwitchResult{{result: blocked, err: errors.New("local changes cannot be captured automatically; resolve conflicts or unsupported modes before switching")}}
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	view := model.View()
+	for _, want := range []string{
+		"Local managed-target changes: 1",
+		"/home/user/.pi/agent/settings.json",
+		"[merge]",
+		"[unsupported]",
+		"unsupported capture",
+		"capture-local",
+		"backup-unmanaged",
+	} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("view missing %q\n%s", want, view)
+		}
+	}
+	if model.canExecuteSwitch() {
+		t.Fatal("execute should be blocked while capture blocker present")
+	}
+}
+
+func TestSwitchToggleCaptureLocalClearsDryRunAndPropagates(t *testing.T) {
+	calls := []app.SwitchRequest{}
+	client := populatedFakeClient()
+	client.switchCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if model.switchDryRunFingerprint == "" {
+		t.Fatal("initial dry-run did not set fingerprint")
+	}
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	model = updated.(Model)
+	if !model.switchCaptureLocal {
+		t.Fatal("capture-local toggle did not flip on")
+	}
+	if model.switchDryRunFingerprint != "" {
+		t.Fatal("toggling capture-local should clear cached dry-run")
+	}
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if len(calls) < 2 || !calls[len(calls)-1].CaptureLocal {
+		t.Fatalf("latest switch request should have CaptureLocal=true, calls=%+v", calls)
+	}
+}
+
+func TestSwitchToggleBackupUnmanagedForcesYesOnDryRun(t *testing.T) {
+	calls := []app.SwitchRequest{}
+	client := populatedFakeClient()
+	client.switchCalls = &calls
+	model := loadedModel(client)
+	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	model = updated.(Model)
+	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	model = updated.(Model)
+	if !model.switchBackupUnmanaged {
+		t.Fatal("backup-unmanaged toggle did not flip on")
+	}
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
+	model = updated.(Model)
+	updated, _ = model.Update(cmd())
+	model = updated.(Model)
+	if len(calls) == 0 || !calls[len(calls)-1].BackupUnmanaged || !calls[len(calls)-1].Yes {
+		t.Fatalf("backup-unmanaged dry-run should set BackupUnmanaged=true and Yes=true, calls=%+v", calls)
+	}
+}
+
 func TestSwitchDryRunAndConfirmExecute(t *testing.T) {
 	calls := []app.SwitchRequest{}
 	client := populatedFakeClient()
