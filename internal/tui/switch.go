@@ -153,10 +153,14 @@ func (m Model) updateSwitchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.switchExecErr = fmt.Errorf("switch: successful dry-run required before execute")
 			return m, nil
 		}
-		m.confirmInput = ""
-		m.confirmErr = ""
-		m.screen = ScreenConfirm
-		return m, nil
+		req, ok := m.switchRequest(false)
+		if !ok {
+			m.switchExecErr = fmt.Errorf("switch: no profile selected")
+			return m, nil
+		}
+		m.switchBusy = true
+		m.switchExecErr = nil
+		return m, switchExecuteCmd(m.ctx, m.client, req, m.switchDryRunFingerprint)
 	}
 	return m, nil
 }

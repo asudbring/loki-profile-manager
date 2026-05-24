@@ -624,16 +624,8 @@ func TestSwitchDryRunAndConfirmExecute(t *testing.T) {
 	if model.switchDryRunErr != nil || model.switchDryRunFingerprint == "" || !strings.Contains(model.View(), "Ready to execute") {
 		t.Fatalf("dry-run model/view = %+v\n%s", model, model.View())
 	}
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	model = updated.(Model)
-	if model.screen != ScreenConfirm || !strings.Contains(model.View(), "SWITCH work azure") {
-		t.Fatalf("confirm view = %s", model.View())
-	}
-	for _, r := range "SWITCH work azure" {
-		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		model = updated.(Model)
-	}
-	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// x now executes directly without confirm screen.
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	model = updated.(Model)
 	if !model.switchBusy || cmd == nil {
 		t.Fatalf("execute not started: %+v cmd nil=%v", model, cmd == nil)
@@ -643,6 +635,7 @@ func TestSwitchDryRunAndConfirmExecute(t *testing.T) {
 	if model.switchExecErr != nil || !strings.Contains(model.View(), "Switch complete") {
 		t.Fatalf("execute model/view = %+v\n%s", model, model.View())
 	}
+	// calls: dry-run, recheck dry-run (inside switchExecuteCmd), execute
 	if len(calls) != 3 || !calls[0].DryRun || !calls[1].DryRun || calls[2].DryRun || !calls[2].Yes {
 		t.Fatalf("switch calls = %+v", calls)
 	}
@@ -671,55 +664,6 @@ func TestSwitchDryRunBlockerDisablesExecute(t *testing.T) {
 	}
 }
 
-func TestSwitchWrongConfirmationBlocksExecution(t *testing.T) {
-	calls := []app.SwitchRequest{}
-	client := populatedFakeClient()
-	client.switchCalls = &calls
-	model := loadedModel(client)
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
-	model = updated.(Model)
-	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	model = updated.(Model)
-	updated, _ = model.Update(cmd())
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	model = updated.(Model)
-	for _, r := range "WRONG" {
-		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		model = updated.(Model)
-	}
-	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
-	if cmd != nil || model.confirmErr == "" || len(calls) != 1 {
-		t.Fatalf("wrong confirm model/calls = %+v %+v", model, calls)
-	}
-}
-
-func TestSwitchConfirmIgnoresDuplicateEnterWhileBusy(t *testing.T) {
-	client := populatedFakeClient()
-	model := loadedModel(client)
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
-	model = updated.(Model)
-	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'d'}})
-	model = updated.(Model)
-	updated, _ = model.Update(cmd())
-	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	model = updated.(Model)
-	for _, r := range "SWITCH work azure" {
-		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		model = updated.(Model)
-	}
-	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	model = updated.(Model)
-	if cmd == nil || !model.switchBusy {
-		t.Fatalf("first execute not started: %+v", model)
-	}
-	_, duplicate := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if duplicate != nil {
-		t.Fatal("duplicate enter returned command")
-	}
-}
 
 func TestSwitchDryRunDriftAbortsExecution(t *testing.T) {
 	calls := []app.SwitchRequest{}
@@ -736,13 +680,8 @@ func TestSwitchDryRunDriftAbortsExecution(t *testing.T) {
 	model = updated.(Model)
 	updated, _ = model.Update(cmd())
 	model = updated.(Model)
-	updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
-	model = updated.(Model)
-	for _, r := range "SWITCH work azure" {
-		updated, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
-		model = updated.(Model)
-	}
-	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	// x executes directly; the recheck inside switchExecuteCmd detects drift.
+	updated, cmd = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
 	model = updated.(Model)
 	updated, _ = model.Update(cmd())
 	model = updated.(Model)
