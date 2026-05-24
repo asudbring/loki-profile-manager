@@ -449,7 +449,7 @@ func appendCaptureBlockers(lines []string, result app.SwitchResult, captureLocal
 		lines = append(lines, errorStyle.Render(fmt.Sprintf("%d capture conflict(s): both local target and store source diverged, or source is missing. Resolve manually before switching.", conflict)))
 	}
 	if unsupported > 0 {
-		lines = append(lines, errorStyle.Render(fmt.Sprintf("%d unsupported capture(s) (e.g. merge/symlink mode): move overrides into the appropriate profile/bucket layer, or restore the local file to its previously-applied content.", unsupported)))
+		lines = append(lines, errorStyle.Render(fmt.Sprintf("%d unsupported capture(s) (e.g. merge/symlink mode): run `loki doctor --resolve-blockers` from CLI to promote overrides into a store layer.", unsupported)))
 	}
 	return lines
 }

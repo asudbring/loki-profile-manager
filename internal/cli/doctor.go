@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
+	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,10 +16,11 @@ import (
 	diagnostics "github.com/asudbring/loki-profile-manager/internal/doctor"
 )
 
-func newDoctorCommand(resolver config.PathResolver, globals *globalOptions, _ ServiceFactory) *cobra.Command {
+func newDoctorCommand(resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) *cobra.Command {
 	var jsonOutput bool
 	var repairManagedState bool
 	var writeSafeFiles bool
+	var resolveBlockers bool
 
 	cmd := &cobra.Command{
 		Use:   "doctor",
@@ -27,6 +31,11 @@ func newDoctorCommand(resolver config.PathResolver, globals *globalOptions, _ Se
 				return fmt.Errorf("doctor: --write-safe-files requires --repair-managed-state")
 			}
 			ctx := cmd.Context()
+
+			if resolveBlockers {
+				return runDoctorResolveBlockers(cmd, resolver, globals, factory)
+			}
+
 			report, err := app.RunDoctor(ctx, app.Options{
 				Resolver:                 resolver,
 				StoreOverride:            globals.store,
@@ -56,7 +65,95 @@ func newDoctorCommand(resolver config.PathResolver, globals *globalOptions, _ Se
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit machine-readable JSON")
 	cmd.Flags().BoolVar(&repairManagedState, "repair-managed-state", false, "repair safe stale managed-target state records")
 	cmd.Flags().BoolVar(&writeSafeFiles, "write-safe-files", false, "with --repair-managed-state, canonicalize safe local files before repairing state")
+	cmd.Flags().BoolVar(&resolveBlockers, "resolve-blockers", false, "interactively resolve switch blockers by promoting local overrides into a store layer")
 	return cmd
+}
+
+func runDoctorResolveBlockers(cmd *cobra.Command, resolver config.PathResolver, globals *globalOptions, factory ServiceFactory) error {
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	svc, err := factory(ctx, app.Options{
+		Resolver:      resolver,
+		StoreOverride: globals.store,
+		Verbose:       globals.verbose,
+		Stderr:        cmd.ErrOrStderr(),
+	})
+	if err != nil {
+		return fmt.Errorf("doctor --resolve-blockers: %w", err)
+	}
+	defer svc.Close()
+
+	blockers, err := svc.FindSwitchBlockers(ctx)
+	if err != nil {
+		return fmt.Errorf("doctor --resolve-blockers: %w", err)
+	}
+	if len(blockers) == 0 {
+		fmt.Fprintln(out, "No switch blockers found. Switch should proceed without issues.")
+		return nil
+	}
+
+	fmt.Fprintf(out, "Found %d switch blocker(s):\n\n", len(blockers))
+	reader := bufio.NewReader(os.Stdin)
+
+	for i, blocker := range blockers {
+		fmt.Fprintf(out, "Blocker %d/%d\n", i+1, len(blockers))
+		fmt.Fprintf(out, "  Target: %s\n", blocker.TargetPath)
+		fmt.Fprintf(out, "  Mode:   %s\n", blocker.Change.Mode)
+		fmt.Fprintf(out, "  Status: %s\n", blocker.Change.Status)
+		if blocker.Change.Message != "" {
+			fmt.Fprintf(out, "  Reason: %s\n", blocker.Change.Message)
+		}
+		fmt.Fprintf(out, "\n  Available layers to own these overrides:\n")
+		for j, layer := range blocker.AvailableLayers {
+			fmt.Fprintf(out, "    [%d] %s (%s)\n", j+1, layer.Name, layer.Kind)
+			fmt.Fprintf(out, "        source: %s\n", layer.SourcePath)
+		}
+		fmt.Fprintf(out, "    [s] skip this blocker\n")
+		fmt.Fprintf(out, "\n  Which layer should own the local overrides? ")
+
+		input, err := reader.ReadString('\n')
+		if err != nil {
+			return fmt.Errorf("doctor --resolve-blockers: reading input: %w", err)
+		}
+		input = strings.TrimSpace(input)
+
+		if strings.EqualFold(input, "s") || input == "" {
+			fmt.Fprintln(out, "  Skipped.")
+			fmt.Fprintln(out)
+			continue
+		}
+
+		choice, err := strconv.Atoi(input)
+		if err != nil || choice < 1 || choice > len(blocker.AvailableLayers) {
+			fmt.Fprintf(out, "  Invalid choice %q, skipping.\n\n", input)
+			continue
+		}
+
+		chosen := blocker.AvailableLayers[choice-1]
+		fmt.Fprintf(out, "  Promoting local content to layer %q (%s)...\n", chosen.Name, chosen.SourcePath)
+
+		if err := svc.ResolveBlocker(ctx, blocker, chosen); err != nil {
+			fmt.Fprintf(out, "  Error: %v\n\n", err)
+			continue
+		}
+		fmt.Fprintln(out, "  Resolved.")
+		fmt.Fprintln(out)
+	}
+
+	// Run a verification dry-run.
+	fmt.Fprintln(out, "Running verification dry-run...")
+	verifyBlockers, err := svc.FindSwitchBlockers(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "Verification failed: %v\n", err)
+		return fmt.Errorf("doctor --resolve-blockers: verification: %w", err)
+	}
+	if len(verifyBlockers) == 0 {
+		fmt.Fprintln(out, "All switch blockers resolved. Switch should now proceed without issues.")
+		return nil
+	}
+	fmt.Fprintf(out, "%d blocker(s) remain. Run `loki doctor --resolve-blockers` again or resolve manually.\n", len(verifyBlockers))
+	return fmt.Errorf("doctor: %d switch blocker(s) still unresolved", len(verifyBlockers))
 }
 
 func printDoctorReport(cmd *cobra.Command, report app.DoctorResult) {

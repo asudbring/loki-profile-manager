@@ -39,6 +39,7 @@ type Request struct {
 	SecretStatusChecker secrets.StatusChecker
 	RepairManagedState  bool
 	WriteSafeFiles      bool
+	ResolveBlockers     bool
 	Now                 func() time.Time
 }
 
@@ -67,6 +68,7 @@ func Run(ctx context.Context, req Request) Report {
 	storeUsable := addStoreChecks(&report, report.StorePath)
 	if storeUsable && req.Database != nil {
 		addManagedStateChecks(ctx, &report, req, now())
+		addSwitchBlockerChecks(ctx, &report, req)
 	}
 	addSnapshotChecks(ctx, &report, req.Database, req.LocalPaths.SnapshotDir)
 	addDependencyChecks(ctx, &report, req.SecretStatusChecker)
@@ -473,4 +475,35 @@ func joinLimited(values []string, limit int) string {
 		return strings.Join(values, ", ")
 	}
 	return strings.Join(values[:limit], ", ") + fmt.Sprintf(", ... (%d more)", len(values)-limit)
+}
+
+func addSwitchBlockerChecks(ctx context.Context, report *Report, req Request) {
+	blockers, err := FindSwitchBlockers(ctx, req.Database, report.StorePath, req.Resolver)
+	if err != nil {
+		report.add(Check{Severity: SeverityWarning, Code: "switch_blocker.scan_failed", Category: "switch_blocker", Message: err.Error()})
+		return
+	}
+	if len(blockers) == 0 {
+		return
+	}
+	for _, blocker := range blockers {
+		layers := make([]string, 0, len(blocker.AvailableLayers))
+		for _, layer := range blocker.AvailableLayers {
+			layers = append(layers, layer.Name)
+		}
+		report.add(Check{
+			Severity:    SeverityBlocking,
+			Code:        "switch_blocker.capture_unsupported",
+			Category:    "switch_blocker",
+			Message:     fmt.Sprintf("local file diverged from store (mode=%s): %s", blocker.Change.Mode, blocker.Change.Message),
+			Path:        blocker.TargetPath,
+			Remediation: "Run `loki doctor --resolve-blockers` to promote local overrides into a store layer.",
+			Details: map[string]string{
+				"mode":             blocker.Change.Mode,
+				"status":           string(blocker.Change.Status),
+				"format":           blocker.Format,
+				"available_layers": strings.Join(layers, ","),
+			},
+		})
+	}
 }

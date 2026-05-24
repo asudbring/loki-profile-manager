@@ -6,6 +6,15 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.21 — 2026-05-23
+
+Feature release: `loki doctor --resolve-blockers` for self-service switch blocker resolution.
+
+- **New `--resolve-blockers` flag on `loki doctor`**: interactively detects merge-mode capture blockers, prompts the user to choose which store layer should own local overrides, promotes the content, repairs managed state, and runs a verification dry-run — all without requiring source code access.
+- **Doctor now detects switch blockers as blocking checks**: `switch_blocker.capture_unsupported` severity=blocking emitted during normal `loki doctor` runs with actionable remediation hint.
+- **Updated switch error message**: when switch is blocked by unsupported captures, the error now directs users to `loki doctor --resolve-blockers` instead of a generic "resolve manually" message.
+- **TUI hint updated**: unsupported capture section in TUI switch view now points to `loki doctor --resolve-blockers` for CLI-based resolution.
+
 ## v0.1.20 — 2026-05-23
 
 Feature release for in-TUI switch blocker remediation.

@@ -525,7 +525,7 @@ func TestSwitchDryRunCaptureBlockerSurfacedInView(t *testing.T) {
 		Status:     activation.CaptureUnsupported,
 		Message:    "capture for merge mode is not supported",
 	}}}
-	client.switchResults = []fakeSwitchResult{{result: blocked, err: errors.New("local changes cannot be captured automatically; resolve conflicts or unsupported modes before switching")}}
+	client.switchResults = []fakeSwitchResult{{result: blocked, err: errors.New("local changes cannot be captured automatically; run `loki doctor --resolve-blockers` to promote overrides into a store layer")}}
 	model := loadedModel(client)
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
 	model = updated.(Model)

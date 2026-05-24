@@ -105,7 +105,7 @@ func (s *Service) Switch(ctx context.Context, req SwitchRequest) (SwitchResult, 
 		if capturePlan.HasChanges() {
 			result = SwitchResult{Plan: plan, DryRun: req.DryRun, CapturePlan: capturePlan, Warnings: warnings}
 			if capturePlan.HasBlocking() {
-				return fmt.Errorf("local changes cannot be captured automatically; resolve conflicts or unsupported modes before switching")
+				return fmt.Errorf("local changes cannot be captured automatically; run `loki doctor --resolve-blockers` to promote overrides into a store layer")
 			}
 			if req.DryRun {
 				result.CaptureRequired = !req.CaptureLocal
