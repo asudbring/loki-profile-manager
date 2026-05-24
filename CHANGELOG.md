@@ -6,6 +6,12 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.22 — 2026-05-23
+
+Bugfix: remove broken confirm gate from TUI switch.
+
+- **Removed confirmation phrase screen from TUI switch execute**: the confirm screen required typing `SWITCH <profile> <buckets>` but the space key was never handled (bubbletea `tea.KeySpace` is not `tea.KeyRunes`), making confirmation impossible. Removed the gate entirely — pressing `x` after a successful dry-run now executes immediately. The fingerprint recheck already guards against drift.
+
 ## v0.1.21 — 2026-05-23
 
 Feature release: `loki doctor --resolve-blockers` for self-service switch blocker resolution.
