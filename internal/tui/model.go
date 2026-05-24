@@ -85,6 +85,8 @@ type Model struct {
 	switchExecResult        app.SwitchResult
 	switchExecErr           error
 	switchBusy              bool
+	switchCaptureLocal      bool
+	switchBackupUnmanaged   bool
 	confirmInput            string
 	confirmErr              string
 

@@ -6,6 +6,14 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.20 — 2026-05-23
+
+Feature release for in-TUI switch blocker remediation.
+
+- TUI switch dry-run now enumerates per-target blockers (capture conflicts, unsupported merge/symlink captures, cleanup blockers, unmanaged blockers) with actionable hints instead of a single generic `Blocker:` line.
+- Added `c` and `b` hotkeys on the switch screen to toggle `--capture-local` and `--backup-unmanaged` without leaving the TUI. Toggles clear the cached dry-run so the fingerprint guard forces a fresh validation before execute.
+- Switch execute recheck now preserves `Yes` so `--backup-unmanaged` dry-run rechecks pass app-layer validation.
+
 ## v0.1.19 — 2026-05-20
 
 Feature release for markdown skill import.

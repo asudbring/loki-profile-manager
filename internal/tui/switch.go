@@ -92,7 +92,16 @@ func (m Model) switchRequest(dryRun bool) (app.SwitchRequest, bool) {
 	if !ok {
 		return app.SwitchRequest{}, false
 	}
-	return app.SwitchRequest{ParentProfile: profile.Name, Buckets: m.selectedSwitchBuckets(), DryRun: dryRun, Yes: !dryRun}, true
+	// --backup-unmanaged requires Yes=true even on dry-run (app-layer validation).
+	yes := !dryRun || m.switchBackupUnmanaged
+	return app.SwitchRequest{
+		ParentProfile:   profile.Name,
+		Buckets:         m.selectedSwitchBuckets(),
+		DryRun:          dryRun,
+		Yes:             yes,
+		CaptureLocal:    m.switchCaptureLocal,
+		BackupUnmanaged: m.switchBackupUnmanaged,
+	}, true
 }
 
 func (m Model) updateSwitchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -128,6 +137,14 @@ func (m Model) updateSwitchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case " ":
 		m.toggleSwitchBucket()
+		return m, nil
+	case "c":
+		m.switchCaptureLocal = !m.switchCaptureLocal
+		m.clearSwitchDryRun()
+		return m, nil
+	case "b":
+		m.switchBackupUnmanaged = !m.switchBackupUnmanaged
+		m.clearSwitchDryRun()
 		return m, nil
 	case "d":
 		return m.startSwitchDryRun()
@@ -267,7 +284,7 @@ func switchExecuteCmd(ctx context.Context, client Client, req app.SwitchRequest,
 	return func() tea.Msg {
 		dryReq := req
 		dryReq.DryRun = true
-		dryReq.Yes = false
+		// Preserve req.Yes so backup-unmanaged dry-run recheck passes app validation.
 		dryRun, err := client.Switch(ctx, dryReq)
 		if err != nil {
 			return switchExecuteMsg{result: dryRun, err: fmt.Errorf("dry-run recheck failed: %w", err)}
@@ -329,11 +346,12 @@ func (m Model) switchView() string {
 	}
 	lines = append(lines, "")
 	lines = appendSwitchPlan(lines, m)
-	lines = append(lines, "", helpStyle.Render("↑/↓ profile • ←/→ bucket • space toggle • d dry-run • x execute • esc back • q quit"))
+	lines = append(lines, "", helpStyle.Render("↑/↓ profile • ←/→ bucket • space toggle • c capture-local • b backup-unmanaged • d dry-run • x execute • esc back • q quit"))
 	return frame(lines...)
 }
 
 func appendSwitchPlan(lines []string, m Model) []string {
+	lines = append(lines, labelValue("Toggles", switchToggleSummary(m)))
 	if m.switchBusy {
 		return append(lines, mutedStyle.Render("Switch operation running..."))
 	}
@@ -343,11 +361,24 @@ func appendSwitchPlan(lines []string, m Model) []string {
 	if m.switchDryRun.Plan.Profile != "" || m.switchDryRunErr != nil {
 		lines = append(lines, subtitleStyle.Render("Dry-run"))
 		lines = append(lines, switchResultSummary(m.switchDryRun)...)
+		lines = appendCaptureBlockers(lines, m.switchDryRun, m.switchCaptureLocal)
+		lines = appendCleanupBlockers(lines, m.switchDryRun)
 		if m.switchDryRunErr != nil {
 			lines = append(lines, errorStyle.Render("Blocker: "+m.switchDryRunErr.Error()))
 			if blockers := tuiUnmanagedSwitchBlockers(m.switchDryRun.Plan); len(blockers) > 0 {
 				lines = append(lines, fmt.Sprintf("Unmanaged blockers: %d", len(blockers)))
-				lines = append(lines, "Fix in CLI: rerun this switch with --backup-unmanaged --yes")
+				for i, path := range blockers {
+					if i >= 8 {
+						lines = append(lines, fmt.Sprintf("  ... %d more unmanaged path(s)", len(blockers)-i))
+						break
+					}
+					lines = append(lines, "  - "+path)
+				}
+				if m.switchBackupUnmanaged {
+					lines = append(lines, mutedStyle.Render("Backup-unmanaged toggled on; re-run dry-run (d) to preview backups."))
+				} else {
+					lines = append(lines, "Fix: press b to enable --backup-unmanaged, then d to re-run dry-run. CLI equivalent: --backup-unmanaged --yes")
+				}
 			}
 		} else {
 			lines = append(lines, "Ready to execute after confirmation.")
@@ -361,6 +392,84 @@ func appendSwitchPlan(lines []string, m Model) []string {
 		} else {
 			lines = append(lines, "Switch complete.")
 		}
+	}
+	return lines
+}
+
+func switchToggleSummary(m Model) string {
+	parts := []string{}
+	if m.switchCaptureLocal {
+		parts = append(parts, "capture-local")
+	}
+	if m.switchBackupUnmanaged {
+		parts = append(parts, "backup-unmanaged")
+	}
+	if len(parts) == 0 {
+		return "none"
+	}
+	return strings.Join(parts, ", ")
+}
+
+func appendCaptureBlockers(lines []string, result app.SwitchResult, captureLocal bool) []string {
+	changes := result.CapturePlan.Changes
+	if len(changes) == 0 {
+		return lines
+	}
+	lines = append(lines, fmt.Sprintf("Local managed-target changes: %d", len(changes)))
+	capturable, conflict, unsupported := 0, 0, 0
+	for _, ch := range changes {
+		switch ch.Status {
+		case activation.CaptureCapturable:
+			capturable++
+		case activation.CaptureConflict:
+			conflict++
+		case activation.CaptureUnsupported:
+			unsupported++
+		}
+	}
+	for i, ch := range changes {
+		if i >= 8 {
+			lines = append(lines, fmt.Sprintf("  ... %d more change(s)", len(changes)-i))
+			break
+		}
+		line := fmt.Sprintf("  - %s [%s] [%s]", ch.TargetPath, ch.Mode, ch.Status)
+		if ch.Message != "" {
+			line += " — " + ch.Message
+		}
+		lines = append(lines, line)
+	}
+	if capturable > 0 {
+		if captureLocal {
+			lines = append(lines, mutedStyle.Render(fmt.Sprintf("capture-local enabled; %d safe change(s) will be written back on execute.", capturable)))
+		} else {
+			lines = append(lines, fmt.Sprintf("Fix: press c to enable --capture-local (%d safe change(s) can be written back to the store).", capturable))
+		}
+	}
+	if conflict > 0 {
+		lines = append(lines, errorStyle.Render(fmt.Sprintf("%d capture conflict(s): both local target and store source diverged, or source is missing. Resolve manually before switching.", conflict)))
+	}
+	if unsupported > 0 {
+		lines = append(lines, errorStyle.Render(fmt.Sprintf("%d unsupported capture(s) (e.g. merge/symlink mode): move overrides into the appropriate profile/bucket layer, or restore the local file to its previously-applied content.", unsupported)))
+	}
+	return lines
+}
+
+func appendCleanupBlockers(lines []string, result app.SwitchResult) []string {
+	changes := result.CleanupPlan.Changes
+	if len(changes) == 0 {
+		return lines
+	}
+	lines = append(lines, fmt.Sprintf("Obsolete managed targets: %d", len(changes)))
+	for i, ch := range changes {
+		if i >= 8 {
+			lines = append(lines, fmt.Sprintf("  ... %d more cleanup(s)", len(changes)-i))
+			break
+		}
+		line := fmt.Sprintf("  - %s [%s]", ch.TargetPath, ch.Status)
+		if ch.Message != "" {
+			line += " — " + ch.Message
+		}
+		lines = append(lines, line)
 	}
 	return lines
 }
