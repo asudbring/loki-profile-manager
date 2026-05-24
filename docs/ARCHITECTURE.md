@@ -67,7 +67,7 @@ flowchart TB
     App --> Logs
 ```
 
-The CLI is thin. It parses commands and calls the app service. `loki tui` is also thin: it runs a Bubble Tea model over a narrow fakeable `internal/tui.Client` adapter and delegates business logic to app services. The app service owns local path resolution, logging, database bootstrap, operation locks, safety checks, snapshots, restore guards, and orchestration. `doctor` uses a diagnostic path that resolves local paths and opens existing SQLite state read-only instead of bootstrapping it. Store data and manifests remain in a user-selected synced folder. Local runtime state remains outside the synced store.
+The CLI is thin. It parses commands and calls the app service. `loki tui` is also thin: it runs a Bubble Tea model over a narrow fakeable `internal/tui.Client` adapter and delegates business logic to app services. The app service owns local path resolution, logging, database bootstrap, operation locks, safety checks, snapshots, restore guards, and orchestration. `doctor` uses a diagnostic path that resolves local paths and opens existing SQLite state read-only instead of bootstrapping it. `doctor --resolve-blockers` detects switch-blocking capture changes (merge/symlink mode divergence), interactively prompts for a target layer, promotes local overrides into that layer's store source, repairs the managed state record, and verifies the fix with a dry-run. Store data and manifests remain in a user-selected synced folder. Local runtime state remains outside the synced store.
 
 ## Data ownership
 
@@ -257,6 +257,43 @@ sequenceDiagram
 
 Safety validation happens before snapshots and before any target writes. `--capture-local` writes only safe copied managed-target drift back to store sources before activation and then rechecks safety. `--backup-unmanaged --yes` is the explicit first-install remediation path when the synced store should win: Loki classifies blockers, moves only unmanaged file/directory blockers to machine-local state under `unmanaged-backups/<timestamp>/`, writes a backup manifest, rechecks safety, then activates. Render outputs are regenerated from templates and are not captured. Rollback runs for failures after snapshot creation; unmanaged pre-switch backups are preserved separately for manual recovery.
 
+## Doctor resolve-blockers flow
+
+When `loki switch` is blocked by unsupported capture changes (e.g. merge-mode local divergence), the error directs users to `loki doctor --resolve-blockers`. This interactive flow promotes local overrides into a chosen store layer and repairs state so the switch can proceed.
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant CLI as loki doctor --resolve-blockers
+    participant App as App service
+    participant Doctor as doctor package
+    participant DB as SQLite
+    participant Store as Loki store
+
+    User->>CLI: loki doctor --resolve-blockers
+    CLI->>App: FindSwitchBlockers()
+    App->>Doctor: BuildCapturePlan + match layers
+    Doctor->>DB: Read managed_targets
+    Doctor->>Store: Load manifests and source paths
+    Doctor-->>CLI: []ResolvableBlocker
+
+    loop For each blocker
+        CLI-->>User: Show target, mode, status, available layers
+        User->>CLI: Choose layer (e.g. "common")
+        CLI->>App: ResolveBlocker(blocker, chosenLayer)
+        App->>Doctor: ResolveBlocker()
+        Doctor->>Store: Write local content to layer source
+        Doctor->>DB: Update managed_target hash + metadata
+        Doctor-->>CLI: resolved
+    end
+
+    CLI->>App: FindSwitchBlockers() [verification]
+    App-->>CLI: no blockers remain
+    CLI-->>User: All blockers resolved. Switch should proceed.
+```
+
+The resolution writes the local target's current content into the chosen layer's source file and updates the managed-target record's content hash to match. After all blockers are resolved, a verification pass confirms the switch can now proceed without blocking.
+
 ## Sync MVP flow
 
 `loki sync` currently resolves provider conflict-copy files only. It does not call OneDrive/Dropbox APIs, run a background watcher, or capture changed app targets.
@@ -314,7 +351,13 @@ sequenceDiagram
     TUI->>Client: Dry-run or setup service call
     Client->>App: Switch / Sync / RestoreSnapshotDryRun / UseStore / EnsureStore / ForgetStore / RegisterMachine
     App-->>TUI: plan, blockers, warnings, fingerprint/guard
-    alt switch or sync execute
+    alt switch execute
+        User->>TUI: press x after successful dry-run
+        TUI->>Client: dry-run recheck
+        TUI->>TUI: compare fingerprint
+        TUI->>Client: app-owned Yes:true call
+        App-->>TUI: result or safety error
+    else sync execute
         User->>TUI: exact typed confirmation
         TUI->>Client: dry-run recheck
         TUI->>TUI: compare fingerprint
@@ -329,7 +372,7 @@ TUI write-capable flows are intentionally narrow:
 
 - Store setup requires exact `USE STORE`, `INIT STORE`, or `UNSET STORE` phrase before persisting local config or creating a missing/empty store layout.
 - Machine registration requires exact `REGISTER MACHINE` phrase before writing the synced machine registry.
-- Switch requires successful dry-run, exact `SWITCH <profile> [bucket...]` phrase, and dry-run fingerprint recheck before `Switch(Yes:true)`.
+- Switch executes directly after a successful dry-run (press `x`). A fingerprint recheck guards against drift between dry-run and execute; no typed confirmation is required.
 - Sync requires successful dry-run, exact `DELETE <n> CONFLICTS` phrase, dry-run recheck, and app-side expected conflict fingerprint before `Sync(Yes:true)` deletes conflict copies.
 - Snapshot restore writes are not exposed. TUI can record a restore dry-run guard and displays the existing guarded CLI restore command.
 - Secrets views render names/status only. Snapshot views render metadata only and do not read or print file contents.

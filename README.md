@@ -181,9 +181,12 @@ loki doctor
 loki doctor --json
 loki doctor --repair-managed-state
 loki doctor --repair-managed-state --write-safe-files
+loki doctor --resolve-blockers
 ```
 
 `loki doctor --repair-managed-state` refreshes stale local managed-target records only when the local target and current manifest source are equivalent. `--write-safe-files` additionally canonicalizes safe local files before updating state. Semantic repair is implemented for JSON; other files must be byte-identical unless Loki can regenerate the canonical merge output safely.
+
+`loki doctor --resolve-blockers` interactively resolves switch-blocking capture changes (e.g. merge-mode local divergence). It detects diverged targets, lists available store layers, prompts for a layer choice, promotes local content into that layer's source, repairs managed state, and runs a verification dry-run. No source code access required.
 
 Inspect and restore local activation snapshots:
 

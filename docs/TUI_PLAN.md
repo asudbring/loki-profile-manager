@@ -37,7 +37,7 @@ Dependency note: do a tiny compile spike before full implementation. Bubble Tea 
 | Doctor | Checks grouped by blocking/warning/info with remediation | No |
 | Machine | Machine ID/registration/policy summary plus register/update form | Yes, gated |
 | Secrets | Infisical readiness and named-secret presence checks; no values | No |
-| Profiles / Switch | Choose profile/buckets, run switch dry-run, show plan/blockers, execute after typed confirmation | Yes, gated |
+| Profiles / Switch | Choose profile/buckets, run switch dry-run, show plan/blockers, execute directly after successful dry-run | Yes, fingerprint-gated |
 | Sync conflicts | Run sync dry-run, show deletable/skipped conflicts, execute after typed confirmation | Yes, gated |
 | Snapshots | List/show snapshots, run restore dry-run, show guarded CLI command for restore | Restore write deferred |
 | Store | Discover/configure/create/unset store from explicit path/candidate | Yes, gated |

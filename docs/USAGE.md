@@ -104,7 +104,7 @@ Safety rules:
 - Use `migrate local`, `migrate repo`, `adopt`, or `switch --backup-unmanaged --yes` before first activation on a machine with existing unmanaged files.
 - Use `switch --capture-local --yes` only for safe copy-mode local changes from the currently active Loki-managed profile.
 - Render outputs are regenerated from templates and are not captured.
-- Merge drift is detected but manual in this MVP.
+- Merge drift is detected and blocks the switch. Run `loki doctor --resolve-blockers` to promote overrides into a store layer.
 
 ## `loki update`
 
@@ -147,7 +147,7 @@ Behavior:
 - Dashboard quick actions: `g` store, `w` switch, `y` sync conflicts, `n` snapshots, `d` doctor, `m` machine, `s` secrets, `p` profiles.
 - Store screen can discover candidates, manually inspect a path, persist an existing store, initialize a missing/empty store, or unset local store config with typed confirmation.
 - Machine screen can register/update this machine with allowed profiles/buckets and active profile/bucket metadata with typed confirmation.
-- Switch screen runs `Switch(DryRun:true)`, requires exact `SWITCH <profile> [bucket...]` confirmation, rechecks the dry-run fingerprint, then calls app-owned `Switch(Yes:true)`.
+- Switch screen runs `Switch(DryRun:true)`, then executes directly when the user presses `x`. A dry-run fingerprint recheck guards against drift before calling app-owned `Switch(Yes:true)`. No typed confirmation is required.
 - Sync screen runs `Sync(DryRun:true)`, requires exact `DELETE <n> CONFLICTS` confirmation, rechecks the conflict fingerprint, then calls app-owned `Sync(Yes:true)`.
 - Snapshot screen lists and shows metadata only, runs restore dry-runs, and displays the guarded CLI restore command. It does not execute restore writes in the TUI MVP.
 - Secrets screen renders provider/readiness/check names and status only. Press `c` to configure Infisical through a masked local-only wizard. It never renders secret values.
@@ -163,7 +163,7 @@ Keys:
 | `enter` | Open selected dashboard item, show selected snapshot, or choose selected store candidate. |
 | `g` | Open Store screen from dashboard. |
 | `d` | Dry-run switch/sync/snapshot restore on action screens; rediscover store candidates on Store screen. |
-| `x` | Switch execute confirmation or sync confirmation reset. Snapshot restore has no execute key. |
+| `x` | Execute switch after successful dry-run; sync confirmation reset. Snapshot restore has no execute key. |
 | `c` | Open Infisical configuration wizard on the Secrets screen. |
 | Arrow keys / `hjkl` | Navigate lists, profile/bucket selection, and snapshot targets. |
 
@@ -575,11 +575,12 @@ loki secrets status
 
 ## `loki doctor`
 
-Inspect local environment, store layout, machine registry, snapshots, operation locks, provider conflict-copy filenames, SQLite state, and Infisical CLI readiness.
+Inspect local environment, store layout, machine registry, snapshots, operation locks, provider conflict-copy filenames, SQLite state, and Infisical CLI readiness. Detect and interactively resolve switch blockers.
 
 ```bash
 loki doctor [--json]
 loki doctor --repair-managed-state [--write-safe-files]
+loki doctor --resolve-blockers
 loki --store /path/to/loki doctor [--json]
 ```
 
@@ -590,6 +591,7 @@ Flags:
 | `--json` | Emit machine-readable JSON. |
 | `--repair-managed-state` | Repair safe stale local `managed_targets` records when the target and current manifest source are equivalent. |
 | `--write-safe-files` | With `--repair-managed-state`, canonicalize safe local files before repairing state; JSON files may be semantically equivalent, other files must be byte-identical. |
+| `--resolve-blockers` | Interactively resolve switch blockers by promoting local overrides into a chosen store layer. |
 
 Behavior:
 
@@ -599,6 +601,7 @@ Behavior:
 - Reports stale managed-target state when local files match current manifest sources but SQLite hash/mode metadata is stale.
 - `--repair-managed-state` updates safe stale records; `--write-safe-files` additionally rewrites semantically equivalent JSON files or byte-identical copy/merge files into canonical Loki output before updating state. JSON output includes `repair_failed` count when some candidates could not be repaired.
 - Does not repair semantic conflicts; those still require manual resolution before switching.
+- `--resolve-blockers` detects CaptureUnsupported/CaptureConflict changes that block `loki switch`, shows each blocker with available store layers, prompts for a layer choice, writes local content to the chosen layer's source, repairs the managed-target record, and verifies with a final blocker scan. Does not require source code access.
 - Reports warning-only diagnostics with exit code 0.
 - Returns a nonzero exit code when blocking issues exist, such as an invalid configured store layout or SQLite integrity failure.
 - Checks local state paths, SQLite integrity and tables, provider discovery, store layout, managed-target state, operation locks, machine registration and stale heartbeats, snapshot metadata, conflict-copy filenames, and Infisical CLI readiness.
@@ -611,6 +614,7 @@ loki doctor
 loki doctor --json
 loki doctor --repair-managed-state
 loki doctor --repair-managed-state --write-safe-files
+loki doctor --resolve-blockers
 loki --store /path/to/loki doctor
 loki --store /path/to/loki doctor --json
 ```
@@ -641,7 +645,7 @@ Behavior:
 - Builds an activation plan from the selected profile layers.
 - Scans the currently active managed targets for local drift before switching.
 - If copied targets changed locally and the store source is unchanged, reports a capture plan. Real switches block until rerun with `--capture-local`; `--capture-local` writes those safe local changes back to the store first.
-- Symlink targets need no capture because app writes already land in the store. Render targets are never captured because rendered output can contain secrets; Loki regenerates them from templates during activation. Merge target capture is detected but manual in this MVP.
+- Symlink targets need no capture because app writes already land in the store. Render targets are never captured because rendered output can contain secrets; Loki regenerates them from templates during activation. Merge target drift is detected and blocks the switch; run `loki doctor --resolve-blockers` to interactively promote merge-mode local overrides into the appropriate store layer.
 - If both local target and store source changed since the last switch/adoption, capture blocks as a conflict and requires manual resolution.
 - Classifies target safety before writing.
 - Blocks unmanaged files, unmanaged directories, broken symlinks, managed hash mismatches, and targets outside the configured home root.
