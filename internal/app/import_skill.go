@@ -137,7 +137,7 @@ func (s *Service) executeImportSkill(ctx context.Context, req ImportSkillRequest
 	if !validation.Valid {
 		return fmt.Errorf("import-skill: invalid skill folder: %s", formatSkillIssues(validation.Issues))
 	}
-	parsed, manifestChanged, err := prepareImportSkillManifest(layer, result.ManifestSource)
+	parsed, manifestChanged, err := prepareImportSkillManifest(layer, result.ManifestSource, result.Name)
 	if err != nil {
 		return err
 	}
@@ -268,7 +268,7 @@ func resolveImportSkillLayer(storePath string, req ImportSkillRequest) (importSk
 	return importSkillLayerInfo{StorePath: storePath, Kind: "bucket", Name: bucket, Profile: profile, Bucket: bucket, RootDir: root, ManifestPath: filepath.Join(root, "manifest.yaml")}, nil
 }
 
-func prepareImportSkillManifest(layer importSkillLayerInfo, source string) (manifest.Manifest, bool, error) {
+func prepareImportSkillManifest(layer importSkillLayerInfo, source string, name string) (manifest.Manifest, bool, error) {
 	parsed, err := manifest.ParseFile(layer.ManifestPath)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -276,7 +276,9 @@ func prepareImportSkillManifest(layer importSkillLayerInfo, source string) (mani
 		}
 		parsed = manifest.Manifest{Version: manifest.Version, Name: layer.Name, Files: []manifest.FileEntry{}, Skills: []manifest.SkillEntry{}, Ignore: []string{}, MergeRules: map[string]string{}, Targets: map[string]manifest.TargetValue{}}
 	}
+	changed := false
 	entry := manifest.SkillEntry{Source: source}
+	found := false
 	for i, existing := range parsed.Skills {
 		if existing.Source != source {
 			continue
@@ -285,10 +287,80 @@ func prepareImportSkillManifest(layer importSkillLayerInfo, source string) (mani
 			entry.Targets = existing.Targets
 		}
 		parsed.Skills[i] = entry
-		return parsed, false, nil
+		found = true
+		break
 	}
-	parsed.Skills = append(parsed.Skills, entry)
-	return parsed, true, nil
+	if !found {
+		parsed.Skills = append(parsed.Skills, entry)
+		changed = true
+	}
+	// Generate FileEntry items for multi-tool deployment.
+	// Each skill is deployed to 6 standard target directories so all AI tools
+	// can discover it during activation.
+	fileEntries := skillDeploymentEntries(source, name)
+	for _, fe := range fileEntries {
+		if upsertImportSkillFileEntry(&parsed, fe) {
+			changed = true
+		}
+	}
+	return parsed, changed, nil
+}
+
+// skillDeploymentEntries returns the standard set of FileEntry items that
+// deploy a skill folder to all AI-tool skill directories. This ensures
+// import-skill produces the same manifest entries as migrate-local.
+func skillDeploymentEntries(source, name string) []manifest.FileEntry {
+	type target struct {
+		idPrefix string
+		target   string
+	}
+	targets := []target{
+		{idPrefix: "home-claude-skills-" + name, target: "~/.claude/skills/" + name},
+		{idPrefix: "home-pi-agent-skills-" + name, target: "~/.pi/agent/skills/" + name},
+		{idPrefix: "home-agents-skills-" + name, target: "~/.agents/skills/" + name},
+		{idPrefix: "home-copilot-skills-" + name, target: "~/.copilot/skills/" + name},
+		{idPrefix: "home-codex-skills-" + name, target: "~/.codex/skills/" + name},
+	}
+	entries := make([]manifest.FileEntry, 0, len(targets)+1)
+	sourceID := strings.ReplaceAll(source, "/", "-")
+	for _, t := range targets {
+		entries = append(entries, manifest.FileEntry{
+			ID:     t.idPrefix + "-" + sourceID,
+			Source: source,
+			Target: t.target,
+			Mode:   manifest.ModeCopy,
+			Format: manifest.FormatText,
+		})
+	}
+	// Prompt summary: copies SKILL.md to ~/.loki-skill-prompts/<name>.prompt.md
+	entries = append(entries, manifest.FileEntry{
+		ID:     "home-loki-skill-prompts-" + name + "-prompt-md-" + sourceID + "-skill-md",
+		Source: source + "/SKILL.md",
+		Target: "~/.loki-skill-prompts/" + name + ".prompt.md",
+		Mode:   manifest.ModeCopy,
+		Format: manifest.FormatText,
+	})
+	return entries
+}
+
+// upsertImportSkillFileEntry adds or updates a FileEntry in the manifest.
+// Returns true if the manifest was modified.
+func upsertImportSkillFileEntry(m *manifest.Manifest, entry manifest.FileEntry) bool {
+	for i, existing := range m.Files {
+		if existing.ID == entry.ID {
+			if existing.Source == entry.Source && existing.Target == entry.Target && existing.Mode == entry.Mode {
+				return false
+			}
+			m.Files[i] = entry
+			return true
+		}
+		if existing.Target == entry.Target && existing.Source == entry.Source {
+			m.Files[i] = entry
+			return true
+		}
+	}
+	m.Files = append(m.Files, entry)
+	return true
 }
 
 func ensureImportSkillLayerDirs(layer importSkillLayerInfo) error {
