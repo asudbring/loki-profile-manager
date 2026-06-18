@@ -6,6 +6,13 @@ This project uses 0.x semver. Hyphenated tags are dogfood or prerelease mileston
 
 ## Unreleased
 
+## v0.1.23 — 2026-06-17
+
+Bugfix: import-skill now generates multi-tool deployment entries.
+
+- **Fixed `import-skill` manifest generation**: `import-skill` previously only added a `SkillEntry` to the manifest `skills:` list. The activation planner only converts `files:` entries into deployable operations, so imported skills were never deployed during `switch`. Now `import-skill` generates 6 `FileEntry` items per skill (`.claude/skills/`, `.pi/agent/skills/`, `.agents/skills/`, `.copilot/skills/`, `.codex/skills/`, `.loki-skill-prompts/`) matching the pattern used by `migrate local`.
+- **Idempotent file-entry upsert**: re-importing the same skill does not duplicate manifest entries. Entries are matched by ID and updated in place.
+
 ## v0.1.22 — 2026-05-23
 
 Bugfix: remove broken confirm gate from TUI switch.
