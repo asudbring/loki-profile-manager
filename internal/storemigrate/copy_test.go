@@ -177,9 +177,12 @@ func TestCopyPlanWithOptionsReturnsOnFileTimeout(t *testing.T) {
 }
 
 func TestPlanWithDestinationRewritesEntryDestinations(t *testing.T) {
-	plan := Plan{ToPath: "/final", Entries: []Entry{{RelativePath: "profiles/work/core/manifest.yaml", DestPath: "/final/profiles/work/core/manifest.yaml"}}}
-	staging := PlanWithDestination(plan, "/staging")
-	if staging.ToPath != "/staging" || staging.Entries[0].DestPath != filepath.Join("/staging", "profiles", "work", "core", "manifest.yaml") {
+	finalDir := filepath.FromSlash("/final")
+	stagingDir := filepath.FromSlash("/staging")
+	plan := Plan{ToPath: finalDir, Entries: []Entry{{RelativePath: "profiles/work/core/manifest.yaml", DestPath: filepath.Join(finalDir, "profiles", "work", "core", "manifest.yaml")}}}
+	staging := PlanWithDestination(plan, stagingDir)
+	expectedDest := filepath.Join(stagingDir, "profiles", "work", "core", "manifest.yaml")
+	if staging.ToPath != stagingDir || staging.Entries[0].DestPath != expectedDest {
 		t.Fatalf("staging plan = %+v", staging)
 	}
 }
